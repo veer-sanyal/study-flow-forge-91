@@ -14,7 +14,328 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      attempts: {
+        Row: {
+          answer_given: string | null
+          confidence: string | null
+          created_at: string
+          guide_used: boolean
+          hint_used: boolean
+          id: string
+          is_correct: boolean
+          question_id: string
+          selected_choice_id: string | null
+          time_spent_ms: number | null
+          user_id: string
+        }
+        Insert: {
+          answer_given?: string | null
+          confidence?: string | null
+          created_at?: string
+          guide_used?: boolean
+          hint_used?: boolean
+          id?: string
+          is_correct: boolean
+          question_id: string
+          selected_choice_id?: string | null
+          time_spent_ms?: number | null
+          user_id: string
+        }
+        Update: {
+          answer_given?: string | null
+          confidence?: string | null
+          created_at?: string
+          guide_used?: boolean
+          hint_used?: boolean
+          id?: string
+          is_correct?: boolean
+          question_id?: string
+          selected_choice_id?: string | null
+          time_spent_ms?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attempts_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_packs: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          full_name: string | null
+          id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          full_name?: string | null
+          id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      question_types: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          status?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      questions: {
+        Row: {
+          choices: Json | null
+          correct_answer: string | null
+          created_at: string
+          difficulty: number | null
+          hint: string | null
+          id: string
+          needs_review: boolean
+          prompt: string
+          question_type_id: string | null
+          solution_steps: Json | null
+          source_exam: string | null
+          topic_ids: string[]
+          unmapped_topic_suggestions: string[] | null
+          updated_at: string
+        }
+        Insert: {
+          choices?: Json | null
+          correct_answer?: string | null
+          created_at?: string
+          difficulty?: number | null
+          hint?: string | null
+          id?: string
+          needs_review?: boolean
+          prompt: string
+          question_type_id?: string | null
+          solution_steps?: Json | null
+          source_exam?: string | null
+          topic_ids?: string[]
+          unmapped_topic_suggestions?: string[] | null
+          updated_at?: string
+        }
+        Update: {
+          choices?: Json | null
+          correct_answer?: string | null
+          created_at?: string
+          difficulty?: number | null
+          hint?: string | null
+          id?: string
+          needs_review?: boolean
+          prompt?: string
+          question_type_id?: string | null
+          solution_steps?: Json | null
+          source_exam?: string | null
+          topic_ids?: string[]
+          unmapped_topic_suggestions?: string[] | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "questions_question_type_id_fkey"
+            columns: ["question_type_id"]
+            isOneToOne: false
+            referencedRelation: "question_types"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      srs_state: {
+        Row: {
+          created_at: string
+          due_at: string
+          ease: number
+          id: string
+          interval_days: number
+          last_reviewed_at: string | null
+          question_id: string
+          reps: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          due_at?: string
+          ease?: number
+          id?: string
+          interval_days?: number
+          last_reviewed_at?: string | null
+          question_id: string
+          reps?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          due_at?: string
+          ease?: number
+          id?: string
+          interval_days?: number
+          last_reviewed_at?: string | null
+          question_id?: string
+          reps?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "srs_state_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topic_mastery: {
+        Row: {
+          created_at: string
+          id: string
+          last_practiced_at: string | null
+          mastery_0_1: number
+          questions_attempted: number
+          questions_correct: number
+          retention_0_1: number
+          retention_updated_at: string | null
+          topic_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          last_practiced_at?: string | null
+          mastery_0_1?: number
+          questions_attempted?: number
+          questions_correct?: number
+          retention_0_1?: number
+          retention_updated_at?: string | null
+          topic_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          last_practiced_at?: string | null
+          mastery_0_1?: number
+          questions_attempted?: number
+          questions_correct?: number
+          retention_0_1?: number
+          retention_updated_at?: string | null
+          topic_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topic_mastery_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      topics: {
+        Row: {
+          course_pack_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          prerequisite_topic_ids: string[] | null
+          scheduled_week: number | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          course_pack_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          prerequisite_topic_ids?: string[] | null
+          scheduled_week?: number | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          course_pack_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          prerequisite_topic_ids?: string[] | null
+          scheduled_week?: number | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "topics_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
