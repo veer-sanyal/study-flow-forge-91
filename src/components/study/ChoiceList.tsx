@@ -1,0 +1,109 @@
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
+import { MathRenderer } from "./MathRenderer";
+import { Check, X } from "lucide-react";
+import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { stagger, duration, easing } from "@/lib/motion";
+
+interface Choice {
+  key: string;
+  text: string;
+}
+
+interface ChoiceListProps {
+  choices: Choice[];
+  selectedChoice: string | null;
+  correctAnswer: string;
+  isSubmitted: boolean;
+  onSelect: (key: string) => void;
+}
+
+export function ChoiceList({
+  choices,
+  selectedChoice,
+  correctAnswer,
+  isSubmitted,
+  onSelect,
+}: ChoiceListProps) {
+  const prefersReducedMotion = useReducedMotion();
+
+  const getChoiceState = (key: string) => {
+    if (!isSubmitted) {
+      return selectedChoice === key ? "selected" : "default";
+    }
+    if (key === correctAnswer) return "correct";
+    if (key === selectedChoice && key !== correctAnswer) return "incorrect";
+    return "disabled";
+  };
+
+  const stateStyles = {
+    default: "border-border hover:border-primary/50 hover:bg-accent/50 cursor-pointer",
+    selected: "border-primary bg-primary/10 cursor-pointer",
+    correct: "border-green-500 bg-green-500/10",
+    incorrect: "border-destructive bg-destructive/10",
+    disabled: "border-border opacity-50",
+  };
+
+  return (
+    <div className="space-y-3">
+      {choices.map((choice, index) => {
+        const state = getChoiceState(choice.key);
+        const isCorrect = isSubmitted && choice.key === correctAnswer;
+        const isIncorrect = isSubmitted && choice.key === selectedChoice && choice.key !== correctAnswer;
+
+        const content = (
+          <button
+            key={choice.key}
+            onClick={() => !isSubmitted && onSelect(choice.key)}
+            disabled={isSubmitted}
+            className={cn(
+              "w-full flex items-center gap-3 p-4 rounded-lg border-2 text-left transition-colors",
+              stateStyles[state]
+            )}
+          >
+            <span
+              className={cn(
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 font-medium text-sm",
+                state === "selected" && "border-primary bg-primary text-primary-foreground",
+                state === "correct" && "border-green-500 bg-green-500 text-white",
+                state === "incorrect" && "border-destructive bg-destructive text-destructive-foreground",
+                state === "default" && "border-muted-foreground/30",
+                state === "disabled" && "border-muted-foreground/20"
+              )}
+            >
+              {isCorrect ? (
+                <Check className="h-4 w-4" />
+              ) : isIncorrect ? (
+                <X className="h-4 w-4" />
+              ) : (
+                choice.key
+              )}
+            </span>
+            <span className="flex-1">
+              <MathRenderer content={choice.text} />
+            </span>
+          </button>
+        );
+
+        if (prefersReducedMotion) {
+          return <div key={choice.key}>{content}</div>;
+        }
+
+        return (
+          <motion.div
+            key={choice.key}
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{
+              delay: index * stagger.normal,
+              duration: duration.normal,
+              ease: easing.easeOut,
+            }}
+          >
+            {content}
+          </motion.div>
+        );
+      })}
+    </div>
+  );
+}
