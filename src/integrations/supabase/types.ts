@@ -341,7 +341,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      compute_quality_score: {
+        Args: {
+          p_confidence: string
+          p_guide_used: boolean
+          p_hint_used: boolean
+          p_is_correct: boolean
+        }
+        Returns: number
+      }
     }
     Enums: {
       [_ in never]: never

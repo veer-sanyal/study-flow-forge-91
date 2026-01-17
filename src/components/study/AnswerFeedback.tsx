@@ -9,7 +9,7 @@ interface AnswerFeedbackProps {
   correctAnswer: string;
   selectedAnswer: string;
   solutionRevealed: boolean;
-  solution: string;
+  solution: string[] | null;
 }
 
 export function AnswerFeedback({
@@ -49,12 +49,16 @@ export function AnswerFeedback({
       </div>
 
       {/* Solution steps */}
-      {solutionRevealed && (
+      {solutionRevealed && solution && solution.length > 0 && (
         <div className="p-4 rounded-lg bg-muted/50 border border-border">
           <h4 className="font-semibold mb-3">Solution</h4>
-          <div className="text-sm text-muted-foreground">
-            <MathRenderer content={solution} />
-          </div>
+          <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
+            {solution.map((step, index) => (
+              <li key={index}>
+                <MathRenderer content={step} />
+              </li>
+            ))}
+          </ol>
         </div>
       )}
     </div>

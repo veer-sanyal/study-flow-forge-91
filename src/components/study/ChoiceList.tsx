@@ -6,8 +6,9 @@ import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { stagger, duration, easing } from "@/lib/motion";
 
 interface Choice {
-  key: string;
+  id: string;
   text: string;
+  isCorrect?: boolean;
 }
 
 interface ChoiceListProps {
@@ -27,12 +28,12 @@ export function ChoiceList({
 }: ChoiceListProps) {
   const prefersReducedMotion = useReducedMotion();
 
-  const getChoiceState = (key: string) => {
+  const getChoiceState = (id: string) => {
     if (!isSubmitted) {
-      return selectedChoice === key ? "selected" : "default";
+      return selectedChoice === id ? "selected" : "default";
     }
-    if (key === correctAnswer) return "correct";
-    if (key === selectedChoice && key !== correctAnswer) return "incorrect";
+    if (id === correctAnswer) return "correct";
+    if (id === selectedChoice && id !== correctAnswer) return "incorrect";
     return "disabled";
   };
 
@@ -47,14 +48,14 @@ export function ChoiceList({
   return (
     <div className="space-y-3">
       {choices.map((choice, index) => {
-        const state = getChoiceState(choice.key);
-        const isCorrect = isSubmitted && choice.key === correctAnswer;
-        const isIncorrect = isSubmitted && choice.key === selectedChoice && choice.key !== correctAnswer;
+        const state = getChoiceState(choice.id);
+        const isCorrect = isSubmitted && choice.id === correctAnswer;
+        const isIncorrect = isSubmitted && choice.id === selectedChoice && choice.id !== correctAnswer;
 
         const content = (
           <button
-            key={choice.key}
-            onClick={() => !isSubmitted && onSelect(choice.key)}
+            key={choice.id}
+            onClick={() => !isSubmitted && onSelect(choice.id)}
             disabled={isSubmitted}
             className={cn(
               "w-full flex items-center gap-3 p-4 rounded-lg border-2 text-left transition-colors",
@@ -76,7 +77,7 @@ export function ChoiceList({
               ) : isIncorrect ? (
                 <X className="h-4 w-4" />
               ) : (
-                choice.key
+                choice.id.toUpperCase()
               )}
             </span>
             <span className="flex-1">
@@ -86,12 +87,12 @@ export function ChoiceList({
         );
 
         if (prefersReducedMotion) {
-          return <div key={choice.key}>{content}</div>;
+          return <div key={choice.id}>{content}</div>;
         }
 
         return (
           <motion.div
-            key={choice.key}
+            key={choice.id}
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
