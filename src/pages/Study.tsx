@@ -1,10 +1,12 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
-import { Play, Calendar, Trophy, ArrowRight } from "lucide-react";
-import { mockQuestions } from "@/data/mockQuestions";
+import { Play, Calendar, Trophy, ArrowRight, Loader2 } from "lucide-react";
+import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
+import { useAuth } from "@/hooks/use-auth";
+import { StudyQuestion } from "@/types/study";
 
 type StudyState = "home" | "playing" | "complete";
 
@@ -15,9 +17,14 @@ export default function Study() {
     correct: number;
     total: number;
   }>({ correct: 0, total: 0 });
+  const questionStartTime = useRef<number>(Date.now());
 
-  // Mock data
-  const todayRemaining = mockQuestions.length;
+  const { user } = useAuth();
+  const { data: questions, isLoading, error } = useStudyQuestions();
+  const submitAttempt = useSubmitAttempt();
+
+  // Derived data
+  const todayRemaining = questions?.length || 0;
   const nextExamName = "MT1";
   const daysUntilExam = 5;
 
@@ -25,31 +32,58 @@ export default function Study() {
     setStudyState("playing");
     setCurrentIndex(0);
     setResults({ correct: 0, total: 0 });
+    questionStartTime.current = Date.now();
   }, []);
 
   const handleQuestionComplete = useCallback(
-    (result: { isCorrect: boolean; confidence: number | null; hintsUsed: boolean; skipped: boolean }) => {
+    async (result: { 
+      isCorrect: boolean; 
+      confidence: number | null; 
+      hintsUsed: boolean; 
+      guideUsed: boolean;
+      skipped: boolean;
+      selectedChoiceId: string | null;
+    }) => {
+      if (!questions) return;
+      
+      const currentQuestion = questions[currentIndex];
+      const timeSpentMs = Date.now() - questionStartTime.current;
+
+      // Submit attempt to database (trigger will update SRS + mastery)
+      if (!result.skipped) {
+        submitAttempt.mutate({
+          questionId: currentQuestion.id,
+          selectedChoiceId: result.selectedChoiceId,
+          isCorrect: result.isCorrect,
+          confidence: result.confidence,
+          hintUsed: result.hintsUsed,
+          guideUsed: result.guideUsed,
+          timeSpentMs,
+        });
+      }
+
       setResults((prev) => ({
         correct: prev.correct + (result.isCorrect ? 1 : 0),
         total: prev.total + 1,
       }));
 
-      if (currentIndex < mockQuestions.length - 1) {
+      if (currentIndex < questions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
+        questionStartTime.current = Date.now();
       } else {
         setStudyState("complete");
       }
     },
-    [currentIndex]
+    [currentIndex, questions, submitAttempt]
   );
 
   const handleGuideMe = useCallback(() => {
-    // Will be implemented in Step 1.3
+    // Will be implemented in next step
     console.log("Guide Me clicked");
   }, []);
 
   const handleSimilar = useCallback(() => {
-    // Will be implemented in Step 3.4
+    // Will be implemented later
     console.log("Similar clicked");
   }, []);
 
@@ -83,9 +117,40 @@ export default function Study() {
     );
   }
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <PageTransition className="flex items-center justify-center py-20">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </PageTransition>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <PageTransition className="space-y-4 text-center py-12">
+        <p className="text-destructive">Failed to load questions</p>
+        <Button variant="outline" onClick={() => window.location.reload()}>
+          Retry
+        </Button>
+      </PageTransition>
+    );
+  }
+
+  // No questions available
+  if (!questions || questions.length === 0) {
+    return (
+      <PageTransition className="space-y-4 text-center py-12">
+        <p className="text-muted-foreground">No questions available yet</p>
+        <p className="text-sm text-muted-foreground">Check back after your instructor uploads content</p>
+      </PageTransition>
+    );
+  }
+
   // Question Player state
   if (studyState === "playing") {
-    const currentQuestion = mockQuestions[currentIndex];
+    const currentQuestion = questions[currentIndex];
     return (
       <PageTransition className="space-y-6">
         <AnimatePresence mode="wait">
@@ -93,7 +158,7 @@ export default function Study() {
             key={currentQuestion.id}
             question={currentQuestion}
             questionNumber={currentIndex + 1}
-            totalQuestions={mockQuestions.length}
+            totalQuestions={questions.length}
             onComplete={handleQuestionComplete}
             onGuideMe={handleGuideMe}
             onSimilar={handleSimilar}

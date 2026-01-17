@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Question } from "@/data/mockQuestions";
+import { StudyQuestion } from "@/types/study";
 import { QuestionPrompt } from "./QuestionPrompt";
 import { ChoiceList } from "./ChoiceList";
 import { PlayerControls } from "./PlayerControls";
@@ -13,14 +13,16 @@ import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
 
 interface QuestionPlayerProps {
-  question: Question;
+  question: StudyQuestion;
   questionNumber: number;
   totalQuestions: number;
   onComplete: (result: {
     isCorrect: boolean;
     confidence: number | null;
     hintsUsed: boolean;
+    guideUsed: boolean;
     skipped: boolean;
+    selectedChoiceId: string | null;
   }) => void;
   onGuideMe: () => void;
   onSimilar: () => void;
@@ -39,9 +41,10 @@ export function QuestionPlayer({
   const [confidence, setConfidence] = useState<number | null>(null);
   const [hintRevealed, setHintRevealed] = useState(false);
   const [solutionRevealed, setSolutionRevealed] = useState(false);
+  const [guideUsed, setGuideUsed] = useState(false);
   
   const prefersReducedMotion = useReducedMotion();
-  const isCorrect = selectedChoice === question.answer_final;
+  const isCorrect = selectedChoice === question.correctChoiceId;
 
   const handleSubmit = useCallback(() => {
     if (selectedChoice) {
@@ -54,42 +57,51 @@ export function QuestionPlayer({
       isCorrect: false,
       confidence: null,
       hintsUsed: hintRevealed,
+      guideUsed,
       skipped: true,
+      selectedChoiceId: null,
     });
-  }, [hintRevealed, onComplete]);
+  }, [hintRevealed, guideUsed, onComplete]);
 
   const handleNext = useCallback(() => {
     onComplete({
       isCorrect,
       confidence,
       hintsUsed: hintRevealed,
+      guideUsed,
       skipped: false,
+      selectedChoiceId: selectedChoice,
     });
-  }, [isCorrect, confidence, hintRevealed, onComplete]);
+  }, [isCorrect, confidence, hintRevealed, guideUsed, selectedChoice, onComplete]);
+
+  const handleGuideMe = useCallback(() => {
+    setGuideUsed(true);
+    onGuideMe();
+  }, [onGuideMe]);
 
   const questionContent = (
     <div className="space-y-6">
       {/* Question prompt */}
       <QuestionPrompt
-        prompt={question.prompt_md}
-        topicName={question.topic_name}
-        questionType={question.question_type}
-        difficulty={question.difficulty_1_5}
+        prompt={question.prompt}
+        topicName={question.topicNames[0] || 'General'}
+        questionType={question.questionType}
+        difficulty={question.difficulty}
         questionNumber={questionNumber}
         totalQuestions={totalQuestions}
       />
 
       {/* Hint panel */}
       <AnimatePresence>
-        {hintRevealed && <HintPanel hint={question.hint_text} />}
+        {hintRevealed && question.hint && <HintPanel hint={question.hint} />}
       </AnimatePresence>
 
       {/* Choices */}
-      {question.has_choices && question.choices && (
+      {question.choices && (
         <ChoiceList
           choices={question.choices}
           selectedChoice={selectedChoice}
-          correctAnswer={question.answer_final}
+          correctAnswer={question.correctChoiceId || ''}
           isSubmitted={isSubmitted}
           onSelect={setSelectedChoice}
         />
@@ -100,10 +112,10 @@ export function QuestionPlayer({
         {isSubmitted && selectedChoice && (
           <AnswerFeedback
             isCorrect={isCorrect}
-            correctAnswer={question.answer_final}
+            correctAnswer={question.correctChoiceId || ''}
             selectedAnswer={selectedChoice}
             solutionRevealed={solutionRevealed}
-            solution={question.solution_steps_md}
+            solution={question.solutionSteps}
           />
         )}
       </AnimatePresence>
@@ -120,7 +132,7 @@ export function QuestionPlayer({
         hintRevealed={hintRevealed}
         solutionRevealed={solutionRevealed}
         onSubmit={handleSubmit}
-        onGuideMe={onGuideMe}
+        onGuideMe={handleGuideMe}
         onHint={() => setHintRevealed(true)}
         onExplain={() => setSolutionRevealed(true)}
         onSimilar={onSimilar}
