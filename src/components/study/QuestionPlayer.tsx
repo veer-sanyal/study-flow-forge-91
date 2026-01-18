@@ -17,7 +17,7 @@ import { generateGuideStepsFromSolution } from "@/types/guide";
 interface QuestionPlayerProps {
   question: StudyQuestion;
   questionNumber: number;
-  totalQuestions: number;
+  totalQuestions?: number; // Optional for infinite mode
   onComplete: (result: {
     isCorrect: boolean;
     confidence: number | null;
