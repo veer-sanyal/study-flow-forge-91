@@ -222,13 +222,18 @@ export default function AdminCalendar() {
   };
 
   const handleImageUpload = async (file: File) => {
-    if (!selectedPackId) return;
+    if (!selectedPackId) {
+      toast({ title: "Please select a course pack first", variant: "destructive" });
+      return;
+    }
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
       toast({ title: "Please upload an image file", variant: "destructive" });
       return;
     }
+    
+    toast({ title: "Uploading calendar image...", description: "Please wait while we process your file" });
 
     setUploadingImage(true);
     try {
