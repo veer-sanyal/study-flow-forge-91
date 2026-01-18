@@ -88,6 +88,68 @@ export type Database = {
         }
         Relationships: []
       }
+      ingestion_jobs: {
+        Row: {
+          completed_at: string | null
+          course_pack_id: string
+          created_at: string
+          created_by: string | null
+          current_step: string | null
+          error_message: string | null
+          file_name: string
+          file_path: string
+          id: string
+          progress_pct: number | null
+          questions_extracted: number | null
+          questions_mapped: number | null
+          questions_pending_review: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          course_pack_id: string
+          created_at?: string
+          created_by?: string | null
+          current_step?: string | null
+          error_message?: string | null
+          file_name: string
+          file_path: string
+          id?: string
+          progress_pct?: number | null
+          questions_extracted?: number | null
+          questions_mapped?: number | null
+          questions_pending_review?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          course_pack_id?: string
+          created_at?: string
+          created_by?: string | null
+          current_step?: string | null
+          error_message?: string | null
+          file_name?: string
+          file_path?: string
+          id?: string
+          progress_pct?: number | null
+          questions_extracted?: number | null
+          questions_mapped?: number | null
+          questions_pending_review?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ingestion_jobs_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null

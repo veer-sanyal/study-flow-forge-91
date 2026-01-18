@@ -11,6 +11,7 @@ import Study from "@/pages/Study";
 import Progress from "@/pages/Progress";
 import Settings from "@/pages/Settings";
 import AdminCalendar from "@/pages/AdminCalendar";
+import AdminIngestion from "@/pages/AdminIngestion";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -36,6 +37,7 @@ const App = () => (
               {/* Admin routes */}
               <Route element={<AdminRoute />}>
                 <Route path="/admin/calendar" element={<AdminCalendar />} />
+                <Route path="/admin/ingestion" element={<AdminIngestion />} />
               </Route>
             </Route>
           </Route>
