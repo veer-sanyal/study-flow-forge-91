@@ -5,13 +5,20 @@ import { motion } from "framer-motion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useTopicMastery, useTopics } from "@/hooks/use-study";
 import { useAuth } from "@/hooks/use-auth";
-import { TrendingUp, Brain, Clock, Target, Loader2 } from "lucide-react";
+import { TrendingUp, Brain, Clock, Target, Loader2, AlertTriangle, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 function getMasteryColor(mastery: number): string {
   if (mastery >= 0.8) return "text-success";
   if (mastery >= 0.6) return "text-primary";
   if (mastery >= 0.4) return "text-accent";
   return "text-destructive";
+}
+
+function getRetentionStatus(retention: number): { label: string; color: string; icon: React.ReactNode } {
+  if (retention >= 0.8) return { label: "Strong", color: "text-success", icon: <Sparkles className="h-3 w-3" /> };
+  if (retention >= 0.5) return { label: "Fading", color: "text-amber-500", icon: <Clock className="h-3 w-3" /> };
+  return { label: "Review needed", color: "text-destructive", icon: <AlertTriangle className="h-3 w-3" /> };
 }
 
 export default function Progress() {
@@ -32,22 +39,25 @@ export default function Progress() {
     ? masteryData.reduce((sum, tm) => sum + Number(tm.retention_0_1), 0) / masteryData.length 
     : 0;
 
+  // Count topics needing review
+  const topicsNeedingReview = masteryData?.filter(tm => Number(tm.retention_0_1) < 0.5).length || 0;
+
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: {
       opacity: 1,
       transition: {
-        staggerChildren: prefersReducedMotion ? 0 : 0.08,
+        staggerChildren: prefersReducedMotion ? 0 : 0.04,
       },
     },
   };
 
   const itemVariants = {
-    hidden: { opacity: 0, y: prefersReducedMotion ? 0 : 12 },
+    hidden: { opacity: 0, y: prefersReducedMotion ? 0 : 8 },
     visible: { 
       opacity: 1, 
       y: 0,
-      transition: { duration: 0.25, ease: "easeOut" }
+      transition: { duration: 0.2, ease: "easeOut" }
     },
   };
 
@@ -59,7 +69,7 @@ export default function Progress() {
     );
   }
 
-  // Merge all topics with mastery data
+  // Merge all topics with mastery data, sorted by retention (lowest first = needs review)
   const topicsWithMastery = allTopics?.map(topic => {
     const mastery = masteryData?.find(m => m.topic_id === topic.id);
     return {
@@ -73,7 +83,13 @@ export default function Progress() {
       lastPracticed: mastery?.last_practiced_at 
         ? formatTimeAgo(new Date(mastery.last_practiced_at))
         : 'Never',
+      hasPracticed: !!mastery?.last_practiced_at,
     };
+  }).sort((a, b) => {
+    // Sort by: practiced topics first, then by retention (lowest first)
+    if (a.hasPracticed && !b.hasPracticed) return -1;
+    if (!a.hasPracticed && b.hasPracticed) return 1;
+    return a.retention - b.retention;
   }) || [];
 
   return (
@@ -89,10 +105,10 @@ export default function Progress() {
           variants={containerVariants}
           initial="hidden"
           animate="visible"
-          className="grid grid-cols-2 md:grid-cols-4 gap-4"
+          className="grid grid-cols-2 md:grid-cols-4 gap-3"
         >
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="h-full">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-primary/10">
@@ -108,7 +124,7 @@ export default function Progress() {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="h-full">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-success/10">
@@ -126,7 +142,7 @@ export default function Progress() {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="h-full">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
                   <div className="p-2 rounded-lg bg-primary/10">
@@ -142,15 +158,28 @@ export default function Progress() {
           </motion.div>
 
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className={cn(
+              "h-full",
+              topicsNeedingReview > 0 && "border-amber-500/50"
+            )}>
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-accent/10">
-                    <Clock className="h-5 w-5 text-accent" />
+                  <div className={cn(
+                    "p-2 rounded-lg",
+                    topicsNeedingReview > 0 ? "bg-amber-500/10" : "bg-accent/10"
+                  )}>
+                    <Clock className={cn(
+                      "h-5 w-5",
+                      topicsNeedingReview > 0 ? "text-amber-500" : "text-accent"
+                    )} />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold">{Math.round(avgRetention * 100)}%</p>
-                    <p className="text-xs text-muted-foreground">Avg Retention</p>
+                    <p className="text-2xl font-bold">
+                      {topicsNeedingReview > 0 ? topicsNeedingReview : Math.round(avgRetention * 100) + '%'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {topicsNeedingReview > 0 ? 'Need Review' : 'Avg Retention'}
+                    </p>
                   </div>
                 </div>
               </CardContent>
@@ -173,54 +202,85 @@ export default function Progress() {
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
-                className="space-y-4"
+                className="space-y-3"
               >
-                {topicsWithMastery.map((topic) => (
-                  <motion.div
-                    key={topic.id}
-                    variants={itemVariants}
-                    className="p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <div>
-                        <h3 className="font-medium">{topic.name}</h3>
-                        <p className="text-xs text-muted-foreground">
-                          {topic.questionsAttempted} questions • Last practiced {topic.lastPracticed}
-                        </p>
-                      </div>
-                      <span className={`text-lg font-bold ${getMasteryColor(topic.mastery)}`}>
-                        {Math.round(topic.mastery * 100)}%
-                      </span>
-                    </div>
-
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground w-16">Mastery</span>
+                {topicsWithMastery.map((topic) => {
+                  const retentionStatus = getRetentionStatus(topic.retention);
+                  
+                  return (
+                    <motion.div
+                      key={topic.id}
+                      variants={itemVariants}
+                      className={cn(
+                        "p-4 rounded-lg border bg-card transition-colors",
+                        topic.retention < 0.5 && topic.hasPracticed && "border-amber-500/30 bg-amber-500/5"
+                      )}
+                    >
+                      <div className="flex items-start justify-between mb-3">
                         <div className="flex-1">
-                          <ProgressBar 
-                            value={topic.mastery * 100} 
-                            className="h-2"
-                          />
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-medium">{topic.name}</h3>
+                            {topic.hasPracticed && topic.retention < 0.5 && (
+                              <span className={cn(
+                                "flex items-center gap-1 text-xs px-2 py-0.5 rounded-full",
+                                "bg-amber-500/10 text-amber-600 dark:text-amber-400"
+                              )}>
+                                {retentionStatus.icon}
+                                {retentionStatus.label}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {topic.questionsAttempted > 0 
+                              ? `${topic.questionsAttempted} questions • ${topic.lastPracticed}`
+                              : 'Not practiced yet'
+                            }
+                          </p>
                         </div>
-                        <span className="text-xs font-medium w-10 text-right">
+                        <span className={`text-lg font-bold ${getMasteryColor(topic.mastery)}`}>
                           {Math.round(topic.mastery * 100)}%
                         </span>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <span className="text-xs text-muted-foreground w-16">Retention</span>
-                        <div className="flex-1">
-                          <ProgressBar 
-                            value={topic.retention * 100} 
-                            className="h-2 [&>div]:bg-accent"
-                          />
+
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground w-16">Mastery</span>
+                          <div className="flex-1">
+                            <ProgressBar 
+                              value={topic.mastery * 100} 
+                              className="h-2"
+                            />
+                          </div>
+                          <span className="text-xs font-medium w-10 text-right">
+                            {Math.round(topic.mastery * 100)}%
+                          </span>
                         </div>
-                        <span className="text-xs font-medium w-10 text-right">
-                          {Math.round(topic.retention * 100)}%
-                        </span>
+                        <div className="flex items-center gap-3">
+                          <span className="text-xs text-muted-foreground w-16">Retention</span>
+                          <div className="flex-1">
+                            <div className="relative">
+                              <ProgressBar 
+                                value={topic.retention * 100} 
+                                className={cn(
+                                  "h-2",
+                                  topic.retention >= 0.8 && "[&>div]:bg-success",
+                                  topic.retention >= 0.5 && topic.retention < 0.8 && "[&>div]:bg-amber-500",
+                                  topic.retention < 0.5 && "[&>div]:bg-destructive"
+                                )}
+                              />
+                            </div>
+                          </div>
+                          <span className={cn(
+                            "text-xs font-medium w-10 text-right",
+                            topic.retention < 0.5 && "text-destructive"
+                          )}>
+                            {Math.round(topic.retention * 100)}%
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                  </motion.div>
-                ))}
+                    </motion.div>
+                  );
+                })}
               </motion.div>
             )}
           </CardContent>
@@ -237,9 +297,9 @@ function formatTimeAgo(date: Date): string {
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-  if (diffMins < 1) return 'Just now';
-  if (diffMins < 60) return `${diffMins} min ago`;
-  if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
-  if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
-  return `${Math.floor(diffDays / 7)} week${diffDays >= 14 ? 's' : ''} ago`;
+  if (diffMins < 1) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return `${Math.floor(diffDays / 7)}w ago`;
 }
