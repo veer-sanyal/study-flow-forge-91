@@ -1,8 +1,10 @@
-import { BookOpen, BarChart3, Settings, GraduationCap, Moon, Sun } from "lucide-react";
+import { BookOpen, BarChart3, Settings, GraduationCap, Moon, Sun, Calendar, Shield } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
+import { useIsAdmin } from "@/hooks/use-admin";
+import { Separator } from "@/components/ui/separator";
 
 const navItems = [
   { to: "/study", label: "Study", icon: BookOpen },
@@ -10,9 +12,14 @@ const navItems = [
   { to: "/settings", label: "Settings", icon: Settings },
 ];
 
+const adminNavItems = [
+  { to: "/admin/calendar", label: "Calendar", icon: Calendar },
+];
+
 export function DesktopNav() {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
+  const { data: isAdmin } = useIsAdmin();
 
   return (
     <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r border-border bg-sidebar">
@@ -46,6 +53,38 @@ export function DesktopNav() {
             </NavLink>
           );
         })}
+
+        {/* Admin Section */}
+        {isAdmin && (
+          <>
+            <Separator className="my-3" />
+            <div className="px-3 py-1">
+              <span className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Shield className="h-3 w-3" />
+                Admin
+              </span>
+            </div>
+            {adminNavItems.map((item) => {
+              const isActive = location.pathname === item.to;
+              
+              return (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  className={cn(
+                    "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                      : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground"
+                  )}
+                >
+                  <item.icon className="h-5 w-5" />
+                  {item.label}
+                </NavLink>
+              );
+            })}
+          </>
+        )}
       </nav>
 
       {/* Theme Toggle */}
