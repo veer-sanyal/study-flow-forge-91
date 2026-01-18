@@ -77,11 +77,6 @@ export default function Study() {
     [currentIndex, questions, submitAttempt]
   );
 
-  const handleGuideMe = useCallback(() => {
-    // Will be implemented in next step
-    console.log("Guide Me clicked");
-  }, []);
-
   const handleSimilar = useCallback(() => {
     // Will be implemented later
     console.log("Similar clicked");
@@ -160,7 +155,6 @@ export default function Study() {
             questionNumber={currentIndex + 1}
             totalQuestions={questions.length}
             onComplete={handleQuestionComplete}
-            onGuideMe={handleGuideMe}
             onSimilar={handleSimilar}
           />
         </AnimatePresence>
