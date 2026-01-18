@@ -4,9 +4,11 @@ import type { Tables } from "@/integrations/supabase/types";
 
 type IngestionJob = Tables<"ingestion_jobs">;
 
-export function useIngestionJobs(coursePackId?: string) {
+export type IngestionKind = "pdf" | "calendar";
+
+export function useIngestionJobs(coursePackId?: string, kind?: IngestionKind) {
   return useQuery({
-    queryKey: ["ingestion-jobs", coursePackId],
+    queryKey: ["ingestion-jobs", coursePackId, kind],
     queryFn: async () => {
       let query = supabase
         .from("ingestion_jobs")
@@ -15,6 +17,10 @@ export function useIngestionJobs(coursePackId?: string) {
       
       if (coursePackId) {
         query = query.eq("course_pack_id", coursePackId);
+      }
+      
+      if (kind) {
+        query = query.eq("kind", kind);
       }
       
       const { data, error } = await query;
@@ -31,10 +37,15 @@ export function useCreateIngestionJob() {
     mutationFn: async ({
       coursePackId,
       file,
+      kind = "pdf",
     }: {
       coursePackId: string;
       file: File;
+      kind?: IngestionKind;
     }) => {
+      // Determine storage bucket based on kind
+      const bucket = kind === "calendar" ? "calendar-images" : "exam-pdfs";
+      
       // Generate unique file path
       const timestamp = Date.now();
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
@@ -42,14 +53,14 @@ export function useCreateIngestionJob() {
 
       // Upload file to storage
       const { error: uploadError } = await supabase.storage
-        .from("exam-pdfs")
+        .from(bucket)
         .upload(filePath, file, {
           cacheControl: "3600",
           upsert: false,
         });
 
       if (uploadError) {
-        throw new Error(`Failed to upload PDF: ${uploadError.message}`);
+        throw new Error(`Failed to upload file: ${uploadError.message}`);
       }
 
       // Get current user
@@ -64,13 +75,14 @@ export function useCreateIngestionJob() {
           file_name: file.name,
           status: "pending",
           created_by: user?.id,
+          kind,
         })
         .select()
         .single();
 
       if (jobError) {
         // Clean up uploaded file if job creation fails
-        await supabase.storage.from("exam-pdfs").remove([filePath]);
+        await supabase.storage.from(bucket).remove([filePath]);
         throw new Error(`Failed to create job: ${jobError.message}`);
       }
 
@@ -86,8 +98,10 @@ export function useProcessJob() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (jobId: string) => {
-      const { data, error } = await supabase.functions.invoke("process-exam-pdf", {
+    mutationFn: async ({ jobId, kind = "pdf" }: { jobId: string; kind?: IngestionKind }) => {
+      const functionName = kind === "calendar" ? "process-calendar-image" : "process-exam-pdf";
+      
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: { jobId },
       });
 
@@ -100,6 +114,7 @@ export function useProcessJob() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
     },
   });
 }
@@ -109,8 +124,12 @@ export function useDeleteJob() {
 
   return useMutation({
     mutationFn: async (job: IngestionJob) => {
+      // Determine storage bucket based on kind
+      const kind = (job as any).kind as IngestionKind;
+      const bucket = kind === "calendar" ? "calendar-images" : "exam-pdfs";
+      
       // Delete file from storage
-      await supabase.storage.from("exam-pdfs").remove([job.file_path]);
+      await supabase.storage.from(bucket).remove([job.file_path]);
 
       // Delete job record
       const { error } = await supabase
@@ -122,6 +141,76 @@ export function useDeleteJob() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+    },
+  });
+}
+
+// Calendar events hooks
+export function useCalendarEvents(coursePackId?: string) {
+  return useQuery({
+    queryKey: ["calendar-events", coursePackId],
+    queryFn: async () => {
+      let query = supabase
+        .from("calendar_events")
+        .select("*")
+        .order("week_number", { ascending: true })
+        .order("event_date", { ascending: true });
+      
+      if (coursePackId) {
+        query = query.eq("course_pack_id", coursePackId);
+      }
+      
+      const { data, error } = await query;
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!coursePackId,
+  });
+}
+
+export function useDeleteCalendarEvent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (eventId: string) => {
+      const { error } = await supabase
+        .from("calendar_events")
+        .delete()
+        .eq("id", eventId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+    },
+  });
+}
+
+export function useUpdateCalendarEvent() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ 
+      id, 
+      ...updates 
+    }: { 
+      id: string; 
+      needs_review?: boolean;
+      title?: string;
+      description?: string;
+      week_number?: number;
+      event_type?: string;
+      event_date?: string | null;
+    }) => {
+      const { error } = await supabase
+        .from("calendar_events")
+        .update(updates)
+        .eq("id", id);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
     },
   });
 }

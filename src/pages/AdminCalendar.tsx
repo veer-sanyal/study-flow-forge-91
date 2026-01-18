@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { 
   Calendar, 
@@ -7,9 +7,13 @@ import {
   Trash2, 
   BookOpen, 
   ChevronDown,
-  GripVertical,
   Save,
-  X 
+  Upload,
+  Image,
+  Loader2,
+  Check,
+  AlertCircle,
+  Eye
 } from "lucide-react";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +47,12 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { 
   useCoursePacks, 
@@ -49,6 +60,15 @@ import {
   useCoursePackMutations, 
   useTopicMutations 
 } from "@/hooks/use-admin";
+import {
+  useIngestionJobs,
+  useCreateIngestionJob,
+  useProcessJob,
+  useDeleteJob,
+  useCalendarEvents,
+  useDeleteCalendarEvent,
+  useUpdateCalendarEvent,
+} from "@/hooks/use-ingestion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -63,35 +83,56 @@ interface EditingTopic {
 export default function AdminCalendar() {
   const prefersReducedMotion = useReducedMotion();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Data fetching
   const { data: coursePacks, isLoading: packsLoading } = useCoursePacks();
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const { data: topics, isLoading: topicsLoading } = useTopicsForPack(selectedPackId);
+  const { data: calendarJobs } = useIngestionJobs(selectedPackId ?? undefined, "calendar");
+  const { data: calendarEvents } = useCalendarEvents(selectedPackId ?? undefined);
   
   // Mutations
   const { createPack, updatePack, deletePack } = useCoursePackMutations();
   const { createTopic, updateTopic, deleteTopic } = useTopicMutations();
+  const createJob = useCreateIngestionJob();
+  const processJob = useProcessJob();
+  const deleteJob = useDeleteJob();
+  const deleteCalendarEvent = useDeleteCalendarEvent();
+  const updateCalendarEvent = useUpdateCalendarEvent();
   
   // UI state
   const [openPackIds, setOpenPackIds] = useState<Set<string>>(new Set());
   const [packDialogOpen, setPackDialogOpen] = useState(false);
   const [topicDialogOpen, setTopicDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [eventsDialogOpen, setEventsDialogOpen] = useState(false);
   const [editingPack, setEditingPack] = useState<{ id?: string; title: string; description: string } | null>(null);
   const [editingTopic, setEditingTopic] = useState<EditingTopic | null>(null);
   const [deletingItem, setDeletingItem] = useState<{ type: "pack" | "topic"; id: string; name: string } | null>(null);
   const [activePackForTopic, setActivePackForTopic] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [activeTab, setActiveTab] = useState<"topics" | "calendar">("topics");
 
   // Group topics by week
   const topicsByWeek = topics?.reduce((acc, topic) => {
-    const week = topic.scheduled_week ?? 0; // 0 = unscheduled
+    const week = topic.scheduled_week ?? 0;
     if (!acc[week]) acc[week] = [];
     acc[week].push(topic);
     return acc;
   }, {} as Record<number, typeof topics>) ?? {};
 
   const maxWeek = Math.max(...Object.keys(topicsByWeek).map(Number).filter(w => w > 0), 0);
+
+  // Group calendar events by week
+  const eventsByWeek = calendarEvents?.reduce((acc, event) => {
+    const week = event.week_number ?? 0;
+    if (!acc[week]) acc[week] = [];
+    acc[week].push(event);
+    return acc;
+  }, {} as Record<number, typeof calendarEvents>) ?? {};
+
+  const maxEventWeek = Math.max(...Object.keys(eventsByWeek).map(Number).filter(w => w > 0), 0);
 
   // Handlers
   const handleOpenPack = (packId: string) => {
@@ -177,6 +218,56 @@ export default function AdminCalendar() {
     }
   };
 
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedPackId) return;
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Please upload an image file", variant: "destructive" });
+      return;
+    }
+
+    setUploadingImage(true);
+    try {
+      const job = await createJob.mutateAsync({
+        coursePackId: selectedPackId,
+        file,
+        kind: "calendar",
+      });
+
+      toast({ title: "Calendar image uploaded", description: "Click Process to extract events" });
+
+      // Auto-process the job
+      await processJob.mutateAsync({ jobId: job.id, kind: "calendar" });
+      toast({ title: "Calendar processed successfully!" });
+    } catch (error) {
+      toast({ 
+        title: "Error processing calendar", 
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive" 
+      });
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleProcessJob = async (jobId: string) => {
+    try {
+      await processJob.mutateAsync({ jobId, kind: "calendar" });
+      toast({ title: "Calendar processed successfully!" });
+    } catch (error) {
+      toast({ 
+        title: "Processing failed", 
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive" 
+      });
+    }
+  };
+
   const openNewPack = () => {
     setEditingPack({ title: "", description: "" });
     setPackDialogOpen(true);
@@ -202,6 +293,33 @@ export default function AdminCalendar() {
   const openDeleteConfirm = (type: "pack" | "topic", id: string, name: string) => {
     setDeletingItem({ type, id, name });
     setDeleteDialogOpen(true);
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30"><Check className="h-3 w-3 mr-1" />Completed</Badge>;
+      case "processing":
+        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
+      case "failed":
+        return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />Failed</Badge>;
+      default:
+        return <Badge variant="secondary">Pending</Badge>;
+    }
+  };
+
+  const getEventTypeBadge = (type: string) => {
+    const colors: Record<string, string> = {
+      lesson: "bg-blue-500/20 text-blue-400",
+      recitation: "bg-purple-500/20 text-purple-400",
+      exam: "bg-red-500/20 text-red-400",
+      quiz: "bg-orange-500/20 text-orange-400",
+      homework: "bg-green-500/20 text-green-400",
+      no_class: "bg-muted text-muted-foreground",
+      review: "bg-yellow-500/20 text-yellow-400",
+      activity: "bg-cyan-500/20 text-cyan-400",
+    };
+    return <Badge className={cn("text-xs", colors[type] || "bg-muted")}>{type}</Badge>;
   };
 
   if (packsLoading) {
@@ -239,7 +357,7 @@ export default function AdminCalendar() {
               Calendar & Topics
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Manage course packs and schedule topics by week
+              Manage course packs, upload calendar images, and schedule topics
             </p>
           </div>
           <Button onClick={openNewPack}>
@@ -315,79 +433,240 @@ export default function AdminCalendar() {
                     
                     <CollapsibleContent>
                       <CardContent className="pt-0">
-                        {/* Topics by Week */}
                         {selectedPackId === pack.id && (
-                          <div className="space-y-4">
-                            <div className="flex items-center justify-between">
-                              <h4 className="font-medium text-sm text-muted-foreground">
-                                Topics Schedule
-                              </h4>
-                              <Button 
-                                size="sm" 
-                                variant="outline"
-                                onClick={() => openNewTopic(pack.id)}
-                              >
-                                <Plus className="h-3 w-3 mr-1" />
-                                Add Topic
-                              </Button>
-                            </div>
+                          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "topics" | "calendar")}>
+                            <TabsList className="mb-4">
+                              <TabsTrigger value="topics">Topics</TabsTrigger>
+                              <TabsTrigger value="calendar">
+                                Calendar Import
+                                {calendarEvents && calendarEvents.length > 0 && (
+                                  <Badge variant="secondary" className="ml-2 text-xs">
+                                    {calendarEvents.length}
+                                  </Badge>
+                                )}
+                              </TabsTrigger>
+                            </TabsList>
 
-                            {topicsLoading ? (
-                              <div className="space-y-2">
-                                {[1, 2, 3].map((i) => (
-                                  <Skeleton key={i} className="h-12 w-full" />
-                                ))}
-                              </div>
-                            ) : !topics?.length ? (
-                              <div className="text-center py-8 text-muted-foreground text-sm border border-dashed rounded-lg">
-                                No topics yet. Add your first topic.
-                              </div>
-                            ) : (
-                              <div className="space-y-3">
-                                {/* Unscheduled topics */}
-                                {topicsByWeek[0]?.length > 0 && (
+                            <TabsContent value="topics">
+                              {/* Topics by Week */}
+                              <div className="space-y-4">
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-medium text-sm text-muted-foreground">
+                                    Topics Schedule
+                                  </h4>
+                                  <Button 
+                                    size="sm" 
+                                    variant="outline"
+                                    onClick={() => openNewTopic(pack.id)}
+                                  >
+                                    <Plus className="h-3 w-3 mr-1" />
+                                    Add Topic
+                                  </Button>
+                                </div>
+
+                                {topicsLoading ? (
                                   <div className="space-y-2">
-                                    <div className="flex items-center gap-2">
-                                      <Badge variant="secondary" className="text-xs">
-                                        Unscheduled
-                                      </Badge>
+                                    {[1, 2, 3].map((i) => (
+                                      <Skeleton key={i} className="h-12 w-full" />
+                                    ))}
+                                  </div>
+                                ) : !topics?.length ? (
+                                  <div className="text-center py-8 text-muted-foreground text-sm border border-dashed rounded-lg">
+                                    No topics yet. Add manually or import from calendar.
+                                  </div>
+                                ) : (
+                                  <div className="space-y-3">
+                                    {/* Unscheduled topics */}
+                                    {topicsByWeek[0]?.length > 0 && (
+                                      <div className="space-y-2">
+                                        <Badge variant="secondary" className="text-xs">Unscheduled</Badge>
+                                        {topicsByWeek[0].map((topic) => (
+                                          <TopicRow
+                                            key={topic.id}
+                                            topic={topic}
+                                            packId={pack.id}
+                                            onEdit={openEditTopic}
+                                            onDelete={openDeleteConfirm}
+                                          />
+                                        ))}
+                                      </div>
+                                    )}
+
+                                    {/* Scheduled weeks */}
+                                    {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
+                                      topicsByWeek[week]?.length > 0 && (
+                                        <div key={week} className="space-y-2">
+                                          <Badge className="text-xs">Week {week}</Badge>
+                                          {topicsByWeek[week].map((topic) => (
+                                            <TopicRow
+                                              key={topic.id}
+                                              topic={topic}
+                                              packId={pack.id}
+                                              onEdit={openEditTopic}
+                                              onDelete={openDeleteConfirm}
+                                            />
+                                          ))}
+                                        </div>
+                                      )
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </TabsContent>
+
+                            <TabsContent value="calendar">
+                              <div className="space-y-4">
+                                {/* Upload Section */}
+                                <div className="flex items-center justify-between">
+                                  <h4 className="font-medium text-sm text-muted-foreground">
+                                    Import from Calendar Image
+                                  </h4>
+                                  <div className="flex gap-2">
+                                    {calendarEvents && calendarEvents.length > 0 && (
+                                      <Button 
+                                        size="sm" 
+                                        variant="outline"
+                                        onClick={() => setEventsDialogOpen(true)}
+                                      >
+                                        <Eye className="h-3 w-3 mr-1" />
+                                        View Events ({calendarEvents.length})
+                                      </Button>
+                                    )}
+                                    <input
+                                      ref={fileInputRef}
+                                      type="file"
+                                      accept="image/*"
+                                      className="hidden"
+                                      onChange={handleImageUpload}
+                                    />
+                                    <Button 
+                                      size="sm"
+                                      onClick={() => fileInputRef.current?.click()}
+                                      disabled={uploadingImage}
+                                    >
+                                      {uploadingImage ? (
+                                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                      ) : (
+                                        <Upload className="h-4 w-4 mr-2" />
+                                      )}
+                                      Upload Calendar Image
+                                    </Button>
+                                  </div>
+                                </div>
+
+                                {/* Instructions */}
+                                <div className="p-4 border border-dashed rounded-lg bg-muted/30">
+                                  <div className="flex items-start gap-3">
+                                    <Image className="h-5 w-5 text-muted-foreground mt-0.5" />
+                                    <div className="text-sm">
+                                      <p className="font-medium text-foreground">How it works</p>
+                                      <ul className="mt-2 space-y-1 text-muted-foreground">
+                                        <li>• Upload a screenshot or photo of your course calendar</li>
+                                        <li>• AI will extract lessons, exams, quizzes, and homework dates</li>
+                                        <li>• Review and edit the extracted events</li>
+                                        <li>• Generate topics from the calendar events</li>
+                                      </ul>
                                     </div>
-                                    {topicsByWeek[0].map((topic) => (
-                                      <TopicRow
-                                        key={topic.id}
-                                        topic={topic}
-                                        packId={pack.id}
-                                        onEdit={openEditTopic}
-                                        onDelete={openDeleteConfirm}
-                                      />
+                                  </div>
+                                </div>
+
+                                {/* Recent Imports */}
+                                {calendarJobs && calendarJobs.length > 0 && (
+                                  <div className="space-y-2">
+                                    <h5 className="text-sm font-medium text-muted-foreground">Recent Imports</h5>
+                                    {calendarJobs.slice(0, 3).map((job) => (
+                                      <div 
+                                        key={job.id}
+                                        className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <Image className="h-4 w-4 text-muted-foreground" />
+                                          <div>
+                                            <p className="text-sm font-medium">{job.file_name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {job.questions_extracted ?? 0} events extracted
+                                            </p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          {getStatusBadge(job.status)}
+                                          {job.status === "pending" && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleProcessJob(job.id)}
+                                              disabled={processJob.isPending}
+                                            >
+                                              Process
+                                            </Button>
+                                          )}
+                                          {job.status === "failed" && (
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => handleProcessJob(job.id)}
+                                              disabled={processJob.isPending}
+                                            >
+                                              Retry
+                                            </Button>
+                                          )}
+                                        </div>
+                                      </div>
                                     ))}
                                   </div>
                                 )}
 
-                                {/* Scheduled weeks */}
-                                {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
-                                  topicsByWeek[week]?.length > 0 && (
-                                    <div key={week} className="space-y-2">
-                                      <div className="flex items-center gap-2">
-                                        <Badge className="text-xs">
-                                          Week {week}
-                                        </Badge>
-                                      </div>
-                                      {topicsByWeek[week].map((topic) => (
-                                        <TopicRow
-                                          key={topic.id}
-                                          topic={topic}
-                                          packId={pack.id}
-                                          onEdit={openEditTopic}
-                                          onDelete={openDeleteConfirm}
-                                        />
+                                {/* Extracted Events Preview */}
+                                {calendarEvents && calendarEvents.length > 0 && (
+                                  <div className="space-y-2">
+                                    <h5 className="text-sm font-medium text-muted-foreground">
+                                      Extracted Events Preview
+                                    </h5>
+                                    <div className="space-y-2 max-h-64 overflow-y-auto">
+                                      {Array.from({ length: Math.max(maxEventWeek, 1) }, (_, i) => i + 1).slice(0, 3).map((week) => (
+                                        eventsByWeek[week]?.length > 0 && (
+                                          <div key={week} className="space-y-1">
+                                            <Badge className="text-xs">Week {week}</Badge>
+                                            {eventsByWeek[week].slice(0, 3).map((event) => (
+                                              <div 
+                                                key={event.id}
+                                                className={cn(
+                                                  "flex items-center justify-between p-2 rounded-md text-sm",
+                                                  event.needs_review ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"
+                                                )}
+                                              >
+                                                <div className="flex items-center gap-2">
+                                                  {getEventTypeBadge(event.event_type)}
+                                                  <span>{event.title}</span>
+                                                  {event.needs_review && (
+                                                    <Badge variant="outline" className="text-xs text-yellow-500">
+                                                      Needs Review
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                {event.event_date && (
+                                                  <span className="text-xs text-muted-foreground">
+                                                    {event.event_date}
+                                                  </span>
+                                                )}
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )
                                       ))}
                                     </div>
-                                  )
-                                ))}
+                                    <Button 
+                                      variant="outline" 
+                                      size="sm"
+                                      onClick={() => setEventsDialogOpen(true)}
+                                    >
+                                      View All Events
+                                    </Button>
+                                  </div>
+                                )}
                               </div>
-                            )}
-                          </div>
+                            </TabsContent>
+                          </Tabs>
                         )}
                       </CardContent>
                     </CollapsibleContent>
@@ -463,7 +742,7 @@ export default function AdminCalendar() {
                   id="topic-title"
                   value={editingTopic?.title ?? ""}
                   onChange={(e) => setEditingTopic(prev => prev ? { ...prev, title: e.target.value } : null)}
-                  placeholder="e.g., Limits"
+                  placeholder="e.g., Limits and Continuity"
                 />
               </div>
               <div className="space-y-2">
@@ -472,7 +751,7 @@ export default function AdminCalendar() {
                   id="topic-description"
                   value={editingTopic?.description ?? ""}
                   onChange={(e) => setEditingTopic(prev => prev ? { ...prev, description: e.target.value } : null)}
-                  placeholder="What this topic covers"
+                  placeholder="Brief description of what this topic covers"
                   rows={2}
                 />
               </div>
@@ -482,7 +761,6 @@ export default function AdminCalendar() {
                   id="topic-week"
                   type="number"
                   min={1}
-                  max={52}
                   value={editingTopic?.scheduled_week ?? ""}
                   onChange={(e) => setEditingTopic(prev => prev ? { 
                     ...prev, 
@@ -490,9 +768,6 @@ export default function AdminCalendar() {
                   } : null)}
                   placeholder="Leave empty for unscheduled"
                 />
-                <p className="text-xs text-muted-foreground">
-                  The week in the semester when this topic is typically covered
-                </p>
               </div>
             </div>
             <DialogFooter>
@@ -510,15 +785,102 @@ export default function AdminCalendar() {
           </DialogContent>
         </Dialog>
 
-        {/* Delete Confirmation */}
+        {/* Events Viewer Dialog */}
+        <Dialog open={eventsDialogOpen} onOpenChange={setEventsDialogOpen}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Extracted Calendar Events</DialogTitle>
+              <DialogDescription>
+                Review and manage events extracted from calendar images
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {calendarEvents && calendarEvents.length > 0 ? (
+                Array.from({ length: maxEventWeek }, (_, i) => i + 1).map((week) => (
+                  eventsByWeek[week]?.length > 0 && (
+                    <div key={week} className="space-y-2">
+                      <Badge className="text-sm">Week {week}</Badge>
+                      <div className="space-y-2">
+                        {eventsByWeek[week].map((event) => (
+                          <div 
+                            key={event.id}
+                            className={cn(
+                              "flex items-start justify-between p-3 rounded-lg",
+                              event.needs_review ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"
+                            )}
+                          >
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2">
+                                {getEventTypeBadge(event.event_type)}
+                                <span className="font-medium">{event.title}</span>
+                                {event.needs_review && (
+                                  <Badge variant="outline" className="text-xs text-yellow-500">
+                                    Needs Review
+                                  </Badge>
+                                )}
+                              </div>
+                              {event.description && (
+                                <p className="text-sm text-muted-foreground">{event.description}</p>
+                              )}
+                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                {event.day_of_week && <span>{event.day_of_week}</span>}
+                                {event.event_date && <span>{event.event_date}</span>}
+                                {event.location && <span>@ {event.location}</span>}
+                                {event.time_slot && <span>{event.time_slot}</span>}
+                              </div>
+                              {event.topics_covered && event.topics_covered.length > 0 && (
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {event.topics_covered.map((topic, i) => (
+                                    <Badge key={i} variant="secondary" className="text-xs">
+                                      {topic}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-1 ml-2">
+                              {event.needs_review && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  onClick={() => updateCalendarEvent.mutate({ id: event.id, needs_review: false })}
+                                >
+                                  <Check className="h-4 w-4 text-green-500" />
+                                </Button>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => deleteCalendarEvent.mutate(event.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                ))
+              ) : (
+                <p className="text-center text-muted-foreground py-8">
+                  No events extracted yet. Upload a calendar image to get started.
+                </p>
+              )}
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
         <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Delete {deletingItem?.type === "pack" ? "Course Pack" : "Topic"}?</AlertDialogTitle>
+              <AlertDialogTitle>Are you sure?</AlertDialogTitle>
               <AlertDialogDescription>
-                Are you sure you want to delete "{deletingItem?.name}"? 
-                {deletingItem?.type === "pack" && " This will also delete all topics in this pack."}
-                This action cannot be undone.
+                This will permanently delete "{deletingItem?.name}".
+                {deletingItem?.type === "pack" && " All topics in this pack will also be deleted."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -537,10 +899,10 @@ export default function AdminCalendar() {
   );
 }
 
-// Topic Row Component
+// Topic row component
 function TopicRow({ 
   topic, 
-  packId,
+  packId, 
   onEdit, 
   onDelete 
 }: { 
@@ -550,12 +912,11 @@ function TopicRow({
   onDelete: (type: "pack" | "topic", id: string, name: string) => void;
 }) {
   return (
-    <div className="flex items-center gap-3 p-3 bg-muted/30 rounded-lg group">
-      <GripVertical className="h-4 w-4 text-muted-foreground/50" />
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm truncate">{topic.title}</p>
+    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg group">
+      <div>
+        <p className="font-medium text-sm">{topic.title}</p>
         {topic.description && (
-          <p className="text-xs text-muted-foreground truncate">{topic.description}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{topic.description}</p>
         )}
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

@@ -64,6 +64,78 @@ export type Database = {
           },
         ]
       }
+      calendar_events: {
+        Row: {
+          course_pack_id: string
+          created_at: string
+          day_of_week: string | null
+          description: string | null
+          event_date: string | null
+          event_type: string
+          homework_assignments: string[] | null
+          id: string
+          ingestion_job_id: string | null
+          location: string | null
+          needs_review: boolean
+          time_slot: string | null
+          title: string
+          topics_covered: string[] | null
+          updated_at: string
+          week_number: number
+        }
+        Insert: {
+          course_pack_id: string
+          created_at?: string
+          day_of_week?: string | null
+          description?: string | null
+          event_date?: string | null
+          event_type: string
+          homework_assignments?: string[] | null
+          id?: string
+          ingestion_job_id?: string | null
+          location?: string | null
+          needs_review?: boolean
+          time_slot?: string | null
+          title: string
+          topics_covered?: string[] | null
+          updated_at?: string
+          week_number: number
+        }
+        Update: {
+          course_pack_id?: string
+          created_at?: string
+          day_of_week?: string | null
+          description?: string | null
+          event_date?: string | null
+          event_type?: string
+          homework_assignments?: string[] | null
+          id?: string
+          ingestion_job_id?: string | null
+          location?: string | null
+          needs_review?: boolean
+          time_slot?: string | null
+          title?: string
+          topics_covered?: string[] | null
+          updated_at?: string
+          week_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calendar_events_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calendar_events_ingestion_job_id_fkey"
+            columns: ["ingestion_job_id"]
+            isOneToOne: false
+            referencedRelation: "ingestion_jobs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_packs: {
         Row: {
           created_at: string
@@ -99,6 +171,7 @@ export type Database = {
           file_name: string
           file_path: string
           id: string
+          kind: string
           progress_pct: number | null
           questions_extracted: number | null
           questions_mapped: number | null
@@ -116,6 +189,7 @@ export type Database = {
           file_name: string
           file_path: string
           id?: string
+          kind?: string
           progress_pct?: number | null
           questions_extracted?: number | null
           questions_mapped?: number | null
@@ -133,6 +207,7 @@ export type Database = {
           file_name?: string
           file_path?: string
           id?: string
+          kind?: string
           progress_pct?: number | null
           questions_extracted?: number | null
           questions_mapped?: number | null
