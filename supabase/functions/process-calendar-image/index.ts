@@ -257,9 +257,37 @@ Be thorough - extract every single row/entry from the calendar image.`;
     let insertedCount = 0;
     let needsReviewCount = 0;
 
+    // Helper to validate and fix date format
+    const parseEventDate = (dateStr: string | null | undefined): string | null => {
+      if (!dateStr || dateStr === "TBD" || dateStr.toLowerCase() === "tbd") {
+        return null;
+      }
+      // If it's already a full date (YYYY-MM-DD), return it
+      if (/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) {
+        return dateStr;
+      }
+      // If it's MM-DD format, assume current year
+      if (/^\d{2}-\d{2}$/.test(dateStr)) {
+        const currentYear = new Date().getFullYear();
+        return `${currentYear}-${dateStr}`;
+      }
+      // If it's M/D or MM/DD format
+      const slashMatch = dateStr.match(/^(\d{1,2})\/(\d{1,2})$/);
+      if (slashMatch) {
+        const currentYear = new Date().getFullYear();
+        const month = slashMatch[1].padStart(2, '0');
+        const day = slashMatch[2].padStart(2, '0');
+        return `${currentYear}-${month}-${day}`;
+      }
+      // Can't parse, return null
+      console.warn("Could not parse date:", dateStr);
+      return null;
+    };
+
     for (const event of events) {
+      const parsedDate = parseEventDate(event.event_date);
       // Mark as needs_review if it's an exam or has missing date
-      const needsReview = event.event_type === "exam" || !event.event_date;
+      const needsReview = event.event_type === "exam" || !parsedDate;
       if (needsReview) needsReviewCount++;
 
       const { error: insertError } = await supabase
@@ -269,7 +297,7 @@ Be thorough - extract every single row/entry from the calendar image.`;
           ingestion_job_id: jobId,
           week_number: event.week_number || 0,
           day_of_week: event.day_of_week || null,
-          event_date: event.event_date || null,
+          event_date: parsedDate,
           event_type: event.event_type,
           title: event.title,
           description: event.description || null,
