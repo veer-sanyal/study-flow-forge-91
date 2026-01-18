@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Lightbulb } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
+import { MathRenderer } from "./MathRenderer";
 
 interface HintPanelProps {
   hint: string;
@@ -13,7 +14,9 @@ export function HintPanel({ hint }: HintPanelProps) {
   const content = (
     <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-500/10 border border-amber-500/20">
       <Lightbulb className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-      <p className="text-sm text-amber-700 dark:text-amber-300">{hint}</p>
+      <div className="text-sm text-amber-700 dark:text-amber-300">
+        <MathRenderer content={hint} />
+      </div>
     </div>
   );
 
