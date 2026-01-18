@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useEffect } from "react";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
+import { useUserSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Moon, 
@@ -16,7 +18,8 @@ import {
   Gauge, 
   Target,
   Bell,
-  BookOpen
+  BookOpen,
+  Loader2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -25,15 +28,17 @@ import { useReducedMotion } from "@/hooks/use-reduced-motion";
 export default function Settings() {
   const { theme, setTheme } = useTheme();
   const { user, signOut } = useAuth();
+  const { settings, isLoading, updateSettings, isUpdating } = useUserSettings();
   const { toast } = useToast();
   const navigate = useNavigate();
   const prefersReducedMotion = useReducedMotion();
 
-  // Local state for settings (would be persisted to DB in production)
-  const [dailyGoal, setDailyGoal] = useState(10);
-  const [paceOffset, setPaceOffset] = useState(1);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [reducedMotion, setReducedMotion] = useState(prefersReducedMotion);
+  // Sync theme from settings on load
+  useEffect(() => {
+    if (settings.theme && settings.theme !== 'system') {
+      setTheme(settings.theme as 'light' | 'dark');
+    }
+  }, [settings.theme, setTheme]);
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -50,6 +55,28 @@ export default function Settings() {
       });
       navigate('/auth', { replace: true });
     }
+  };
+
+  const handleDailyGoalChange = (value: number[]) => {
+    updateSettings({ daily_goal: value[0] });
+  };
+
+  const handlePaceOffsetChange = (value: number[]) => {
+    updateSettings({ pace_offset: value[0] });
+  };
+
+  const handleThemeChange = (isDark: boolean) => {
+    const newTheme = isDark ? 'dark' : 'light';
+    setTheme(newTheme);
+    updateSettings({ theme: newTheme });
+  };
+
+  const handleReducedMotionChange = (enabled: boolean) => {
+    updateSettings({ reduced_motion: enabled });
+  };
+
+  const handleNotificationsChange = (enabled: boolean) => {
+    updateSettings({ notifications_enabled: enabled });
   };
 
   const containerVariants = {
@@ -70,6 +97,31 @@ export default function Settings() {
       transition: { duration: 0.2, ease: "easeOut" }
     },
   };
+
+  if (isLoading) {
+    return (
+      <PageTransition>
+        <div className="max-w-2xl mx-auto space-y-6">
+          <div className="space-y-2 mb-6">
+            <h1 className="text-2xl font-bold tracking-tight">Settings</h1>
+            <p className="text-muted-foreground">Manage your account and preferences</p>
+          </div>
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-10 w-full" />
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-6 space-y-4">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </CardContent>
+          </Card>
+        </div>
+      </PageTransition>
+    );
+  }
 
   return (
     <PageTransition>
@@ -121,8 +173,15 @@ export default function Settings() {
           <motion.div variants={itemVariants}>
             <Card>
               <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Study Preferences</CardTitle>
-                <CardDescription>Customize your daily learning</CardDescription>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-lg">Study Preferences</CardTitle>
+                    <CardDescription>Customize your daily learning</CardDescription>
+                  </div>
+                  {isUpdating && (
+                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
               </CardHeader>
               <CardContent className="space-y-6">
                 {/* Daily Goal */}
@@ -133,12 +192,12 @@ export default function Settings() {
                       <Label className="text-sm font-medium">Daily Goal</Label>
                     </div>
                     <span className="text-sm font-semibold text-primary">
-                      {dailyGoal} questions
+                      {settings.daily_goal} questions
                     </span>
                   </div>
                   <Slider
-                    value={[dailyGoal]}
-                    onValueChange={([value]) => setDailyGoal(value)}
+                    value={[settings.daily_goal]}
+                    onValueCommit={handleDailyGoalChange}
                     min={5}
                     max={30}
                     step={5}
@@ -157,12 +216,12 @@ export default function Settings() {
                       <Label className="text-sm font-medium">Learning Pace</Label>
                     </div>
                     <span className="text-sm font-semibold">
-                      {paceOffset === 0 ? 'On schedule' : paceOffset > 0 ? `${paceOffset} week${paceOffset > 1 ? 's' : ''} ahead` : `${Math.abs(paceOffset)} week${Math.abs(paceOffset) > 1 ? 's' : ''} behind`}
+                      {settings.pace_offset === 0 ? 'On schedule' : settings.pace_offset > 0 ? `${settings.pace_offset} week${settings.pace_offset > 1 ? 's' : ''} ahead` : `${Math.abs(settings.pace_offset)} week${Math.abs(settings.pace_offset) > 1 ? 's' : ''} behind`}
                     </span>
                   </div>
                   <Slider
-                    value={[paceOffset]}
-                    onValueChange={([value]) => setPaceOffset(value)}
+                    value={[settings.pace_offset]}
+                    onValueCommit={handlePaceOffsetChange}
                     min={-2}
                     max={3}
                     step={1}
@@ -202,7 +261,7 @@ export default function Settings() {
                   <Switch
                     id="dark-mode"
                     checked={theme === "dark"}
-                    onCheckedChange={(checked) => setTheme(checked ? "dark" : "light")}
+                    onCheckedChange={handleThemeChange}
                   />
                 </div>
 
@@ -220,8 +279,8 @@ export default function Settings() {
                   </div>
                   <Switch
                     id="reduced-motion"
-                    checked={reducedMotion}
-                    onCheckedChange={setReducedMotion}
+                    checked={settings.reduced_motion}
+                    onCheckedChange={handleReducedMotionChange}
                   />
                 </div>
               </CardContent>
@@ -249,8 +308,8 @@ export default function Settings() {
                   </div>
                   <Switch
                     id="notifications"
-                    checked={notificationsEnabled}
-                    onCheckedChange={setNotificationsEnabled}
+                    checked={settings.notifications_enabled}
+                    onCheckedChange={handleNotificationsChange}
                   />
                 </div>
               </CardContent>

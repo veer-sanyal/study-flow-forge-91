@@ -13,12 +13,12 @@ import {
 } from "lucide-react";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useAuth } from "@/hooks/use-auth";
+import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
 
 type StudyPhase = "today_plan" | "keep_practicing";
 type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
 
-const TODAY_PLAN_LIMIT = 10;
 const KEEP_PRACTICING_BATCH = 5;
 
 export default function Study() {
@@ -36,12 +36,17 @@ export default function Study() {
   const questionStartTime = useRef<number>(Date.now());
 
   const { user } = useAuth();
+  const { settings } = useUserSettings();
   const queryClient = useQueryClient();
 
+  // Use daily goal from settings
+  const dailyGoal = settings.daily_goal || 10;
+
   // Fetch questions based on current phase
-  const questionLimit = studyPhase === "today_plan" ? TODAY_PLAN_LIMIT : KEEP_PRACTICING_BATCH;
+  const questionLimit = studyPhase === "today_plan" ? dailyGoal : KEEP_PRACTICING_BATCH;
   const { data: questions, isLoading, error, refetch } = useStudyQuestions({ 
-    limit: questionLimit 
+    limit: questionLimit,
+    paceOffset: settings.pace_offset,
   });
   const submitAttempt = useSubmitAttempt();
 
