@@ -7,36 +7,88 @@ import { Tables } from '@/integrations/supabase/types';
 type DbQuestion = Tables<'questions'>;
 type DbTopic = Tables<'topics'>;
 
-export function useStudyQuestions() {
+// Parameters for the recommendation algorithm
+interface RecommendationParams {
+  limit?: number;
+  currentWeek?: number;
+  paceOffset?: number;
+  targetDifficulty?: number;
+}
+
+export function useStudyQuestions(params: RecommendationParams = {}) {
   const { user } = useAuth();
+  const { 
+    limit = 10, 
+    currentWeek = 1, 
+    paceOffset = 1, 
+    targetDifficulty = 3 
+  } = params;
 
   return useQuery({
-    queryKey: ['study-questions', user?.id],
+    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty],
     queryFn: async (): Promise<StudyQuestion[]> => {
-      // Fetch all available questions
-      const { data: questions, error: questionsError } = await supabase
-        .from('questions')
-        .select('*')
-        .order('created_at', { ascending: true });
+      if (!user) throw new Error('User not authenticated');
 
-      if (questionsError) throw questionsError;
+      // Call the recommendation algorithm function
+      const { data: recommended, error: recError } = await supabase
+        .rpc('get_recommended_questions', {
+          p_user_id: user.id,
+          p_limit: limit,
+          p_current_week: currentWeek,
+          p_pace_offset: paceOffset,
+          p_target_difficulty: targetDifficulty,
+        });
 
-      // Fetch all topics for name lookup
+      if (recError) {
+        console.error('Recommendation error:', recError);
+        // Fallback to simple query if recommendation fails
+        const { data: questions, error: questionsError } = await supabase
+          .from('questions')
+          .select('*')
+          .eq('needs_review', false)
+          .order('created_at', { ascending: true })
+          .limit(limit);
+
+        if (questionsError) throw questionsError;
+
+        const { data: topics } = await supabase.from('topics').select('*');
+        const topicMap = new Map<string, DbTopic>();
+        topics?.forEach(topic => topicMap.set(topic.id, topic));
+
+        return (questions || []).map(q => mapDbQuestionToStudy(q, topicMap));
+      }
+
+      // Fetch topics for name lookup
       const { data: topics, error: topicsError } = await supabase
         .from('topics')
         .select('*');
 
       if (topicsError) throw topicsError;
 
-      // Create topic map for quick lookup
       const topicMap = new Map<string, DbTopic>();
       topics?.forEach(topic => topicMap.set(topic.id, topic));
 
-      // Map to study questions
-      return (questions || []).map(q => mapDbQuestionToStudy(q, topicMap));
+      // Map recommended questions to StudyQuestion format
+      return (recommended || []).map((q: any) => ({
+        id: q.question_id,
+        prompt: q.prompt,
+        choices: q.choices as any,
+        correctChoiceId: q.choices?.find((c: any) => c.isCorrect)?.id || null,
+        hint: q.hint,
+        difficulty: q.difficulty || 3,
+        topicIds: q.topic_ids || [],
+        topicNames: (q.topic_ids || []).map((id: string) => topicMap.get(id)?.title || 'Unknown Topic'),
+        sourceExam: q.source_exam,
+        solutionSteps: q.solution_steps as string[] | null,
+        questionType: 'multiple_choice', // Default for now
+        // Include scoring metadata for debugging
+        _score: q.score,
+        _dueUrgency: q.due_urgency,
+        _knowledgeGap: q.knowledge_gap,
+      }));
     },
     enabled: !!user,
-    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    staleTime: 2 * 60 * 1000, // Cache for 2 minutes (shorter since recommendations change)
   });
 }
 
