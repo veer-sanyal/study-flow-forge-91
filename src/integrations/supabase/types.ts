@@ -284,8 +284,11 @@ export type Database = {
           difficulty: number | null
           hint: string | null
           id: string
+          image_url: string | null
+          midterm_number: number | null
           needs_review: boolean
           prompt: string
+          question_order: number | null
           question_type_id: string | null
           solution_steps: Json | null
           source_exam: string | null
@@ -300,8 +303,11 @@ export type Database = {
           difficulty?: number | null
           hint?: string | null
           id?: string
+          image_url?: string | null
+          midterm_number?: number | null
           needs_review?: boolean
           prompt: string
+          question_order?: number | null
           question_type_id?: string | null
           solution_steps?: Json | null
           source_exam?: string | null
@@ -316,8 +322,11 @@ export type Database = {
           difficulty?: number | null
           hint?: string | null
           id?: string
+          image_url?: string | null
+          midterm_number?: number | null
           needs_review?: boolean
           prompt?: string
+          question_order?: number | null
           question_type_id?: string | null
           solution_steps?: Json | null
           source_exam?: string | null
