@@ -7,7 +7,7 @@ interface QuestionPromptProps {
   questionType: string;
   difficulty: number;
   questionNumber: number;
-  totalQuestions: number;
+  totalQuestions?: number; // Optional for infinite mode
 }
 
 export function QuestionPrompt({
@@ -31,7 +31,7 @@ export function QuestionPrompt({
           </Badge>
         </div>
         <span className="text-sm text-muted-foreground">
-          {questionNumber} / {totalQuestions}
+          {totalQuestions ? `${questionNumber} / ${totalQuestions}` : `#${questionNumber}`}
         </span>
       </div>
 
