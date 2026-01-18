@@ -29,7 +29,9 @@ export function useIsAdmin() {
       return !!data;
     },
     enabled: !!user?.id,
-    staleTime: 1000 * 60 * 5, // Cache for 5 minutes
+    staleTime: 0, // Always refetch to ensure fresh data
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 }
 
