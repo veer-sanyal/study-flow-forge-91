@@ -214,3 +214,81 @@ export function useUpdateCalendarEvent() {
     },
   });
 }
+
+// Generate topics from calendar events
+export function useGenerateTopicsFromEvents() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (coursePackId: string) => {
+      // Fetch all calendar events for this course pack
+      const { data: events, error: eventsError } = await supabase
+        .from("calendar_events")
+        .select("*")
+        .eq("course_pack_id", coursePackId)
+        .in("event_type", ["lesson", "review"]) // Only lessons and reviews become topics
+        .order("week_number", { ascending: true });
+
+      if (eventsError) throw eventsError;
+
+      // Fetch existing topics to avoid duplicates
+      const { data: existingTopics, error: topicsError } = await supabase
+        .from("topics")
+        .select("title")
+        .eq("course_pack_id", coursePackId);
+
+      if (topicsError) throw topicsError;
+
+      const existingTitles = new Set(existingTopics?.map(t => t.title.toLowerCase()) || []);
+
+      // Extract unique topics from events
+      const topicsToCreate: { title: string; description: string; scheduled_week: number }[] = [];
+      const seenTitles = new Set<string>();
+
+      for (const event of events || []) {
+        // Use topics_covered if available, otherwise use the event title
+        const topicStrings = event.topics_covered && event.topics_covered.length > 0
+          ? event.topics_covered
+          : [event.title];
+
+        for (const topicStr of topicStrings) {
+          const normalizedTitle = topicStr.trim();
+          const lowerTitle = normalizedTitle.toLowerCase();
+          
+          // Skip if already exists or we've seen it
+          if (existingTitles.has(lowerTitle) || seenTitles.has(lowerTitle)) {
+            continue;
+          }
+
+          seenTitles.add(lowerTitle);
+          topicsToCreate.push({
+            title: normalizedTitle,
+            description: event.description || "",
+            scheduled_week: event.week_number,
+          });
+        }
+      }
+
+      if (topicsToCreate.length === 0) {
+        return { created: 0, message: "No new topics to create" };
+      }
+
+      // Insert topics
+      const { error: insertError } = await supabase
+        .from("topics")
+        .insert(topicsToCreate.map(t => ({
+          course_pack_id: coursePackId,
+          title: t.title,
+          description: t.description || null,
+          scheduled_week: t.scheduled_week,
+        })));
+
+      if (insertError) throw insertError;
+
+      return { created: topicsToCreate.length };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+  });
+}

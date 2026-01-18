@@ -68,6 +68,7 @@ import {
   useCalendarEvents,
   useDeleteCalendarEvent,
   useUpdateCalendarEvent,
+  useGenerateTopicsFromEvents,
 } from "@/hooks/use-ingestion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
@@ -100,6 +101,7 @@ export default function AdminCalendar() {
   const deleteJob = useDeleteJob();
   const deleteCalendarEvent = useDeleteCalendarEvent();
   const updateCalendarEvent = useUpdateCalendarEvent();
+  const generateTopics = useGenerateTopicsFromEvents();
   
   // UI state
   const [openPackIds, setOpenPackIds] = useState<Set<string>>(new Set());
@@ -285,6 +287,25 @@ export default function AdminCalendar() {
     } catch (error) {
       toast({ 
         title: "Processing failed", 
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive" 
+      });
+    }
+  };
+
+  const handleGenerateTopics = async () => {
+    if (!selectedPackId) return;
+    
+    try {
+      const result = await generateTopics.mutateAsync(selectedPackId);
+      toast({ 
+        title: "Topics generated!", 
+        description: `Created ${result.created} topics from calendar events` 
+      });
+      setActiveTab("topics");
+    } catch (error) {
+      toast({ 
+        title: "Failed to generate topics", 
         description: error instanceof Error ? error.message : "Unknown error",
         variant: "destructive" 
       });
@@ -714,13 +735,27 @@ export default function AdminCalendar() {
                                         )
                                       ))}
                                     </div>
-                                    <Button 
-                                      variant="outline" 
-                                      size="sm"
-                                      onClick={() => setEventsDialogOpen(true)}
-                                    >
-                                      View All Events
-                                    </Button>
+                                    <div className="flex gap-2">
+                                      <Button 
+                                        variant="outline" 
+                                        size="sm"
+                                        onClick={() => setEventsDialogOpen(true)}
+                                      >
+                                        View All Events
+                                      </Button>
+                                      <Button 
+                                        size="sm"
+                                        onClick={handleGenerateTopics}
+                                        disabled={generateTopics.isPending}
+                                      >
+                                        {generateTopics.isPending ? (
+                                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                        ) : (
+                                          <Plus className="h-4 w-4 mr-2" />
+                                        )}
+                                        Generate Topics
+                                      </Button>
+                                    </div>
                                   </div>
                                 )}
                               </div>
