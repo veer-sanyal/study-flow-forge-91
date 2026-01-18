@@ -119,9 +119,12 @@ For each event, identify:
 - Day of week (MON, TUE, WED, THU, FRI, SAT, SUN)
 - Date (in YYYY-MM-DD format if visible)
 - Event type: lesson, recitation, exam, quiz, homework, no_class, review, activity, other
-- Title (e.g., "Lesson 1" or topic name)
-- Description (additional details like section numbers)
-- Topics covered (list of topic strings like "1.1 Review of Functions")
+- Title (e.g., "Lecture 01 - Vectors in the plane" or the lecture/event name)
+- Description (additional details)
+- Topics covered: IMPORTANT - Extract the FULL topic name WITH section number in format "Topic Name (Section#)"
+  Examples: "Vectors in the plane (13.1)", "Cross products (13.4)", "Volumes by slicing (6.3)"
+  If the lecture shows "Lecture 01 - Vectors in the plane (13.1)", the topic is "Vectors in the plane (13.1)"
+  Do NOT just extract the section number alone like "13.1" - always include the descriptive name.
 - Homework assignments mentioned
 - Location (if specified, like "LILY 1105")
 - Time slot (if specified)
@@ -183,7 +186,7 @@ Be thorough - extract every single row/entry from the calendar image.`;
                         topics_covered: { 
                           type: "array", 
                           items: { type: "string" },
-                          description: "List of topic/section names covered" 
+                          description: "List of topics with FULL name and section number, e.g. 'Vectors in the plane (13.1)', 'Cross products (13.4)'. Never just the section number alone." 
                         },
                         homework_assignments: { 
                           type: "array", 
