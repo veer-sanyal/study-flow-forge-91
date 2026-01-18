@@ -113,6 +113,7 @@ export default function AdminCalendar() {
   const [activePackForTopic, setActivePackForTopic] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [activeTab, setActiveTab] = useState<"topics" | "calendar">("topics");
+  const [isDragging, setIsDragging] = useState(false);
 
   // Group topics by week
   const topicsByWeek = topics?.reduce((acc, topic) => {
@@ -218,9 +219,8 @@ export default function AdminCalendar() {
     }
   };
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !selectedPackId) return;
+  const handleImageUpload = async (file: File) => {
+    if (!selectedPackId) return;
 
     // Validate file type
     if (!file.type.startsWith("image/")) {
@@ -253,6 +253,29 @@ export default function AdminCalendar() {
         fileInputRef.current.value = "";
       }
     }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleImageUpload(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleImageUpload(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
   };
 
   const handleProcessJob = async (jobId: string) => {
@@ -537,7 +560,7 @@ export default function AdminCalendar() {
                                       type="file"
                                       accept="image/*"
                                       className="hidden"
-                                      onChange={handleImageUpload}
+                                      onChange={handleFileInputChange}
                                     />
                                     <Button 
                                       size="sm"
@@ -554,19 +577,55 @@ export default function AdminCalendar() {
                                   </div>
                                 </div>
 
-                                {/* Instructions */}
-                                <div className="p-4 border border-dashed rounded-lg bg-muted/30">
-                                  <div className="flex items-start gap-3">
-                                    <Image className="h-5 w-5 text-muted-foreground mt-0.5" />
-                                    <div className="text-sm">
-                                      <p className="font-medium text-foreground">How it works</p>
-                                      <ul className="mt-2 space-y-1 text-muted-foreground">
-                                        <li>• Upload a screenshot or photo of your course calendar</li>
-                                        <li>• AI will extract lessons, exams, quizzes, and homework dates</li>
-                                        <li>• Review and edit the extracted events</li>
-                                        <li>• Generate topics from the calendar events</li>
-                                      </ul>
-                                    </div>
+                                {/* Drop Zone */}
+                                <div 
+                                  className={cn(
+                                    "p-8 border-2 border-dashed rounded-lg transition-colors cursor-pointer",
+                                    isDragging 
+                                      ? "border-primary bg-primary/10" 
+                                      : "border-muted-foreground/30 bg-muted/30 hover:border-muted-foreground/50",
+                                    uploadingImage && "opacity-50 pointer-events-none"
+                                  )}
+                                  onDrop={handleDrop}
+                                  onDragOver={handleDragOver}
+                                  onDragLeave={handleDragLeave}
+                                  onClick={() => !uploadingImage && fileInputRef.current?.click()}
+                                >
+                                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                                    {uploadingImage ? (
+                                      <>
+                                        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                                        <div>
+                                          <p className="font-medium text-foreground">Processing calendar...</p>
+                                          <p className="text-sm text-muted-foreground mt-1">
+                                            AI is extracting events from your image
+                                          </p>
+                                        </div>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <div className={cn(
+                                          "p-4 rounded-full",
+                                          isDragging ? "bg-primary/20" : "bg-muted"
+                                        )}>
+                                          <Upload className={cn(
+                                            "h-8 w-8",
+                                            isDragging ? "text-primary" : "text-muted-foreground"
+                                          )} />
+                                        </div>
+                                        <div>
+                                          <p className="font-medium text-foreground">
+                                            {isDragging ? "Drop your calendar image here" : "Drag & drop calendar image"}
+                                          </p>
+                                          <p className="text-sm text-muted-foreground mt-1">
+                                            or click to browse • PNG, JPG, WEBP
+                                          </p>
+                                        </div>
+                                        <div className="text-xs text-muted-foreground/70 mt-2 max-w-sm">
+                                          AI will extract lessons, exams, quizzes, homework, and other events from your calendar
+                                        </div>
+                                      </>
+                                    )}
                                   </div>
                                 </div>
 
