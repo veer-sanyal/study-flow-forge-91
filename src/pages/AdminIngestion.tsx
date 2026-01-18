@@ -99,7 +99,7 @@ export default function AdminIngestion() {
   const handleProcess = async (jobId: string) => {
     setProcessingJobId(jobId);
     try {
-      const result = await processJob.mutateAsync(jobId);
+      const result = await processJob.mutateAsync({ jobId, kind: "pdf" });
       toast({ 
         title: "Processing complete", 
         description: `Extracted ${result.questionsExtracted} questions, ${result.questionsMapped} mapped, ${result.questionsPendingReview} need review` 
