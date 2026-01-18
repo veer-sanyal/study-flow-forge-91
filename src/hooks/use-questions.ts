@@ -95,6 +95,9 @@ export function useUpdateQuestion() {
       hint?: string | null;
       solution_steps?: Json | null;
       source_exam?: string | null;
+      midterm_number?: number | null;
+      question_order?: number | null;
+      image_url?: string | null;
     }) => {
       const { data, error } = await supabase
         .from("questions")
@@ -136,7 +139,7 @@ export function useQuestionStats() {
     queryFn: async () => {
       const { data: all, error: allError } = await supabase
         .from("questions")
-        .select("id, needs_review, source_exam");
+        .select("id, needs_review, source_exam, midterm_number");
 
       if (allError) throw allError;
 
@@ -144,10 +147,57 @@ export function useQuestionStats() {
       const needsReview = all?.filter(q => q.needs_review).length || 0;
       const approved = total - needsReview;
       
-      // Get unique source exams
+      // Get unique source exams with midterm info
+      const examMap = new Map<string, Set<number>>();
+      all?.forEach(q => {
+        if (q.source_exam) {
+          if (!examMap.has(q.source_exam)) {
+            examMap.set(q.source_exam, new Set());
+          }
+          if (q.midterm_number) {
+            examMap.get(q.source_exam)!.add(q.midterm_number);
+          }
+        }
+      });
+      
       const sourceExams = [...new Set(all?.map(q => q.source_exam).filter(Boolean) as string[])];
 
-      return { total, needsReview, approved, sourceExams };
+      return { total, needsReview, approved, sourceExams, examMap: Object.fromEntries(examMap) };
+    },
+  });
+}
+
+export function useUploadQuestionImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ questionId, file }: { questionId: string; file: File }) => {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${questionId}-${Date.now()}.${fileExt}`;
+      const filePath = `${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('question-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('question-images')
+        .getPublicUrl(filePath);
+
+      // Update question with image URL
+      const { error: updateError } = await supabase
+        .from('questions')
+        .update({ image_url: publicUrl })
+        .eq('id', questionId);
+
+      if (updateError) throw updateError;
+
+      return publicUrl;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
     },
   });
 }
