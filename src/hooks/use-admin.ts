@@ -7,32 +7,39 @@ type CoursePack = Tables<"course_packs">;
 type Topic = Tables<"topics">;
 
 export function useIsAdmin() {
-  const { user } = useAuth();
-  
-  return useQuery({
+  const { user, loading: authLoading } = useAuth();
+
+  const query = useQuery({
     queryKey: ["user-role", user?.id],
     queryFn: async () => {
       if (!user?.id) return false;
-      
+
       const { data, error } = await supabase
         .from("user_roles")
         .select("role")
         .eq("user_id", user.id)
         .eq("role", "admin")
         .maybeSingle();
-      
+
       if (error) {
         console.error("Error checking admin role:", error);
         return false;
       }
-      
+
       return !!data;
     },
     enabled: !!user?.id,
-    staleTime: 0, // Always refetch to ensure fresh data
+    staleTime: 0,
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   });
+
+  // Important: don't decide "not admin" before auth state has initialized.
+  return {
+    ...query,
+    data: authLoading ? undefined : query.data,
+    isLoading: authLoading || query.isLoading,
+  };
 }
 
 export function useCoursePacks() {
