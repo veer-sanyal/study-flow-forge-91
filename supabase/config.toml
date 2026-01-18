@@ -1,1 +1,4 @@
 project_id = "mhwofcvmwfsvblsbfgvc"
+
+[functions.process-exam-pdf]
+verify_jwt = false
