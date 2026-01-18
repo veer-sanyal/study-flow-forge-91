@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { StudyQuestion } from "@/types/study";
 import { QuestionPrompt } from "./QuestionPrompt";
@@ -7,10 +7,12 @@ import { PlayerControls } from "./PlayerControls";
 import { AnswerFeedback } from "./AnswerFeedback";
 import { ConfidenceTaps } from "./ConfidenceTaps";
 import { HintPanel } from "./HintPanel";
+import { GuideMeDrawer } from "./GuideMeDrawer";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
+import { generateGuideStepsFromSolution } from "@/types/guide";
 
 interface QuestionPlayerProps {
   question: StudyQuestion;
@@ -24,7 +26,6 @@ interface QuestionPlayerProps {
     skipped: boolean;
     selectedChoiceId: string | null;
   }) => void;
-  onGuideMe: () => void;
   onSimilar: () => void;
 }
 
@@ -33,7 +34,6 @@ export function QuestionPlayer({
   questionNumber,
   totalQuestions,
   onComplete,
-  onGuideMe,
   onSimilar,
 }: QuestionPlayerProps) {
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
@@ -42,9 +42,16 @@ export function QuestionPlayer({
   const [hintRevealed, setHintRevealed] = useState(false);
   const [solutionRevealed, setSolutionRevealed] = useState(false);
   const [guideUsed, setGuideUsed] = useState(false);
+  const [guideDrawerOpen, setGuideDrawerOpen] = useState(false);
   
   const prefersReducedMotion = useReducedMotion();
   const isCorrect = selectedChoice === question.correctChoiceId;
+
+  // Generate guide steps from solution (MVP approach until Gemini provides structured data)
+  const guideSteps = useMemo(() => 
+    generateGuideStepsFromSolution(question.solutionSteps, question.prompt),
+    [question.solutionSteps, question.prompt]
+  );
 
   const handleSubmit = useCallback(() => {
     if (selectedChoice) {
@@ -76,8 +83,12 @@ export function QuestionPlayer({
 
   const handleGuideMe = useCallback(() => {
     setGuideUsed(true);
-    onGuideMe();
-  }, [onGuideMe]);
+    setGuideDrawerOpen(true);
+  }, []);
+
+  const handleGuideComplete = useCallback(() => {
+    // Guide completed - could add any post-guide logic here
+  }, []);
 
   const questionContent = (
     <div className="space-y-6">
@@ -149,19 +160,36 @@ export function QuestionPlayer({
     </div>
   );
 
+  const guideDrawer = (
+    <GuideMeDrawer
+      open={guideDrawerOpen}
+      onOpenChange={setGuideDrawerOpen}
+      steps={guideSteps}
+      onComplete={handleGuideComplete}
+    />
+  );
+
   if (prefersReducedMotion) {
-    return <div key={question.id}>{questionContent}</div>;
+    return (
+      <>
+        <div key={question.id}>{questionContent}</div>
+        {guideDrawer}
+      </>
+    );
   }
 
   return (
-    <motion.div
-      key={question.id}
-      initial={{ opacity: 0, x: 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -20 }}
-      transition={{ duration: duration.normal, ease: easing.easeOut }}
-    >
-      {questionContent}
-    </motion.div>
+    <>
+      <motion.div
+        key={question.id}
+        initial={{ opacity: 0, x: 20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        transition={{ duration: duration.normal, ease: easing.easeOut }}
+      >
+        {questionContent}
+      </motion.div>
+      {guideDrawer}
+    </>
   );
 }
