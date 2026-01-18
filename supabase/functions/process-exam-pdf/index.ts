@@ -117,7 +117,16 @@ serve(async (req) => {
     // Step A2: Convert PDF to base64 for Gemini
     console.log("Step A2: Converting PDF to base64...");
     const arrayBuffer = await pdfData.arrayBuffer();
-    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // Convert to base64 in chunks to avoid stack overflow for large files
+    let binaryString = "";
+    const chunkSize = 32768; // Process 32KB at a time
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+      binaryString += String.fromCharCode.apply(null, [...chunk]);
+    }
+    const base64Pdf = btoa(binaryString);
 
     // Get existing topics for mapping
     const { data: existingTopics } = await supabase
