@@ -145,6 +145,43 @@ export function useDeleteJob() {
   });
 }
 
+export function usePublishExam() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ jobId, isPublished }: { jobId: string; isPublished: boolean }) => {
+      // Cast to any to handle new column before types are regenerated
+      const { error } = await supabase
+        .from("ingestion_jobs")
+        .update({ is_published: isPublished } as any)
+        .eq("id", jobId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["ingestion-job"] });
+    },
+  });
+}
+
+export function useIngestionJob(jobId: string) {
+  return useQuery({
+    queryKey: ["ingestion-job", jobId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ingestion_jobs")
+        .select("*, course_packs(id, title)")
+        .eq("id", jobId)
+        .single();
+
+      if (error) throw error;
+      return data as IngestionJob & { course_packs: { id: string; title: string } | null };
+    },
+    enabled: !!jobId,
+  });
+}
+
 // Calendar events hooks
 export function useCalendarEvents(coursePackId?: string) {
   return useQuery({

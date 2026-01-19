@@ -50,7 +50,9 @@ import {
   Lightbulb,
   Eye,
   MessageSquare,
-  BookOpen
+  BookOpen,
+  Globe,
+  EyeOff
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
@@ -358,7 +360,6 @@ function QuestionCard({
   question,
   index,
   topics,
-  onApprove,
   onEdit,
   onDelete,
   onAnalyze,
@@ -368,7 +369,6 @@ function QuestionCard({
   question: Question;
   index: number;
   topics: Map<string, string>;
-  onApprove: () => void;
   onEdit: () => void;
   onDelete: () => void;
   onAnalyze: () => void;
@@ -391,7 +391,7 @@ function QuestionCard({
 
   return (
     <motion.div variants={staggerItem}>
-      <Card className={`${question.needs_review ? 'border-amber-500/50 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5'}`}>
+      <Card className={`${needsAnalysis ? 'border-amber-500/50 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5'}`}>
         <CardContent className="p-6 space-y-4">
           {/* Header */}
           <div className="flex items-start justify-between gap-4">
@@ -429,10 +429,10 @@ function QuestionCard({
                     Needs Analysis
                   </Badge>
                 )}
-                {!question.needs_review && !needsAnalysis && (
+                {!needsAnalysis && (
                   <Badge variant="default" className="gap-1 bg-green-500">
                     <Check className="h-3 w-3" />
-                    Approved
+                    Ready
                   </Badge>
                 )}
               </div>
@@ -453,17 +453,6 @@ function QuestionCard({
                     <Wand2 className="h-4 w-4" />
                   )}
                   {isAnalyzing ? "Analyzing..." : "Analyze"}
-                </Button>
-              )}
-              {question.needs_review && !needsAnalysis && (
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="gap-1 text-green-600 border-green-600 hover:bg-green-50"
-                  onClick={onApprove}
-                >
-                  <Check className="h-4 w-4" />
-                  Approve
                 </Button>
               )}
               <Button variant="ghost" size="icon" onClick={onEdit}>
@@ -786,7 +775,8 @@ export default function AdminIngestionReview() {
   const deleteQuestion = useDeleteQuestion();
   const analyzeQuestion = useAnalyzeQuestion();
   const uploadImage = useUploadQuestionImage();
-
+  
+  const [publishingExam, setPublishingExam] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Question | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
@@ -813,7 +803,7 @@ export default function AdminIngestionReview() {
   }, [questions]);
 
   const stats = useMemo(() => {
-    if (!questions) return { total: 0, needsAnalysis: 0, readyToApprove: 0, approved: 0 };
+    if (!questions) return { total: 0, needsAnalysis: 0, ready: 0 };
     
     const needsAnalysis = questions.filter(q => {
       const hasGuide = q.guide_me_steps && 
@@ -822,18 +812,33 @@ export default function AdminIngestionReview() {
           : typeof q.guide_me_steps === 'object' && Object.keys(q.guide_me_steps as object).length > 0);
       return !q.correct_answer || !hasGuide;
     }).length;
-    const approved = questions.filter(q => !q.needs_review && q.correct_answer && q.guide_me_steps).length;
-    const readyToApprove = questions.length - needsAnalysis - approved;
+    const ready = questions.length - needsAnalysis;
     
-    return { total: questions.length, needsAnalysis, readyToApprove, approved };
+    return { total: questions.length, needsAnalysis, ready };
   }, [questions]);
 
-  const handleApprove = async (question: Question) => {
+  // Check if exam can be published (all questions analyzed)
+  const canPublish = stats.needsAnalysis === 0 && stats.total > 0;
+  const isPublished = (job as any)?.is_published ?? false;
+
+  const handlePublishToggle = async () => {
+    if (!jobId) return;
+    setPublishingExam(true);
     try {
-      await updateQuestion.mutateAsync({ id: question.id, needs_review: false });
-      toast.success("Question approved!");
+      const newPublishedState = !isPublished;
+      const { error } = await supabase
+        .from("ingestion_jobs")
+        .update({ is_published: newPublishedState } as any)
+        .eq("id", jobId);
+      
+      if (error) throw error;
+      
+      queryClient.invalidateQueries({ queryKey: ["ingestion-job", jobId] });
+      toast.success(newPublishedState ? "Exam published! Questions are now visible to students." : "Exam unpublished.");
     } catch (error) {
-      toast.error("Failed to approve question");
+      toast.error("Failed to update exam status");
+    } finally {
+      setPublishingExam(false);
     }
   };
 
@@ -921,10 +926,48 @@ export default function AdminIngestionReview() {
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
               <FileText className="h-6 w-6" />
               {job.file_name}
+              {isPublished && (
+                <Badge className="bg-green-500 gap-1">
+                  <Globe className="h-3 w-3" />
+                  Published
+                </Badge>
+              )}
             </h1>
             <p className="text-muted-foreground text-sm">
               {job.course_packs?.title} • Review and analyze extracted questions
             </p>
+          </div>
+          
+          {/* Publish Button */}
+          <div className="flex-shrink-0">
+            {isPublished ? (
+              <Button
+                variant="outline"
+                onClick={handlePublishToggle}
+                disabled={publishingExam}
+                className="gap-2"
+              >
+                {publishingExam ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <EyeOff className="h-4 w-4" />
+                )}
+                Unpublish
+              </Button>
+            ) : (
+              <Button
+                onClick={handlePublishToggle}
+                disabled={!canPublish || publishingExam}
+                className="gap-2 bg-green-600 hover:bg-green-700"
+              >
+                {publishingExam ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Globe className="h-4 w-4" />
+                )}
+                Publish Exam
+              </Button>
+            )}
           </div>
         </motion.div>
 
@@ -941,10 +984,7 @@ export default function AdminIngestionReview() {
                   <span className="text-amber-600">{stats.needsAnalysis} need analysis</span>
                 </div>
                 <div>
-                  <span className="text-blue-600">{stats.readyToApprove} ready to approve</span>
-                </div>
-                <div>
-                  <span className="text-green-600">{stats.approved} approved</span>
+                  <span className="text-green-600">{stats.ready} ready</span>
                 </div>
               </div>
             </CardContent>
@@ -995,7 +1035,6 @@ export default function AdminIngestionReview() {
                       question={question}
                       index={index}
                       topics={topics}
-                      onApprove={() => handleApprove(question)}
                       onEdit={() => setEditingQuestion(question)}
                       onDelete={() => setDeleteConfirm(question)}
                       onAnalyze={() => handleAnalyze(question.id)}
