@@ -36,15 +36,9 @@ export interface MethodSummary {
   proTip?: string; // Optional conceptual shortcut
 }
 
-export interface MiniVariant {
-  prompt: string;
-  answer: string;
-}
-
 export interface GuideMe {
   steps: GuideStep[];
   methodSummary: MethodSummary;
-  miniVariant?: MiniVariant;
 }
 
 // Legacy function for backwards compatibility
