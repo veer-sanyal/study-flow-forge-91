@@ -215,6 +215,24 @@ export function useUpdateCalendarEvent() {
   });
 }
 
+// Helper to extract section number from topic title (e.g., "8.3: Topic Name" -> "8.3")
+function extractSectionNumber(title: string): string | null {
+  const match = title.match(/^(\d+(?:\.\d+)?)\s*:/);
+  return match ? match[1] : null;
+}
+
+// Helper to extract base topic name, removing suffixes like "I", "II", "Part 1", etc.
+function extractBaseTopicName(title: string): string {
+  // Remove common multi-day suffixes: I, II, III, IV, V, Part 1, Part 2, Day 1, Day 2, (continued), etc.
+  return title
+    .replace(/\s+(I{1,3}|IV|V|VI{0,3})\s*$/i, '') // Roman numerals at end
+    .replace(/\s+part\s*\d+\s*$/i, '')            // Part 1, Part 2
+    .replace(/\s+day\s*\d+\s*$/i, '')             // Day 1, Day 2
+    .replace(/\s*\(continued\)\s*$/i, '')         // (continued)
+    .replace(/\s*\(cont\.?\)\s*$/i, '')           // (cont) or (cont.)
+    .trim();
+}
+
 // Generate topics from calendar events
 export function useGenerateTopicsFromEvents() {
   const queryClient = useQueryClient();
@@ -240,34 +258,48 @@ export function useGenerateTopicsFromEvents() {
 
       if (topicsError) throw topicsError;
 
-      const existingTitles = new Set(existingTopics?.map(t => t.title.toLowerCase()) || []);
+      // Build set of existing base topic names and section numbers for dedup
+      const existingBaseTitles = new Set<string>();
+      const existingSections = new Set<string>();
+      for (const t of existingTopics || []) {
+        existingBaseTitles.add(extractBaseTopicName(t.title).toLowerCase());
+        const section = extractSectionNumber(t.title);
+        if (section) existingSections.add(section);
+      }
 
-      // Extract unique topics from events
-      const topicsToCreate: { 
+      // Group events by section number OR base topic name to consolidate multi-day topics
+      const consolidatedTopics = new Map<string, { 
         title: string; 
         description: string; 
         scheduled_week: number;
         event_date: string | null;
-      }[] = [];
-      const seenTitles = new Set<string>();
+      }>();
 
       for (const event of events || []) {
         const normalizedTitle = event.title.trim();
-        const lowerTitle = normalizedTitle.toLowerCase();
+        const section = extractSectionNumber(normalizedTitle);
+        const baseTitle = extractBaseTopicName(normalizedTitle);
         
-        // Skip if already exists or we've seen it
-        if (existingTitles.has(lowerTitle) || seenTitles.has(lowerTitle)) {
-          continue;
+        // Use section number as key if available, otherwise use base title
+        const consolidationKey = section || baseTitle.toLowerCase();
+        
+        // Skip if this section/base already exists in the database
+        if (section && existingSections.has(section)) continue;
+        if (!section && existingBaseTitles.has(baseTitle.toLowerCase())) continue;
+        
+        // If we haven't seen this topic yet, add it
+        if (!consolidatedTopics.has(consolidationKey)) {
+          consolidatedTopics.set(consolidationKey, {
+            title: baseTitle, // Use the cleaned base title without I/II suffix
+            description: event.description || "",
+            scheduled_week: event.week_number,
+            event_date: event.event_date,
+          });
         }
-
-        seenTitles.add(lowerTitle);
-        topicsToCreate.push({
-          title: normalizedTitle,
-          description: event.description || "",
-          scheduled_week: event.week_number,
-          event_date: event.event_date,
-        });
+        // If we've seen it, we keep the first occurrence (earliest week/date)
       }
+
+      const topicsToCreate = Array.from(consolidatedTopics.values());
 
       if (topicsToCreate.length === 0) {
         return { created: 0, message: "No new topics to create" };
