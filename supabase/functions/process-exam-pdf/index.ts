@@ -301,34 +301,29 @@ Return your response using the extract_questions function.`;
                               prompt: { type: "string", description: "Guiding question for this step" },
                               choices: {
                                 type: "array",
+                                description: "Exactly 4 multiple choice options (a, b, c, d)",
                                 items: {
                                   type: "object",
                                   properties: {
-                                    id: { type: "string", enum: ["a", "b", "c", "d"] },
-                                    text: { type: "string" },
-                                    isCorrect: { type: "boolean" }
-                                  },
-                                  required: ["id", "text", "isCorrect"]
-                                },
-                                minItems: 4,
-                                maxItems: 4
+                                    id: { type: "string", description: "Choice ID: a, b, c, or d" },
+                                    text: { type: "string", description: "Choice text" },
+                                    isCorrect: { type: "boolean", description: "Whether this choice is correct" }
+                                  }
+                                }
                               },
                               hints: {
                                 type: "array",
+                                description: "3 hint tiers (tier 1, 2, 3) with text for each",
                                 items: {
                                   type: "object",
                                   properties: {
-                                    tier: { type: "number", enum: [1, 2, 3] },
-                                    text: { type: "string" }
-                                  },
-                                  required: ["tier", "text"]
-                                },
-                                minItems: 3,
-                                maxItems: 3
+                                    tier: { type: "number", description: "Hint tier: 1=gentle nudge, 2=conceptual, 3=near-answer" },
+                                    text: { type: "string", description: "The hint text" }
+                                  }
+                                }
                               },
                               explanation: { type: "string", description: "Why the correct choice is right" }
-                            },
-                            required: ["stepNumber", "prompt", "choices", "hints", "explanation"]
+                            }
                           }
                         },
                         hint: { type: "string" },
