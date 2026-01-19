@@ -12,6 +12,7 @@ import Progress from "@/pages/Progress";
 import Settings from "@/pages/Settings";
 import AdminCalendar from "@/pages/AdminCalendar";
 import AdminIngestion from "@/pages/AdminIngestion";
+import AdminIngestionReview from "@/pages/AdminIngestionReview";
 import AdminCoursesList from "@/pages/AdminCoursesList";
 import AdminExamsList from "@/pages/AdminExamsList";
 import AdminExamDetail from "@/pages/AdminExamDetail";
@@ -41,6 +42,7 @@ const App = () => (
               <Route element={<AdminRoute />}>
                 <Route path="/admin/calendar" element={<AdminCalendar />} />
                 <Route path="/admin/ingestion" element={<AdminIngestion />} />
+                <Route path="/admin/ingestion/:jobId" element={<AdminIngestionReview />} />
                 <Route path="/admin/questions" element={<AdminCoursesList />} />
                 <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
                 <Route path="/admin/questions/:courseId/:examName" element={<AdminExamDetail />} />
