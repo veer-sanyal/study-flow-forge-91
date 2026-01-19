@@ -43,6 +43,7 @@ import {
   useProcessJob, 
   useDeleteJob 
 } from "@/hooks/use-ingestion";
+import { JobQuestionReview } from "@/components/admin/JobQuestionReview";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
@@ -55,6 +56,7 @@ export default function AdminIngestion() {
   const [selectedPackId, setSelectedPackId] = useState<string>("");
   const [deleteJob, setDeleteJob] = useState<any | null>(null);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
+  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   
   // Data
   const { data: coursePacks, isLoading: packsLoading } = useCoursePacks();
@@ -273,89 +275,103 @@ export default function AdminIngestion() {
                   {jobs.map((job) => (
                     <div
                       key={job.id}
-                      className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-lg border bg-card"
+                      className="p-4 rounded-lg border bg-card"
                     >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                          <span className="font-medium truncate">{job.file_name}</span>
-                          {getStatusBadge(job.status)}
-                        </div>
-                        <div className="text-sm text-muted-foreground">
-                          <span>{job.course_packs?.title || "Unknown pack"}</span>
-                          <span className="mx-2">•</span>
-                          <span>{formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</span>
-                        </div>
-                        
-                        {job.status === "processing" && (
-                          <div className="mt-2 space-y-1">
-                            <div className="flex items-center justify-between text-xs">
-                              <span>Step: {job.current_step || "..."}</span>
-                              <span>{job.progress_pct}%</span>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1">
+                            <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
+                            <span className="font-medium truncate">{job.file_name}</span>
+                            {getStatusBadge(job.status)}
+                          </div>
+                          <div className="text-sm text-muted-foreground">
+                            <span>{job.course_packs?.title || "Unknown pack"}</span>
+                            <span className="mx-2">•</span>
+                            <span>{formatDistanceToNow(new Date(job.created_at), { addSuffix: true })}</span>
+                          </div>
+                          
+                          {job.status === "processing" && (
+                            <div className="mt-2 space-y-1">
+                              <div className="flex items-center justify-between text-xs">
+                                <span>Step: {job.current_step || "..."}</span>
+                                <span>{job.progress_pct}%</span>
+                              </div>
+                              <Progress value={job.progress_pct || 0} className="h-1.5" />
                             </div>
-                            <Progress value={job.progress_pct || 0} className="h-1.5" />
-                          </div>
-                        )}
+                          )}
 
-                        {job.status === "completed" && (
-                          <div className="mt-2 flex gap-4 text-sm">
-                            <span className="text-green-600">
-                              ✓ {job.questions_extracted} extracted
-                            </span>
-                            <span className="text-blue-600">
-                              {job.questions_mapped} mapped
-                            </span>
-                            {job.questions_pending_review > 0 && (
-                              <span className="text-amber-600">
-                                {job.questions_pending_review} need review
+                          {job.status === "completed" && (
+                            <div className="mt-2 flex gap-4 text-sm">
+                              <span className="text-green-600">
+                                ✓ {job.questions_extracted} extracted
                               </span>
-                            )}
-                          </div>
-                        )}
+                              <span className="text-blue-600">
+                                {job.questions_mapped} mapped
+                              </span>
+                              {job.questions_pending_review > 0 && (
+                                <span className="text-amber-600">
+                                  {job.questions_pending_review} need review
+                                </span>
+                              )}
+                            </div>
+                          )}
 
-                        {job.status === "failed" && job.error_message && (
-                          <div className="mt-2 text-sm text-destructive">
-                            {job.error_message}
-                          </div>
-                        )}
-                      </div>
+                          {job.status === "failed" && job.error_message && (
+                            <div className="mt-2 text-sm text-destructive">
+                              {job.error_message}
+                            </div>
+                          )}
+                        </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {job.status === "pending" && (
+                        <div className="flex items-center gap-2 shrink-0">
+                          {job.status === "pending" && (
+                            <Button
+                              size="sm"
+                              onClick={() => handleProcess(job.id)}
+                              disabled={processingJobId === job.id}
+                            >
+                              {processingJobId === job.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Play className="h-4 w-4" />
+                              )}
+                              <span className="ml-1">Process</span>
+                            </Button>
+                          )}
+                          
+                          {job.status === "failed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleProcess(job.id)}
+                              disabled={processingJobId === job.id}
+                            >
+                              <RefreshCw className="h-4 w-4 mr-1" />
+                              Retry
+                            </Button>
+                          )}
+
                           <Button
                             size="sm"
-                            onClick={() => handleProcess(job.id)}
-                            disabled={processingJobId === job.id}
+                            variant="ghost"
+                            onClick={() => setDeleteJob(job)}
                           >
-                            {processingJobId === job.id ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
-                            <span className="ml-1">Process</span>
+                            <Trash2 className="h-4 w-4 text-destructive" />
                           </Button>
-                        )}
-                        
-                        {job.status === "failed" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleProcess(job.id)}
-                            disabled={processingJobId === job.id}
-                          >
-                            <RefreshCw className="h-4 w-4 mr-1" />
-                            Retry
-                          </Button>
-                        )}
-
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDeleteJob(job)}
-                        >
-                          <Trash2 className="h-4 w-4 text-destructive" />
-                        </Button>
+                        </div>
                       </div>
+
+                      {/* Question Review Panel for completed jobs */}
+                      {job.status === "completed" && job.questions_extracted > 0 && (
+                        <JobQuestionReview
+                          jobId={job.id}
+                          sourceExam={job.file_name}
+                          isExpanded={expandedJobId === job.id}
+                          onToggle={() => setExpandedJobId(
+                            expandedJobId === job.id ? null : job.id
+                          )}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
