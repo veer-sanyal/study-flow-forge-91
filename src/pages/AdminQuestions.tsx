@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { motion } from "framer-motion";
 import { 
   FileQuestion, 
@@ -9,12 +9,14 @@ import {
   AlertCircle,
   Filter,
   ChevronDown,
+  ChevronRight,
   Save,
   Tag,
   BookOpen,
   Image as ImageIcon,
   Upload,
-  GripVertical
+  Layers,
+  CheckCircle2
 } from "lucide-react";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -69,8 +71,11 @@ import {
   useDeleteQuestion,
   useQuestionStats,
   useUploadQuestionImage,
-  QuestionChoice
+  useQuestionTypes,
+  QuestionChoice,
+  QuestionWithDetails
 } from "@/hooks/use-questions";
+import { useCoursePacks } from "@/hooks/use-admin";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -88,6 +93,26 @@ interface EditingQuestion {
   midterm_number: number | null;
   question_order: number | null;
   image_url: string | null;
+  question_type_id: string | null;
+}
+
+// Hierarchical data structure types
+interface ExamGroup {
+  examName: string;
+  questions: QuestionWithDetails[];
+}
+
+interface MidtermGroup {
+  midtermNumber: number | null;
+  exams: ExamGroup[];
+  totalQuestions: number;
+}
+
+interface CourseGroup {
+  coursePackId: string | null;
+  coursePackTitle: string;
+  midterms: MidtermGroup[];
+  totalQuestions: number;
 }
 
 export default function AdminQuestions() {
@@ -96,15 +121,16 @@ export default function AdminQuestions() {
   
   // Data fetching
   const [activeTab, setActiveTab] = useState<"review" | "all">("review");
-  const [sourceFilter, setSourceFilter] = useState<string>("all");
+  const [coursePackFilter, setCoursePackFilter] = useState<string>("all");
   const [midtermFilter, setMidtermFilter] = useState<string>("all");
+  const [questionTypeFilter, setQuestionTypeFilter] = useState<string>("all");
   
   const { data: stats, isLoading: statsLoading } = useQuestionStats();
   const { data: reviewQuestions, isLoading: reviewLoading } = useAllQuestions({ needsReview: true });
-  const { data: allQuestions, isLoading: allLoading } = useAllQuestions(
-    sourceFilter !== "all" ? { sourceExam: sourceFilter } : undefined
-  );
+  const { data: allQuestions, isLoading: allLoading } = useAllQuestions();
   const { data: topics } = useAllTopics();
+  const { data: coursePacks } = useCoursePacks();
+  const { data: questionTypes } = useQuestionTypes(coursePackFilter !== "all" ? coursePackFilter : undefined);
   
   // Mutations
   const updateQuestion = useUpdateQuestion();
@@ -116,56 +142,146 @@ export default function AdminQuestions() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<EditingQuestion | null>(null);
   const [deletingQuestion, setDeletingQuestion] = useState<{ id: string; prompt: string } | null>(null);
-  const [expandedQuestions, setExpandedQuestions] = useState<Set<string>>(new Set());
+  const [expandedMidterms, setExpandedMidterms] = useState<Set<string>>(new Set(["1", "2", "3", "null"]));
+  const [expandedExams, setExpandedExams] = useState<Set<string>>(new Set());
   const [isDragging, setIsDragging] = useState(false);
 
+  // Build hierarchical structure: Course -> Midterm -> Exam -> Questions
+  const buildHierarchy = useCallback((questions: QuestionWithDetails[] | undefined): CourseGroup[] => {
+    if (!questions || questions.length === 0) return [];
+
+    // First, get the course_pack_id for each question from their question_type
+    const questionsWithCourse = questions.map(q => {
+      const questionTypeData = q.question_types as { id: string; name: string; course_pack_id?: string } | null;
+      return {
+        ...q,
+        course_pack_id: questionTypeData?.course_pack_id || null
+      };
+    });
+
+    // Group by course pack
+    const courseMap = new Map<string, QuestionWithDetails[]>();
+    questionsWithCourse.forEach(q => {
+      const key = (q as any).course_pack_id || "uncategorized";
+      if (!courseMap.has(key)) courseMap.set(key, []);
+      courseMap.get(key)!.push(q);
+    });
+
+    const result: CourseGroup[] = [];
+
+    courseMap.forEach((courseQuestions, coursePackId) => {
+      const coursePack = coursePacks?.find(cp => cp.id === coursePackId);
+      
+      // Group by midterm
+      const midtermMap = new Map<number | null, QuestionWithDetails[]>();
+      courseQuestions.forEach(q => {
+        const key = q.midterm_number;
+        if (!midtermMap.has(key)) midtermMap.set(key, []);
+        midtermMap.get(key)!.push(q);
+      });
+
+      const midterms: MidtermGroup[] = [];
+      
+      // Sort midterm keys (1, 2, 3, null)
+      const sortedMidtermKeys = [...midtermMap.keys()].sort((a, b) => {
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a - b;
+      });
+
+      sortedMidtermKeys.forEach(midtermNum => {
+        const midtermQuestions = midtermMap.get(midtermNum)!;
+        
+        // Group by exam
+        const examMap = new Map<string, QuestionWithDetails[]>();
+        midtermQuestions.forEach(q => {
+          const key = q.source_exam || "Unknown Exam";
+          if (!examMap.has(key)) examMap.set(key, []);
+          examMap.get(key)!.push(q);
+        });
+
+        const exams: ExamGroup[] = [];
+        examMap.forEach((examQuestions, examName) => {
+          // Sort questions by order
+          const sortedQuestions = [...examQuestions].sort((a, b) => {
+            if (a.question_order !== null && b.question_order !== null) {
+              return a.question_order - b.question_order;
+            }
+            if (a.question_order !== null) return -1;
+            if (b.question_order !== null) return 1;
+            return 0;
+          });
+          exams.push({ examName, questions: sortedQuestions });
+        });
+
+        // Sort exams alphabetically
+        exams.sort((a, b) => a.examName.localeCompare(b.examName));
+
+        midterms.push({
+          midtermNumber: midtermNum,
+          exams,
+          totalQuestions: midtermQuestions.length
+        });
+      });
+
+      result.push({
+        coursePackId: coursePackId === "uncategorized" ? null : coursePackId,
+        coursePackTitle: coursePack?.title || "Uncategorized",
+        midterms,
+        totalQuestions: courseQuestions.length
+      });
+    });
+
+    // Sort courses alphabetically
+    result.sort((a, b) => a.coursePackTitle.localeCompare(b.coursePackTitle));
+
+    return result;
+  }, [coursePacks]);
+
   // Filter and group questions
-  const getFilteredQuestions = () => {
+  const getFilteredQuestions = useCallback(() => {
     let qs = activeTab === "review" ? reviewQuestions : allQuestions;
     if (!qs) return [];
     
+    // Apply filters
     if (midtermFilter !== "all") {
-      const midtermNum = parseInt(midtermFilter);
-      qs = qs.filter(q => q.midterm_number === midtermNum);
+      if (midtermFilter === "none") {
+        qs = qs.filter(q => q.midterm_number === null);
+      } else {
+        const midtermNum = parseInt(midtermFilter);
+        qs = qs.filter(q => q.midterm_number === midtermNum);
+      }
+    }
+
+    if (questionTypeFilter !== "all") {
+      qs = qs.filter(q => q.question_type_id === questionTypeFilter);
     }
     
-    // Sort by question_order if available
-    return [...qs].sort((a, b) => {
-      if (a.question_order !== null && b.question_order !== null) {
-        return a.question_order - b.question_order;
-      }
-      if (a.question_order !== null) return -1;
-      if (b.question_order !== null) return 1;
-      return 0;
-    });
-  };
+    return qs;
+  }, [activeTab, reviewQuestions, allQuestions, midtermFilter, questionTypeFilter]);
 
-  // Group questions by source_exam
-  const getGroupedQuestions = () => {
-    const filtered = getFilteredQuestions();
-    const groups: Record<string, typeof filtered> = {};
-    
-    filtered.forEach(q => {
-      const key = q.source_exam || "No Exam";
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(q);
-    });
-    
-    return groups;
-  };
-
-  const questions = getFilteredQuestions();
-  const groupedQuestions = getGroupedQuestions();
+  const filteredQuestions = useMemo(() => getFilteredQuestions(), [getFilteredQuestions]);
+  const hierarchy = useMemo(() => buildHierarchy(filteredQuestions), [buildHierarchy, filteredQuestions]);
   const isLoading = activeTab === "review" ? reviewLoading : allLoading;
 
-  const toggleExpanded = (id: string) => {
-    const newExpanded = new Set(expandedQuestions);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+  const toggleMidterm = (key: string) => {
+    const newExpanded = new Set(expandedMidterms);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
     } else {
-      newExpanded.add(id);
+      newExpanded.add(key);
     }
-    setExpandedQuestions(newExpanded);
+    setExpandedMidterms(newExpanded);
+  };
+
+  const toggleExam = (key: string) => {
+    const newExpanded = new Set(expandedExams);
+    if (newExpanded.has(key)) {
+      newExpanded.delete(key);
+    } else {
+      newExpanded.add(key);
+    }
+    setExpandedExams(newExpanded);
   };
 
   const handleApprove = async (questionId: string) => {
@@ -177,8 +293,8 @@ export default function AdminQuestions() {
     }
   };
 
-  const handleEdit = (question: any) => {
-    const choices = (question.choices as QuestionChoice[]) || [];
+  const handleEdit = (question: QuestionWithDetails) => {
+    const choices = (question.choices as unknown as QuestionChoice[]) || [];
     setEditingQuestion({
       id: question.id,
       prompt: question.prompt,
@@ -191,6 +307,7 @@ export default function AdminQuestions() {
       midterm_number: question.midterm_number,
       question_order: question.question_order,
       image_url: question.image_url,
+      question_type_id: question.question_type_id,
     });
     setEditDialogOpen(true);
   };
@@ -210,7 +327,7 @@ export default function AdminQuestions() {
         midterm_number: editingQuestion.midterm_number,
         question_order: editingQuestion.question_order,
         image_url: editingQuestion.image_url,
-        needs_review: false, // Saving = approving
+        needs_review: false,
       });
       toast({ title: "Question saved and approved" });
       setEditDialogOpen(false);
@@ -365,7 +482,7 @@ export default function AdminQuestions() {
           </Card>
         </motion.div>
 
-        {/* Tabs */}
+        {/* Tabs & Filters */}
         <motion.div variants={staggerItem}>
           <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "review" | "all")}>
             <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
@@ -379,7 +496,7 @@ export default function AdminQuestions() {
                 <TabsTrigger value="all">All Questions</TabsTrigger>
               </TabsList>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* Midterm filter */}
                 <Select value={midtermFilter} onValueChange={setMidtermFilter}>
                   <SelectTrigger className="w-36">
@@ -390,20 +507,21 @@ export default function AdminQuestions() {
                     <SelectItem value="1">Midterm 1</SelectItem>
                     <SelectItem value="2">Midterm 2</SelectItem>
                     <SelectItem value="3">Midterm 3</SelectItem>
+                    <SelectItem value="none">Unassigned</SelectItem>
                   </SelectContent>
                 </Select>
 
-                {/* Source exam filter */}
-                {activeTab === "all" && stats?.sourceExams && stats.sourceExams.length > 0 && (
-                  <Select value={sourceFilter} onValueChange={setSourceFilter}>
+                {/* Question Type filter */}
+                {questionTypes && questionTypes.length > 0 && (
+                  <Select value={questionTypeFilter} onValueChange={setQuestionTypeFilter}>
                     <SelectTrigger className="w-48">
-                      <Filter className="h-4 w-4 mr-2" />
-                      <SelectValue placeholder="Filter by exam" />
+                      <Layers className="h-4 w-4 mr-2" />
+                      <SelectValue placeholder="Question Type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">All Exams</SelectItem>
-                      {stats.sourceExams.map(exam => (
-                        <SelectItem key={exam} value={exam}>{exam}</SelectItem>
+                      <SelectItem value="all">All Types</SelectItem>
+                      {questionTypes.map(qt => (
+                        <SelectItem key={qt.id} value={qt.id}>{qt.name}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -412,59 +530,35 @@ export default function AdminQuestions() {
             </div>
 
             <TabsContent value="review" className="mt-0">
-              {sourceFilter === "all" ? (
-                <GroupedQuestionsList
-                  groupedQuestions={groupedQuestions}
-                  isLoading={isLoading}
-                  expandedQuestions={expandedQuestions}
-                  onToggleExpand={toggleExpanded}
-                  onApprove={handleApprove}
-                  onEdit={handleEdit}
-                  onDelete={openDeleteConfirm}
-                  getTopicName={getTopicName}
-                  showReviewBadge={false}
-                />
-              ) : (
-                <QuestionsList
-                  questions={questions}
-                  isLoading={isLoading}
-                  expandedQuestions={expandedQuestions}
-                  onToggleExpand={toggleExpanded}
-                  onApprove={handleApprove}
-                  onEdit={handleEdit}
-                  onDelete={openDeleteConfirm}
-                  getTopicName={getTopicName}
-                  showReviewBadge={false}
-                />
-              )}
+              <HierarchicalQuestionsList
+                hierarchy={hierarchy}
+                isLoading={isLoading}
+                expandedMidterms={expandedMidterms}
+                expandedExams={expandedExams}
+                onToggleMidterm={toggleMidterm}
+                onToggleExam={toggleExam}
+                onApprove={handleApprove}
+                onEdit={handleEdit}
+                onDelete={openDeleteConfirm}
+                getTopicName={getTopicName}
+                showReviewBadge={false}
+              />
             </TabsContent>
 
             <TabsContent value="all" className="mt-0">
-              {sourceFilter === "all" ? (
-                <GroupedQuestionsList
-                  groupedQuestions={groupedQuestions}
-                  isLoading={isLoading}
-                  expandedQuestions={expandedQuestions}
-                  onToggleExpand={toggleExpanded}
-                  onApprove={handleApprove}
-                  onEdit={handleEdit}
-                  onDelete={openDeleteConfirm}
-                  getTopicName={getTopicName}
-                  showReviewBadge={true}
-                />
-              ) : (
-                <QuestionsList
-                  questions={questions}
-                  isLoading={isLoading}
-                  expandedQuestions={expandedQuestions}
-                  onToggleExpand={toggleExpanded}
-                  onApprove={handleApprove}
-                  onEdit={handleEdit}
-                  onDelete={openDeleteConfirm}
-                  getTopicName={getTopicName}
-                  showReviewBadge={true}
-                />
-              )}
+              <HierarchicalQuestionsList
+                hierarchy={hierarchy}
+                isLoading={isLoading}
+                expandedMidterms={expandedMidterms}
+                expandedExams={expandedExams}
+                onToggleMidterm={toggleMidterm}
+                onToggleExam={toggleExam}
+                onApprove={handleApprove}
+                onEdit={handleEdit}
+                onDelete={openDeleteConfirm}
+                getTopicName={getTopicName}
+                showReviewBadge={true}
+              />
             </TabsContent>
           </Tabs>
         </motion.div>
@@ -702,24 +796,28 @@ export default function AdminQuestions() {
   );
 }
 
-// Grouped Questions List by Exam
-function GroupedQuestionsList({
-  groupedQuestions,
+// Hierarchical Questions List
+function HierarchicalQuestionsList({
+  hierarchy,
   isLoading,
-  expandedQuestions,
-  onToggleExpand,
+  expandedMidterms,
+  expandedExams,
+  onToggleMidterm,
+  onToggleExam,
   onApprove,
   onEdit,
   onDelete,
   getTopicName,
   showReviewBadge,
 }: {
-  groupedQuestions: Record<string, any[]>;
+  hierarchy: CourseGroup[];
   isLoading: boolean;
-  expandedQuestions: Set<string>;
-  onToggleExpand: (id: string) => void;
+  expandedMidterms: Set<string>;
+  expandedExams: Set<string>;
+  onToggleMidterm: (key: string) => void;
+  onToggleExam: (key: string) => void;
   onApprove: (id: string) => void;
-  onEdit: (question: any) => void;
+  onEdit: (question: QuestionWithDetails) => void;
   onDelete: (question: { id: string; prompt: string }) => void;
   getTopicName: (id: string) => string;
   showReviewBadge: boolean;
@@ -732,8 +830,8 @@ function GroupedQuestionsList({
     );
   }
 
-  const examNames = Object.keys(groupedQuestions);
-  if (examNames.length === 0) {
+  const totalQuestions = hierarchy.reduce((sum, c) => sum + c.totalQuestions, 0);
+  if (totalQuestions === 0) {
     return (
       <Card>
         <CardContent className="flex flex-col items-center justify-center py-12 text-center">
@@ -749,27 +847,94 @@ function GroupedQuestionsList({
 
   return (
     <div className="space-y-6">
-      {examNames.map(examName => (
-        <div key={examName} className="space-y-3">
-          <div className="flex items-center gap-2">
+      {hierarchy.map(courseGroup => (
+        <div key={courseGroup.coursePackId || "uncategorized"} className="space-y-4">
+          {/* Course Pack Header */}
+          <div className="flex items-center gap-2 pb-2 border-b">
             <BookOpen className="h-5 w-5 text-primary" />
-            <h2 className="font-semibold text-lg">{examName}</h2>
-            <Badge variant="secondary">{groupedQuestions[examName].length}</Badge>
+            <h2 className="font-semibold text-lg">{courseGroup.coursePackTitle}</h2>
+            <Badge variant="secondary">{courseGroup.totalQuestions} questions</Badge>
           </div>
-          <div className="space-y-3 pl-2 border-l-2 border-primary/20">
-            {groupedQuestions[examName].map(question => (
-              <QuestionCard
-                key={question.id}
-                question={question}
-                isExpanded={expandedQuestions.has(question.id)}
-                onToggleExpand={onToggleExpand}
-                onApprove={onApprove}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                getTopicName={getTopicName}
-                showReviewBadge={showReviewBadge}
-              />
-            ))}
+
+          {/* Midterms */}
+          <div className="space-y-4 pl-4">
+            {courseGroup.midterms.map(midtermGroup => {
+              const midtermKey = midtermGroup.midtermNumber?.toString() || "null";
+              const isMidtermExpanded = expandedMidterms.has(midtermKey);
+
+              return (
+                <Collapsible 
+                  key={midtermKey}
+                  open={isMidtermExpanded}
+                  onOpenChange={() => onToggleMidterm(midtermKey)}
+                >
+                  <CollapsibleTrigger className="w-full">
+                    <div className="flex items-center gap-2 p-3 bg-muted/50 rounded-lg hover:bg-muted transition-colors cursor-pointer">
+                      {isMidtermExpanded ? (
+                        <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className="font-medium">
+                        {midtermGroup.midtermNumber 
+                          ? `Midterm ${midtermGroup.midtermNumber}`
+                          : "Unassigned Midterm"
+                        }
+                      </span>
+                      <Badge variant="outline">{midtermGroup.totalQuestions}</Badge>
+                    </div>
+                  </CollapsibleTrigger>
+
+                  <CollapsibleContent>
+                    <div className="pl-6 pt-3 space-y-4">
+                      {midtermGroup.exams.map(examGroup => {
+                        const examKey = `${midtermKey}-${examGroup.examName}`;
+                        const isExamExpanded = expandedExams.has(examKey);
+
+                        return (
+                          <Collapsible
+                            key={examKey}
+                            open={isExamExpanded}
+                            onOpenChange={() => onToggleExam(examKey)}
+                          >
+                            <CollapsibleTrigger className="w-full">
+                              <div className="flex items-center gap-2 p-2 bg-background border rounded-lg hover:bg-muted/30 transition-colors cursor-pointer">
+                                {isExamExpanded ? (
+                                  <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                                )}
+                                <FileQuestion className="h-4 w-4 text-primary/70" />
+                                <span className="font-medium text-sm">{examGroup.examName}</span>
+                                <Badge variant="secondary" className="text-xs">
+                                  {examGroup.questions.length} questions
+                                </Badge>
+                              </div>
+                            </CollapsibleTrigger>
+
+                            <CollapsibleContent>
+                              <div className="pt-3 space-y-4">
+                                {examGroup.questions.map(question => (
+                                  <QuestionCard
+                                    key={question.id}
+                                    question={question}
+                                    onApprove={onApprove}
+                                    onEdit={onEdit}
+                                    onDelete={onDelete}
+                                    getTopicName={getTopicName}
+                                    showReviewBadge={showReviewBadge}
+                                  />
+                                ))}
+                              </div>
+                            </CollapsibleContent>
+                          </Collapsible>
+                        );
+                      })}
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
+              );
+            })}
           </div>
         </div>
       ))}
@@ -777,228 +942,173 @@ function GroupedQuestionsList({
   );
 }
 
-// Questions list component
-function QuestionsList({
-  questions,
-  isLoading,
-  expandedQuestions,
-  onToggleExpand,
-  onApprove,
-  onEdit,
-  onDelete,
-  getTopicName,
-  showReviewBadge,
-}: {
-  questions: any[] | undefined;
-  isLoading: boolean;
-  expandedQuestions: Set<string>;
-  onToggleExpand: (id: string) => void;
-  onApprove: (id: string) => void;
-  onEdit: (question: any) => void;
-  onDelete: (question: { id: string; prompt: string }) => void;
-  getTopicName: (id: string) => string;
-  showReviewBadge: boolean;
-}) {
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        {[1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)}
-      </div>
-    );
-  }
-
-  if (!questions?.length) {
-    return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12 text-center">
-          <Check className="h-12 w-12 text-green-500/50 mb-4" />
-          <h3 className="font-medium text-lg">All caught up!</h3>
-          <p className="text-muted-foreground text-sm mt-1">
-            No questions to review
-          </p>
-        </CardContent>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="space-y-3">
-      {questions.map(question => (
-        <QuestionCard
-          key={question.id}
-          question={question}
-          isExpanded={expandedQuestions.has(question.id)}
-          onToggleExpand={onToggleExpand}
-          onApprove={onApprove}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          getTopicName={getTopicName}
-          showReviewBadge={showReviewBadge}
-        />
-      ))}
-    </div>
-  );
-}
-
-// Individual Question Card
+// Individual Question Card - Expanded by default with all choices visible
 function QuestionCard({
   question,
-  isExpanded,
-  onToggleExpand,
   onApprove,
   onEdit,
   onDelete,
   getTopicName,
   showReviewBadge,
 }: {
-  question: any;
-  isExpanded: boolean;
-  onToggleExpand: (id: string) => void;
+  question: QuestionWithDetails;
   onApprove: (id: string) => void;
-  onEdit: (question: any) => void;
+  onEdit: (question: QuestionWithDetails) => void;
   onDelete: (question: { id: string; prompt: string }) => void;
   getTopicName: (id: string) => string;
   showReviewBadge: boolean;
 }) {
+  const questionType = question.question_types as { id: string; name: string } | null;
+  const choices = (question.choices as unknown as QuestionChoice[]) || [];
+
   return (
-    <Card className={cn(question.needs_review && "border-yellow-500/30")}>
-      <Collapsible open={isExpanded} onOpenChange={() => onToggleExpand(question.id)}>
-        <CollapsibleTrigger asChild>
-          <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors py-3">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                  {question.question_order && (
-                    <Badge variant="outline" className="text-xs font-mono">
-                      #{question.question_order}
-                    </Badge>
-                  )}
-                  {showReviewBadge && question.needs_review && (
-                    <Badge variant="outline" className="text-yellow-500 border-yellow-500/30">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      Review
-                    </Badge>
-                  )}
-                  {question.midterm_number && (
-                    <Badge variant="default" className="text-xs">
-                      Midterm {question.midterm_number}
-                    </Badge>
-                  )}
-                  {question.source_exam && (
-                    <Badge variant="secondary" className="text-xs">
-                      {question.source_exam}
-                    </Badge>
-                  )}
-                  {question.difficulty && (
-                    <Badge variant="outline" className="text-xs">
-                      Diff: {question.difficulty}
-                    </Badge>
-                  )}
-                  {question.image_url && (
-                    <Badge variant="outline" className="text-xs">
-                      <ImageIcon className="h-3 w-3 mr-1" />
-                      Image
-                    </Badge>
-                  )}
+    <Card className={cn(
+      "overflow-hidden transition-all",
+      question.needs_review && "border-yellow-500/30 bg-yellow-500/5"
+    )}>
+      <CardContent className="p-6 space-y-4">
+        {/* Question Header */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0 space-y-2">
+            {/* Badges Row */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {question.question_order && (
+                <Badge variant="default" className="text-sm font-bold">
+                  #{question.question_order}
+                </Badge>
+              )}
+              {questionType && (
+                <Badge variant="secondary" className="text-xs">
+                  <Layers className="h-3 w-3 mr-1" />
+                  {questionType.name}
+                </Badge>
+              )}
+              {showReviewBadge && question.needs_review && (
+                <Badge variant="outline" className="text-yellow-500 border-yellow-500/30">
+                  <AlertCircle className="h-3 w-3 mr-1" />
+                  Needs Review
+                </Badge>
+              )}
+              {question.difficulty && (
+                <Badge variant="outline" className="text-xs">
+                  Difficulty: {question.difficulty}
+                </Badge>
+              )}
+              {question.image_url && (
+                <Badge variant="outline" className="text-xs">
+                  <ImageIcon className="h-3 w-3 mr-1" />
+                  Has Image
+                </Badge>
+              )}
+            </div>
+
+            {/* Question Prompt */}
+            <div className="text-base leading-relaxed">
+              <MathRenderer content={question.prompt} />
+            </div>
+          </div>
+        </div>
+
+        {/* Image Preview */}
+        {question.image_url && (
+          <div className="rounded-lg overflow-hidden border bg-muted/30 p-2">
+            <img 
+              src={question.image_url} 
+              alt="Question" 
+              className="max-h-48 object-contain mx-auto rounded"
+            />
+          </div>
+        )}
+
+        {/* Choices - Always Visible */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Answer Choices
+          </p>
+          <div className="grid gap-2">
+            {choices.map(choice => (
+              <div
+                key={choice.id}
+                className={cn(
+                  "p-3 rounded-lg text-sm flex items-start gap-3 transition-colors",
+                  choice.isCorrect 
+                    ? "bg-green-500/15 border-2 border-green-500/40" 
+                    : "bg-muted/50 border border-transparent"
+                )}
+              >
+                <div className={cn(
+                  "flex-shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center mt-0.5",
+                  choice.isCorrect 
+                    ? "border-green-500 bg-green-500 text-white" 
+                    : "border-muted-foreground/30"
+                )}>
+                  {choice.isCorrect && <CheckCircle2 className="h-3 w-3" />}
                 </div>
-                <p className="text-sm font-medium line-clamp-2">
-                  <MathRenderer content={question.prompt} />
-                </p>
-              </div>
-              <ChevronDown className={cn(
-                "h-5 w-5 text-muted-foreground transition-transform shrink-0",
-                isExpanded && "rotate-180"
-              )} />
-            </div>
-          </CardHeader>
-        </CollapsibleTrigger>
-
-        <CollapsibleContent>
-          <CardContent className="pt-0 space-y-4">
-            {/* Image preview */}
-            {question.image_url && (
-              <div className="rounded-lg overflow-hidden border">
-                <img src={question.image_url} alt="Question" className="max-h-48 object-contain mx-auto" />
-              </div>
-            )}
-
-            {/* Choices */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Choices:</p>
-              <div className="grid gap-2">
-                {(question.choices as QuestionChoice[])?.map(choice => (
-                  <div
-                    key={choice.id}
-                    className={cn(
-                      "p-2 rounded-md text-sm",
-                      choice.isCorrect 
-                        ? "bg-green-500/10 border border-green-500/30" 
-                        : "bg-muted/50"
-                    )}
-                  >
-                    <MathRenderer content={choice.text} />
-                    {choice.isCorrect && (
-                      <Badge className="ml-2 text-xs bg-green-500">Correct</Badge>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Topics */}
-            <div className="space-y-2">
-              <p className="text-xs font-medium text-muted-foreground">Topics:</p>
-              <div className="flex flex-wrap gap-1">
-                {question.topic_ids?.length > 0 ? (
-                  question.topic_ids.map((topicId: string) => (
-                    <Badge key={topicId} variant="secondary" className="text-xs">
-                      <Tag className="h-3 w-3 mr-1" />
-                      {getTopicName(topicId)}
-                    </Badge>
-                  ))
-                ) : (
-                  <span className="text-xs text-muted-foreground">No topics assigned</span>
+                <div className="flex-1">
+                  <MathRenderer content={choice.text} />
+                </div>
+                {choice.isCorrect && (
+                  <Badge className="bg-green-500 text-white text-xs flex-shrink-0">
+                    Correct
+                  </Badge>
                 )}
               </div>
-            </div>
+            ))}
+          </div>
+        </div>
 
-            {/* Unmapped suggestions */}
-            {question.unmapped_topic_suggestions?.length > 0 && (
-              <div className="p-2 bg-yellow-500/10 rounded-md">
-                <p className="text-xs font-medium text-yellow-500 mb-1">Unmapped suggestions:</p>
-                <div className="flex flex-wrap gap-1">
-                  {question.unmapped_topic_suggestions.map((s: string, i: number) => (
-                    <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-2 border-t">
-              {question.needs_review && (
-                <Button size="sm" onClick={() => onApprove(question.id)}>
-                  <Check className="h-4 w-4 mr-1" />
-                  Approve
-                </Button>
-              )}
-              <Button size="sm" variant="outline" onClick={() => onEdit(question)}>
-                <Pencil className="h-4 w-4 mr-1" />
-                Edit
-              </Button>
-              <Button 
-                size="sm" 
-                variant="ghost" 
-                className="text-destructive"
-                onClick={() => onDelete({ id: question.id, prompt: question.prompt })}
-              >
-                <Trash2 className="h-4 w-4 mr-1" />
-                Delete
-              </Button>
+        {/* Topics */}
+        {question.topic_ids?.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Topics
+            </p>
+            <div className="flex flex-wrap gap-1">
+              {question.topic_ids.map((topicId: string) => (
+                <Badge key={topicId} variant="secondary" className="text-xs">
+                  <Tag className="h-3 w-3 mr-1" />
+                  {getTopicName(topicId)}
+                </Badge>
+              ))}
             </div>
-          </CardContent>
-        </CollapsibleContent>
-      </Collapsible>
+          </div>
+        )}
+
+        {/* Unmapped suggestions */}
+        {question.unmapped_topic_suggestions?.length > 0 && (
+          <div className="p-3 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+            <p className="text-xs font-medium text-yellow-600 mb-1">Unmapped topic suggestions:</p>
+            <div className="flex flex-wrap gap-1">
+              {question.unmapped_topic_suggestions.map((s: string, i: number) => (
+                <Badge key={i} variant="outline" className="text-xs">{s}</Badge>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 pt-2 border-t">
+          {question.needs_review && (
+            <Button size="sm" onClick={() => onApprove(question.id)}>
+              <Check className="h-4 w-4 mr-1" />
+              Approve
+            </Button>
+          )}
+          <Button size="sm" variant="outline" onClick={() => onEdit(question)}>
+            <Pencil className="h-4 w-4 mr-1" />
+            Edit
+          </Button>
+          <Button 
+            size="sm" 
+            variant="ghost" 
+            className="text-destructive hover:text-destructive"
+            onClick={() => onDelete({ id: question.id, prompt: question.prompt })}
+          >
+            <Trash2 className="h-4 w-4 mr-1" />
+            Delete
+          </Button>
+        </div>
+      </CardContent>
     </Card>
   );
 }
