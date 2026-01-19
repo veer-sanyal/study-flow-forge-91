@@ -565,7 +565,7 @@ function EditQuestionDialog({
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end gap-2 pt-4 border-t">
+        <div className="flex justify-end gap-2 pt-4 border-t bg-background sticky bottom-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
