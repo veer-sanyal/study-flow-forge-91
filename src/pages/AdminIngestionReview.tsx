@@ -388,10 +388,64 @@ function QuestionCard({
           {question.solution_steps && question.solution_steps.length > 0 && (
             <details className="pt-2 border-t">
               <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium">
-                View Solution
+                View Solution ({question.solution_steps.length} steps)
               </summary>
               <div className="mt-3 p-4 rounded-lg bg-muted/50 prose prose-sm dark:prose-invert max-w-none">
                 <MathRenderer content={question.solution_steps.join('\n\n')} />
+              </div>
+            </details>
+          )}
+
+          {/* Guide Me Steps Preview */}
+          {question.guide_me_steps && Array.isArray(question.guide_me_steps) && question.guide_me_steps.length > 0 && (
+            <details className="pt-2 border-t">
+              <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium flex items-center gap-2">
+                <Wand2 className="h-4 w-4" />
+                View Guide Me ({question.guide_me_steps.length} steps)
+              </summary>
+              <div className="mt-3 space-y-4">
+                {(question.guide_me_steps as Array<{
+                  stepNumber?: number;
+                  prompt?: string;
+                  choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
+                  hints?: Array<{ tier: number; text: string }>;
+                  explanation?: string;
+                }>).map((step, idx) => (
+                  <div key={idx} className="p-4 rounded-lg border bg-card">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Badge variant="outline" className="text-xs">Step {step.stepNumber || idx + 1}</Badge>
+                    </div>
+                    <div className="prose prose-sm dark:prose-invert mb-3">
+                      <MathRenderer content={step.prompt || ''} />
+                    </div>
+                    {step.choices && step.choices.length > 0 && (
+                      <div className="space-y-1 mb-3">
+                        {step.choices.map((choice) => (
+                          <div 
+                            key={choice.id} 
+                            className={`flex items-center gap-2 text-sm p-2 rounded ${
+                              choice.isCorrect ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'text-muted-foreground'
+                            }`}
+                          >
+                            <span className="font-medium">{choice.id.toUpperCase()}.</span>
+                            <MathRenderer content={choice.text} />
+                            {choice.isCorrect && <Check className="h-3 w-3 ml-auto" />}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {step.hints && step.hints.length > 0 && (
+                      <div className="text-xs text-muted-foreground">
+                        <span className="font-medium">Hints:</span> {step.hints.length} tiers
+                      </div>
+                    )}
+                    {step.explanation && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        <span className="font-medium">Explanation:</span> {step.explanation.substring(0, 100)}...
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
             </details>
           )}
