@@ -126,9 +126,10 @@ OUTPUT REQUIREMENTS:
 
 SOURCE EXAM NAME:
 - Extract from the cover/header if present (e.g., course + year (eg 2024) + term (Spring or fall) + exam (midterm 1, 2, or 3 or final). Use the first page header.
+- IMPORTANT: Identify if this is a "Final" exam (set isFinal=true) or a "Midterm" exam (set isFinal=false and extract midtermNumber 1, 2, or 3).
 
 PROMPT LAYOUT (CRITICAL):
-- Preserve the PDF’s visual layout using NEWLINES.
+- Preserve the PDF's visual layout using NEWLINES.
 - Narrative text stays as plain text (do NOT wrap entire sentences in $...$).
 - Inline math inside sentences: use $...$.
 - Centered equations / standalone math lines: must be display math using the exact block form:
@@ -139,7 +140,7 @@ PROMPT LAYOUT (CRITICAL):
   $$
   (blank line)
 
-- Do NOT use \[ \] or \(...\) because the renderer won’t parse them.
+- Do NOT use \[ \] or \(...\) because the renderer won't parse them.
 
 PUNCTUATION:
 - If punctuation belongs to the sentence, keep it outside math delimiters.
@@ -168,7 +169,7 @@ Repair these common extraction errors before finalizing LaTeX:
 - Exponents split across lines (e.g., "x" then "3") → reconstruct as "x^{3}".
 - Fractions split across lines (numerator/denominator on separate lines) → reconstruct using \frac{...}{...}.
 - Join broken math tokens across line breaks when they clearly form one expression.
-- Vector glyphs like "~ı", "~" → map to \mathbf{i}, \mathbf{j} (and \mathbf{k}).
+- Vector glyphs like "~ı", "~" → map to \mathbf{i}, \mathbf{j} (and \mathbf{k}).
 
 QUALITY CHECKS (DO THESE):
 - After formatting, re-read each prompt and ensure the display-math lines are centered via $$ block form.
@@ -212,11 +213,15 @@ Return your response using the extract_questions function.`;
                     properties: {
                       sourceExam: {
                         type: "string",
-                        description: "Name of the exam (e.g., 'Fall 2023 Midterm 1')",
+                        description: "Name of the exam (e.g., 'Fall 2023 Midterm 1' or 'Spring 2024 Final')",
+                      },
+                      isFinal: {
+                        type: "boolean",
+                        description: "True if this is a Final exam, false if it's a Midterm",
                       },
                       midtermNumber: {
                         type: "number",
-                        description: "The midterm number (1, 2, or 3) if identifiable",
+                        description: "The midterm number (1, 2, or 3) if this is a Midterm exam. Leave null for Finals.",
                       },
                       questions: {
                         type: "array",
@@ -300,8 +305,9 @@ Return your response using the extract_questions function.`;
     await supabase.from("ingestion_jobs").update({ current_step: "B2", progress_pct: 60 }).eq("id", jobId);
 
     // Parse the tool call response
-    let extractedData: { sourceExam: string; midtermNumber?: number; questions: ExtractedQuestion[] } = {
+    let extractedData: { sourceExam: string; isFinal?: boolean; midtermNumber?: number; questions: ExtractedQuestion[] } = {
       sourceExam: job.file_name,
+      isFinal: false,
       questions: [],
     };
 
@@ -311,6 +317,7 @@ Return your response using the extract_questions function.`;
       if (functionCall?.name === "extract_questions" && functionCall?.args) {
         extractedData = functionCall.args as {
           sourceExam: string;
+          isFinal?: boolean;
           midtermNumber?: number;
           questions: ExtractedQuestion[];
         };
@@ -321,7 +328,8 @@ Return your response using the extract_questions function.`;
       console.error("Failed to parse Gemini response:", parseError);
     }
 
-    console.log(`Extracted ${extractedData.questions.length} questions from ${extractedData.sourceExam}`);
+    const isFinalExam = extractedData.isFinal === true;
+    console.log(`Extracted ${extractedData.questions.length} questions from ${extractedData.sourceExam} (isFinal: ${isFinalExam})`);
 
     if (extractedData.questions.length === 0) {
       await supabase
@@ -350,7 +358,9 @@ Return your response using the extract_questions function.`;
     // Step B3: Delete existing questions for this source_exam, then insert new ones
     console.log("Step B3: Deleting existing questions for this exam...");
 
-    const docMidtermNumber = extractedData.midtermNumber || null;
+    // For non-final exams, use the midterm number from the PDF
+    // For finals, midterm_number will be set per-question during analysis based on topic coverage
+    const docMidtermNumber = isFinalExam ? null : (extractedData.midtermNumber || null);
 
     // Delete any existing questions with the same source_exam and course_pack_id to avoid duplicates
     const { error: deleteError } = await supabase
@@ -390,7 +400,7 @@ Return your response using the extract_questions function.`;
         unmapped_topic_suggestions: null,
         question_type_id: null, // Will be set during analysis
         course_pack_id: job.course_pack_id,
-        midterm_number: docMidtermNumber,
+        midterm_number: docMidtermNumber, // null for finals, will be set during analysis
         question_order: q.questionOrder || null,
       });
 
@@ -399,7 +409,7 @@ Return your response using the extract_questions function.`;
       }
     }
 
-    // Step complete
+    // Update job with is_final flag and complete status
     await supabase
       .from("ingestion_jobs")
       .update({
@@ -410,6 +420,7 @@ Return your response using the extract_questions function.`;
         questions_mapped: 0,
         questions_pending_review: extractedData.questions.length, // All need analysis
         completed_at: new Date().toISOString(),
+        is_final: isFinalExam,
       })
       .eq("id", jobId);
 

@@ -48,7 +48,7 @@ interface AnalysisResult {
   detailedSolution: string;
   guideMeSteps: GuideStep[];
   methodSummary: MethodSummary;
-  topicSuggestions: string[];
+  topicIds: string[]; // Direct topic IDs - no suggestions
   questionType: string;
 }
 
@@ -95,6 +95,18 @@ serve(async (req) => {
       .eq("id", questionId)
       .single();
 
+    // Check if this question comes from a final exam by looking up the ingestion job
+    let isFinalExam = false;
+    if (question?.source_exam && question?.course_pack_id) {
+      const { data: job } = await supabase
+        .from("ingestion_jobs")
+        .select("is_final")
+        .eq("course_pack_id", question.course_pack_id)
+        .ilike("file_name", `%${question.source_exam.split(" ").slice(-2).join(" ")}%`)
+        .maybeSingle();
+      isFinalExam = job?.is_final === true;
+    }
+
     if (questionError || !question) {
       console.error("Question not found:", questionError);
       return new Response(JSON.stringify({ error: "Question not found" }), {
@@ -103,10 +115,10 @@ serve(async (req) => {
       });
     }
 
-    // Get existing topics for mapping
+    // Get existing topics for mapping (include midterm_coverage for final exam questions)
     const { data: existingTopics } = await supabase
       .from("topics")
-      .select("id, title")
+      .select("id, title, midterm_coverage")
       .eq("course_pack_id", question.course_pack_id);
 
     const topicsList = existingTopics?.map((t) => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics defined yet";
@@ -352,12 +364,14 @@ Provide:
 - proTip (optional): 1 sentence shortcut (only at the end, non-spoiling)
 
 ========================
-TOPIC + TYPE MAPPING
+TOPIC + TYPE MAPPING (CRITICAL - FORCE BEST MATCH)
 ========================
-- topicIds must contain ONLY IDs from AVAILABLE TOPICS.
-- If none match, topicIds=[], and fill topicSuggestions with 1–3 concise names.
+- topicIds MUST contain at least one ID from AVAILABLE TOPICS.
+- ALWAYS select the best-matching topic(s) even if not a perfect match. Never leave topicIds empty.
+- If multiple topics are relevant, include all of them.
+- DO NOT suggest new topics - only use existing topic IDs.
 - questionType must match EXISTING QUESTION TYPES if possible.
-- If none match, questionType="Other" and provide questionTypeSuggestion.
+- If none match, questionType="Other".
 
 Now generate the analysis and return using analyze_question.`;
 
@@ -520,23 +534,14 @@ Now generate the analysis and return using analyze_question.`;
                           },
                         },
                       },
-                      topicSuggestions: {
+                      topicIds: {
                         type: "array",
                         items: { type: "string" },
-                        description: "Topic IDs or new topic names",
-                      },
-                      unmappedTopicSuggestions: {
-                        type: "array",
-                        items: { type: "string" },
-                        description: "New topic names if not in allowed list",
+                        description: "Topic IDs from AVAILABLE TOPICS list. MUST include at least one - always select best match.",
                       },
                       questionType: {
                         type: "string",
-                        description: "Question type/category",
-                      },
-                      isNewQuestionType: {
-                        type: "boolean",
-                        description: "True if this is a new question type",
+                        description: "Question type/category from EXISTING QUESTION TYPES or 'Other'",
                       },
                     },
                   },
@@ -600,8 +605,9 @@ Now generate the analysis and return using analyze_question.`;
 
     console.log("Analysis complete, updating question...");
 
-    // Map topics
-    const topicMap = new Map(existingTopics?.map((t) => [t.title.toLowerCase(), t.id]) || []);
+    // Build topic ID lookup map by title (for validation)
+    const topicIdSet = new Set(existingTopics?.map((t) => t.id) || []);
+    const topicMap = new Map(existingTopics?.map((t) => [t.id, t]) || []);
     const questionTypeMap = new Map(existingQuestionTypes?.map((qt) => [qt.name.toLowerCase(), qt.id]) || []);
 
     // Add aliases
@@ -613,25 +619,30 @@ Now generate the analysis and return using analyze_question.`;
       }
     });
 
+    // Validate topic IDs from analysis - only keep valid UUIDs that exist in our topics
     const mappedTopicIds: string[] = [];
-    const unmappedSuggestions: string[] = [];
+    for (const topicId of analysis.topicIds || []) {
+      if (topicId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i) && topicIdSet.has(topicId)) {
+        mappedTopicIds.push(topicId);
+      }
+    }
 
-    for (const suggestion of analysis.topicSuggestions || []) {
-      if (suggestion.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-        mappedTopicIds.push(suggestion);
-      } else {
-        const matchedId = topicMap.get(suggestion.toLowerCase());
-        if (matchedId) {
-          mappedTopicIds.push(matchedId);
-        } else {
-          unmappedSuggestions.push(suggestion);
-        }
+    // Determine midterm_number for final exam questions based on topic's midterm_coverage
+    let determinedMidtermNumber: number | null = question.midterm_number;
+    
+    if (isFinalExam && mappedTopicIds.length > 0) {
+      // For final exams, determine midterm_number from topic's midterm_coverage
+      // Use the first topic's midterm_coverage as the primary indicator
+      const primaryTopic = topicMap.get(mappedTopicIds[0]);
+      if (primaryTopic?.midterm_coverage) {
+        determinedMidtermNumber = primaryTopic.midterm_coverage;
+        console.log(`Final exam question mapped to midterm ${determinedMidtermNumber} based on topic: ${primaryTopic.title}`);
       }
     }
 
     // Handle question type
     let questionTypeId: string | null = null;
-    if (analysis.questionType) {
+    if (analysis.questionType && analysis.questionType !== "Other") {
       const matchedTypeId = questionTypeMap.get(analysis.questionType.toLowerCase());
       if (matchedTypeId) {
         questionTypeId = matchedTypeId;
@@ -667,7 +678,7 @@ Now generate the analysis and return using analyze_question.`;
       methodSummary: analysis.methodSummary || { bullets: [] },
     };
 
-    // Update the question
+    // Update the question (no more unmapped_topic_suggestions - always force best match)
     const { error: updateError } = await supabase
       .from("questions")
       .update({
@@ -677,9 +688,10 @@ Now generate the analysis and return using analyze_question.`;
         guide_me_steps: guideData,
         difficulty: analysis.difficulty || 3,
         topic_ids: mappedTopicIds,
-        unmapped_topic_suggestions: unmappedSuggestions.length > 0 ? unmappedSuggestions : null,
+        unmapped_topic_suggestions: null, // No more suggestions
         question_type_id: questionTypeId,
-        needs_review: mappedTopicIds.length === 0 || unmappedSuggestions.length > 0,
+        midterm_number: determinedMidtermNumber,
+        needs_review: mappedTopicIds.length === 0, // Only needs review if no topics mapped
       })
       .eq("id", questionId);
 
