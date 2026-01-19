@@ -437,12 +437,12 @@ function EditQuestionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] z-50">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[90vh] z-50 flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle>Edit Question #{question.question_order || 1}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[calc(90vh-8rem)] pr-4">
+        <ScrollArea className="flex-1 min-h-0 pr-4">
           <div className="space-y-4 py-4">
             {/* Prompt */}
             <div className="space-y-2">
@@ -565,7 +565,7 @@ function EditQuestionDialog({
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end gap-2 pt-4 border-t bg-background sticky bottom-0">
+        <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
