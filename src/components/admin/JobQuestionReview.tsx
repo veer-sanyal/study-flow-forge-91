@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
@@ -8,7 +9,8 @@ import {
   Check, 
   Loader2,
   AlertCircle,
-  CheckCircle2
+  CheckCircle2,
+  ExternalLink
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,12 +262,20 @@ export function JobQuestionReview({ jobId, coursePackId, questionsExtracted, isE
             className="overflow-hidden"
           >
             <div className="pt-3 space-y-3">
-              {/* Summary bar */}
-              <div className="flex items-center gap-3 text-xs text-muted-foreground px-1">
-                <span>{questions?.length || 0} total</span>
-                <span className="text-amber-600">{needsAnalysisCount} need analysis</span>
-                <span className="text-blue-600">{analyzedCount - approvedCount} ready to approve</span>
-                <span className="text-green-600">{approvedCount} approved</span>
+              {/* Summary bar with Review All button */}
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>{questions?.length || 0} total</span>
+                  <span className="text-amber-600">{needsAnalysisCount} need analysis</span>
+                  <span className="text-blue-600">{analyzedCount - approvedCount} ready to approve</span>
+                  <span className="text-green-600">{approvedCount} approved</span>
+                </div>
+                <Button variant="outline" size="sm" asChild className="gap-1 h-7 text-xs">
+                  <Link to={`/admin/ingestion/${jobId}`}>
+                    <ExternalLink className="h-3 w-3" />
+                    Review All
+                  </Link>
+                </Button>
               </div>
 
               {isLoading ? (
