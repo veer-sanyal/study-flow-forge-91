@@ -165,6 +165,26 @@ export function usePublishExam() {
   });
 }
 
+export function usePublishCourse() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ courseId, isPublished }: { courseId: string; isPublished: boolean }) => {
+      // Cast to any to handle new column before types are regenerated
+      const { error } = await supabase
+        .from("course_packs")
+        .update({ is_published: isPublished } as any)
+        .eq("id", courseId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["courses-with-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["course_packs"] });
+    },
+  });
+}
+
 export function useIngestionJob(jobId: string) {
   return useQuery({
     queryKey: ["ingestion-job", jobId],
