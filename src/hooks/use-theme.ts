@@ -1,4 +1,5 @@
-import { useState, useEffect, useSyncExternalStore } from "react";
+import { useEffect, useSyncExternalStore, useCallback } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 type Theme = "light" | "dark";
 
@@ -31,6 +32,21 @@ function notifyListeners() {
   listeners.forEach(listener => listener());
 }
 
+// Update theme in database for logged-in users
+async function updateThemeInDatabase(newTheme: Theme) {
+  try {
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      await supabase
+        .from('user_settings')
+        .update({ theme: newTheme })
+        .eq('user_id', user.id);
+    }
+  } catch (error) {
+    console.error('Failed to update theme in database:', error);
+  }
+}
+
 export function useTheme() {
   const theme = useSyncExternalStore(subscribe, getTheme, () => "light" as Theme);
 
@@ -40,14 +56,16 @@ export function useTheme() {
     root.classList.add(theme);
   }, [theme]);
 
-  const setTheme = (newTheme: Theme) => {
+  const setTheme = useCallback((newTheme: Theme) => {
     localStorage.setItem("theme", newTheme);
     // Apply immediately
     document.documentElement.classList.remove("light", "dark");
     document.documentElement.classList.add(newTheme);
     // Notify all instances
     notifyListeners();
-  };
+    // Also update database for logged-in users
+    updateThemeInDatabase(newTheme);
+  }, []);
 
   return { theme, setTheme };
 }

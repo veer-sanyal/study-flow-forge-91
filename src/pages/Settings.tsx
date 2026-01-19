@@ -68,7 +68,7 @@ export default function Settings() {
   const handleThemeChange = (isDark: boolean) => {
     const newTheme = isDark ? 'dark' : 'light';
     setTheme(newTheme);
-    updateSettings({ theme: newTheme });
+    // Note: useTheme now handles database sync automatically
   };
 
   const handleReducedMotionChange = (enabled: boolean) => {
