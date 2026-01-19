@@ -9,6 +9,29 @@ export interface ParsedExamInfo {
 }
 
 /**
+ * Exam period values for corresponds_to_exam field
+ */
+export type ExamPeriod = "midterm_1" | "midterm_2" | "midterm_3" | "final";
+
+export interface SemesterGroup {
+  semester: "Spring" | "Summer" | "Fall" | "Winter";
+  exams: ExamInfo[];
+}
+
+export interface YearGroup {
+  year: string;
+  semesters: SemesterGroup[];
+}
+
+export interface ExamInfo {
+  sourceExam: string;
+  parsed: ParsedExamInfo;
+  questionCount: number;
+  needsReviewCount: number;
+  midtermNumber: number | null;
+}
+
+/**
  * Parse exam source name to extract year, semester, and exam type
  * Examples:
  * - "Fall 2023 Midterm 1" → { year: 2023, semester: "Fall", examType: "Midterm", midtermNumber: 1 }
@@ -53,17 +76,17 @@ export function parseExamName(sourceExam: string): ParsedExamInfo {
     result.examType = "Exam";
   }
 
-  // Extract midterm number from patterns like "Midterm 1", "Midterm 2", etc.
-  const midtermMatch = sourceExam.match(/midterm\s*(\d)/i);
-  if (midtermMatch) {
-    result.midtermNumber = parseInt(midtermMatch[1], 10);
+  // Extract midterm number from patterns like "Midterm 1", "Midterm 2", "Exam 1", "Exam 2" etc.
+  const examNumberMatch = sourceExam.match(/(?:midterm|exam)\s*(\d)/i);
+  if (examNumberMatch) {
+    result.midtermNumber = parseInt(examNumberMatch[1], 10);
   }
 
   return result;
 }
 
 /**
- * Sort exams by year (descending), then by semester order, then by midterm number
+ * Sort exams by year (descending), then by semester order, then by exam type, then by midterm number
  */
 export function sortExams(a: ParsedExamInfo, b: ParsedExamInfo): number {
   // Sort by year descending (newest first)
@@ -84,8 +107,38 @@ export function sortExams(a: ParsedExamInfo, b: ParsedExamInfo): number {
     return aSemOrder - bSemOrder;
   }
 
+  // Sort by exam type (Midterm before Final)
+  const examTypeOrder: Record<string, number> = {
+    Midterm: 1,
+    Exam: 2,
+    Quiz: 3,
+    Final: 4,
+  };
+  const aExamOrder = a.examType ? examTypeOrder[a.examType] : 5;
+  const bExamOrder = b.examType ? examTypeOrder[b.examType] : 5;
+  if (aExamOrder !== bExamOrder) {
+    return aExamOrder - bExamOrder;
+  }
+
   // Sort by midterm number ascending
   return (a.midtermNumber || 0) - (b.midtermNumber || 0);
+}
+
+/**
+ * Get short exam label (just exam type without semester/year)
+ * Examples: "Midterm 1", "Midterm 2", "Final"
+ */
+export function getShortExamLabel(parsed: ParsedExamInfo): string {
+  if (parsed.examType === "Midterm" && parsed.midtermNumber) {
+    return `Midterm ${parsed.midtermNumber}`;
+  }
+  if (parsed.examType === "Exam" && parsed.midtermNumber) {
+    return `Exam ${parsed.midtermNumber}`;
+  }
+  if (parsed.examType) {
+    return parsed.examType;
+  }
+  return parsed.originalName;
 }
 
 /**
@@ -112,6 +165,64 @@ export function getExamDisplayLabel(parsed: ParsedExamInfo): string {
  */
 export function getYearGroupKey(parsed: ParsedExamInfo): string {
   return parsed.year?.toString() || "Unknown Year";
+}
+
+/**
+ * Group exams by year, then by semester
+ */
+export function groupExamsByYearAndSemester(exams: ExamInfo[]): YearGroup[] {
+  // First sort all exams
+  const sortedExams = [...exams].sort((a, b) => sortExams(a.parsed, b.parsed));
+
+  // Group by year
+  const yearMap = new Map<string, Map<string, ExamInfo[]>>();
+  
+  for (const exam of sortedExams) {
+    const yearKey = exam.parsed.year?.toString() || "Unknown Year";
+    const semesterKey = exam.parsed.semester || "Unknown";
+    
+    if (!yearMap.has(yearKey)) {
+      yearMap.set(yearKey, new Map());
+    }
+    const semesterMap = yearMap.get(yearKey)!;
+    
+    if (!semesterMap.has(semesterKey)) {
+      semesterMap.set(semesterKey, []);
+    }
+    semesterMap.get(semesterKey)!.push(exam);
+  }
+
+  // Convert to array structure
+  const semesterOrder = ["Spring", "Summer", "Fall", "Winter", "Unknown"];
+  const yearGroups: YearGroup[] = [];
+  
+  // Sort years descending
+  const sortedYears = Array.from(yearMap.keys()).sort((a, b) => {
+    const aNum = parseInt(a) || 0;
+    const bNum = parseInt(b) || 0;
+    return bNum - aNum;
+  });
+
+  for (const year of sortedYears) {
+    const semesterMap = yearMap.get(year)!;
+    const semesters: SemesterGroup[] = [];
+    
+    // Sort semesters
+    const sortedSemesters = Array.from(semesterMap.keys()).sort((a, b) => {
+      return semesterOrder.indexOf(a) - semesterOrder.indexOf(b);
+    });
+
+    for (const semester of sortedSemesters) {
+      semesters.push({
+        semester: semester as SemesterGroup["semester"],
+        exams: semesterMap.get(semester)!,
+      });
+    }
+
+    yearGroups.push({ year, semesters });
+  }
+
+  return yearGroups;
 }
 
 /**

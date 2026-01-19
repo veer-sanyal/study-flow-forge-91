@@ -297,6 +297,7 @@ export type Database = {
         Row: {
           choices: Json | null
           correct_answer: string | null
+          corresponds_to_exam: string | null
           course_pack_id: string | null
           created_at: string
           difficulty: number | null
@@ -318,6 +319,7 @@ export type Database = {
         Insert: {
           choices?: Json | null
           correct_answer?: string | null
+          corresponds_to_exam?: string | null
           course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
@@ -339,6 +341,7 @@ export type Database = {
         Update: {
           choices?: Json | null
           correct_answer?: string | null
+          corresponds_to_exam?: string | null
           course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
