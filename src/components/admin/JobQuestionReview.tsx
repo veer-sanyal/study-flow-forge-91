@@ -51,8 +51,9 @@ function useQuestionsForJob(coursePackId: string | null, jobId: string | null) {
     queryFn: async () => {
       if (!coursePackId) return [];
       
-      // Get questions for this course pack that need review
-      // This includes all recently extracted questions
+      console.log("Fetching questions for course pack:", coursePackId);
+      
+      // Get questions for this course pack
       const { data, error } = await supabase
         .from("questions")
         .select("id, prompt, choices, correct_answer, needs_review, guide_me_steps, question_order, difficulty, hint, topic_ids, question_type_id, source_exam")
@@ -60,7 +61,12 @@ function useQuestionsForJob(coursePackId: string | null, jobId: string | null) {
         .order("source_exam", { ascending: false })
         .order("question_order", { ascending: true });
 
-      if (error) throw error;
+      if (error) {
+        console.error("Error fetching questions:", error);
+        throw error;
+      }
+      
+      console.log("Fetched questions:", data?.length);
       return data as unknown as (Question & { source_exam: string | null })[];
     },
     enabled: !!coursePackId,
