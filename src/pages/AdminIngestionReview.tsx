@@ -437,12 +437,12 @@ function EditQuestionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] z-50 flex flex-col">
+      <DialogContent className="max-w-2xl max-h-[90vh] z-50 flex flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>Edit Question #{question.question_order || 1}</DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 min-h-0 pr-4">
+        <ScrollArea className="flex-1 overflow-auto pr-4">
           <div className="space-y-4 py-4">
             {/* Prompt */}
             <div className="space-y-2">
