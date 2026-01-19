@@ -21,10 +21,10 @@ serve(async (req) => {
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-    if (!lovableApiKey) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -133,71 +133,70 @@ ${topicList}
 
 Be thorough - extract every DISTINCT topic from the calendar, splitting multi-topic entries into individual topics.`;
 
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const userPrompt = systemPrompt + "\n\nExtract all DISTINCT TOPICS from this course schedule image. For each topic, identify the EXACT date it is covered. If a single row contains multiple topics, create separate entries for each. Skip recitations, reviews, lectures (extract only the topics from them). Format each topic as 'SECTION#: Topic Name'. Return the structured data using the extract_calendar_events tool.";
+
+    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=" + GEMINI_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${lovableApiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: [
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:${mimeType};base64,${base64Image}`,
-                },
-              },
-              {
-                type: "text",
-                text: "Extract all DISTINCT TOPICS from this course schedule image. For each topic, identify the EXACT date it is covered. If a single row contains multiple topics, create separate entries for each. Skip recitations, reviews, lectures (extract only the topics from them). Format each topic as 'SECTION#: Topic Name'. Return the structured data using the extract_calendar_events tool.",
-              },
-            ],
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_calendar_events",
-              description: "Extract distinct topics and exam events from the course schedule. Each topic should be a separate entry even if multiple topics are on the same calendar line.",
-              parameters: {
-                type: "object",
-                properties: {
-                  events: {
-                    type: "array",
-                    description: "Array of distinct topics and exams. If a single calendar row has multiple topics, create separate entries for each.",
-                    items: {
-                      type: "object",
-                      properties: {
-                        week_number: { type: "integer", description: "Week number (1, 2, 3, etc.)" },
-                        day_of_week: { type: "string", enum: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] },
-                        event_date: { type: "string", description: "EXACT date in YYYY-MM-DD format. This is REQUIRED for topics." },
-                        event_type: { 
-                          type: "string", 
-                          enum: ["topic", "exam", "quiz"],
-                          description: "Use 'topic' for academic content, 'exam' for midterms/finals, 'quiz' for quizzes. Do NOT use 'lesson', 'recitation', 'review', etc."
-                        },
-                        title: { 
-                          type: "string", 
-                          description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')." 
-                        },
-                        description: { type: "string", description: "Additional details or context" },
-                      },
-                      required: ["week_number", "event_type", "title", "event_date"],
-                    },
-                  },
-                },
-                required: ["events"],
+        contents: [{
+          role: "user",
+          parts: [
+            {
+              inlineData: {
+                mimeType: mimeType,
+                data: base64Image,
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_calendar_events" } },
+            { text: userPrompt },
+          ],
+        }],
+        tools: [{
+          functionDeclarations: [{
+            name: "extract_calendar_events",
+            description: "Extract distinct topics and exam events from the course schedule. Each topic should be a separate entry even if multiple topics are on the same calendar line.",
+            parameters: {
+              type: "object",
+              properties: {
+                events: {
+                  type: "array",
+                  description: "Array of distinct topics and exams. If a single calendar row has multiple topics, create separate entries for each.",
+                  items: {
+                    type: "object",
+                    properties: {
+                      week_number: { type: "integer", description: "Week number (1, 2, 3, etc.)" },
+                      day_of_week: { type: "string", enum: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] },
+                      event_date: { type: "string", description: "EXACT date in YYYY-MM-DD format. This is REQUIRED for topics." },
+                      event_type: { 
+                        type: "string", 
+                        enum: ["topic", "exam", "quiz"],
+                        description: "Use 'topic' for academic content, 'exam' for midterms/finals, 'quiz' for quizzes. Do NOT use 'lesson', 'recitation', 'review', etc."
+                      },
+                      title: { 
+                        type: "string", 
+                        description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')." 
+                      },
+                      description: { type: "string", description: "Additional details or context" },
+                    },
+                    required: ["week_number", "event_type", "title", "event_date"],
+                  },
+                },
+              },
+              required: ["events"],
+            },
+          }]
+        }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: "ANY",
+            allowedFunctionNames: ["extract_calendar_events"]
+          }
+        },
+        generationConfig: {
+          temperature: 0.2
+        }
       }),
     });
 
@@ -226,14 +225,14 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
       })
       .eq("id", jobId);
 
-    // Parse the tool call response
-    const toolCall = aiResult.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall || toolCall.function.name !== "extract_calendar_events") {
-      throw new Error("AI did not return expected tool call");
+    // Parse Gemini native API response format
+    const functionCall = aiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    if (!functionCall || functionCall.name !== "extract_calendar_events") {
+      throw new Error("AI did not return expected function call");
     }
 
-    const extractedData = JSON.parse(toolCall.function.arguments);
-    const events = extractedData.events || [];
+    const extractedData = functionCall.args;
+    const events = extractedData?.events || [];
     console.log(`Extracted ${events.length} calendar events`);
 
     // Update progress

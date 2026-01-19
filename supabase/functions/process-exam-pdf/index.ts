@@ -26,10 +26,10 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     // Get authorization header to verify admin
@@ -140,74 +140,75 @@ IMPORTANT RULES:
 
 Return your response using the extract_questions function.`;
 
-    const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const geminiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=" + GEMINI_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: [
-              { type: "text", text: extractionPrompt },
-              {
-                type: "image_url",
-                image_url: {
-                  url: `data:application/pdf;base64,${base64Pdf}`,
-                },
+        contents: [{
+          role: "user",
+          parts: [
+            { text: extractionPrompt },
+            {
+              inlineData: {
+                mimeType: "application/pdf",
+                data: base64Pdf,
               },
-            ],
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "extract_questions",
-              description: "Extract questions from an exam PDF",
-              parameters: {
-                type: "object",
-                properties: {
-                  sourceExam: {
-                    type: "string",
-                    description: "Name of the exam (e.g., 'Fall 2023 Midterm 1')",
-                  },
-                  midtermNumber: {
-                    type: "number",
-                    description: "The midterm number (1, 2, or 3) if identifiable",
-                  },
-                  questions: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        prompt: { type: "string", description: "The question text with LaTeX math notation" },
-                        choices: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            properties: {
-                              id: { type: "string", description: "Choice letter (a, b, c, d, e)" },
-                              text: { type: "string", description: "Choice text" },
-                            },
+            },
+          ],
+        }],
+        tools: [{
+          functionDeclarations: [{
+            name: "extract_questions",
+            description: "Extract questions from an exam PDF",
+            parameters: {
+              type: "object",
+              properties: {
+                sourceExam: {
+                  type: "string",
+                  description: "Name of the exam (e.g., 'Fall 2023 Midterm 1')",
+                },
+                midtermNumber: {
+                  type: "number",
+                  description: "The midterm number (1, 2, or 3) if identifiable",
+                },
+                questions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      prompt: { type: "string", description: "The question text with LaTeX math notation" },
+                      choices: {
+                        type: "array",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string", description: "Choice letter (a, b, c, d, e)" },
+                            text: { type: "string", description: "Choice text" },
                           },
                         },
-                        questionOrder: {
-                          type: "number",
-                          description: "The order of this question in the exam",
-                        },
+                      },
+                      questionOrder: {
+                        type: "number",
+                        description: "The order of this question in the exam",
                       },
                     },
                   },
                 },
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "extract_questions" } },
+          }]
+        }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: "ANY",
+            allowedFunctionNames: ["extract_questions"]
+          }
+        },
+        generationConfig: {
+          temperature: 0.2
+        }
       }),
     });
 
@@ -252,11 +253,12 @@ Return your response using the extract_questions function.`;
     };
     
     try {
-      const toolCall = geminiResult.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        extractedData = JSON.parse(toolCall.function.arguments);
+      // Parse Gemini native API response format
+      const functionCall = geminiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+      if (functionCall?.name === "extract_questions" && functionCall?.args) {
+        extractedData = functionCall.args as { sourceExam: string; midtermNumber?: number; questions: ExtractedQuestion[] };
       } else {
-        console.error("No tool call found in response:", JSON.stringify(geminiResult));
+        console.error("No function call found in response:", JSON.stringify(geminiResult));
       }
     } catch (parseError) {
       console.error("Failed to parse Gemini response:", parseError);

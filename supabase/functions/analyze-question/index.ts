@@ -61,10 +61,10 @@ serve(async (req) => {
   try {
     const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
     const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
+    const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
-    if (!LOVABLE_API_KEY) {
-      throw new Error("LOVABLE_API_KEY is not configured");
+    if (!GEMINI_API_KEY) {
+      throw new Error("GEMINI_API_KEY is not configured");
     }
 
     const authHeader = req.headers.get("authorization");
@@ -242,139 +242,135 @@ Return your response using the analyze_question function.`;
 
     console.log("Calling Gemini for analysis...");
 
-    const geminiResponse = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const geminiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=" + GEMINI_API_KEY, {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-flash",
-        messages: [
-          {
-            role: "user",
-            content: analysisPrompt,
-          },
-        ],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "analyze_question",
-              description: "Provide complete analysis with enhanced Guide Me scaffold",
-              parameters: {
-                type: "object",
-                required: ["correctAnswer", "difficulty", "detailedSolution", "guideMeSteps", "methodSummary", "topicSuggestions", "questionType"],
-                properties: {
-                  correctAnswer: { 
-                    type: "string", 
-                    description: "The correct choice letter (a, b, c, d, or e)" 
-                  },
-                  difficulty: { 
-                    type: "number", 
-                    description: "Difficulty 1-5" 
-                  },
-                  detailedSolution: {
-                    type: "string", 
-                    description: "Formatted solution with **bold headers**, display math $$equation$$, and **Conclusion**" 
-                  },
-                  guideMeSteps: {
-                    type: "array",
-                    description: "REQUIRED: 3-6 scaffolded steps teaching transferable reasoning. MUST have at least 3 steps.",
-                    minItems: 3,
-                    items: {
-                      type: "object",
-                      required: ["stepNumber", "stepTitle", "microGoal", "prompt", "choices", "hints", "explanation", "keyTakeaway"],
-                      properties: {
-                        stepNumber: { type: "number", description: "Step number starting from 1" },
-                        stepTitle: { type: "string", description: "Skill name (e.g., 'Identify the center from standard form')" },
-                        microGoal: { type: "string", description: "What student will learn in this step" },
-                        prompt: { type: "string", description: "Short Socratic question (answerable in <20 seconds)" },
-                        choices: {
-                          type: "array",
-                          minItems: 4,
-                          maxItems: 4,
-                          description: "Exactly 4 MC options (a-d) with misconception-based distractors",
-                          items: {
-                            type: "object",
-                            required: ["id", "text", "isCorrect"],
-                            properties: {
-                              id: { type: "string", description: "Choice letter: a, b, c, or d" },
-                              text: { type: "string", description: "Choice text with LaTeX if needed" },
-                              isCorrect: { type: "boolean", description: "True for the correct choice only" }
-                            }
-                          }
-                        },
-                        choiceFeedback: {
-                          type: "array",
-                          description: "Feedback for each choice explaining why right/wrong",
-                          items: {
-                            type: "object",
-                            properties: {
-                              choiceId: { type: "string" },
-                              feedback: { type: "string" }
-                            }
-                          }
-                        },
-                        hints: {
-                          type: "array",
-                          minItems: 3,
-                          maxItems: 3,
-                          description: "Exactly 3 escalating hints: Tier 1 (definition) → Tier 2 (math setup) → Tier 3 (one algebra step)",
-                          items: {
-                            type: "object",
-                            required: ["tier", "text"],
-                            properties: {
-                              tier: { type: "number", description: "1, 2, or 3" },
-                              text: { type: "string", description: "Hint text with LaTeX if needed" }
-                            }
-                          }
-                        },
-                        explanation: { type: "string", description: "Full explanation after answering (sentence + math block + interpretation)" },
-                        keyTakeaway: { type: "string", description: "ONE general rule reusable on similar problems" },
-                        isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" }
-                      }
-                    }
-                  },
-                  methodSummary: {
+        contents: [{
+          role: "user",
+          parts: [{ text: analysisPrompt }]
+        }],
+        tools: [{
+          functionDeclarations: [{
+            name: "analyze_question",
+            description: "Provide complete analysis with enhanced Guide Me scaffold",
+            parameters: {
+              type: "object",
+              required: ["correctAnswer", "difficulty", "detailedSolution", "guideMeSteps", "methodSummary", "topicSuggestions", "questionType"],
+              properties: {
+                correctAnswer: { 
+                  type: "string", 
+                  description: "The correct choice letter (a, b, c, d, or e)" 
+                },
+                difficulty: { 
+                  type: "number", 
+                  description: "Difficulty 1-5" 
+                },
+                detailedSolution: {
+                  type: "string", 
+                  description: "Formatted solution with **bold headers**, display math $$equation$$, and **Conclusion**" 
+                },
+                guideMeSteps: {
+                  type: "array",
+                  description: "REQUIRED: 3-6 scaffolded steps teaching transferable reasoning. MUST have at least 3 steps.",
+                  items: {
                     type: "object",
-                    description: "3-bullet method summary and optional pro tip",
+                    required: ["stepNumber", "stepTitle", "microGoal", "prompt", "choices", "hints", "explanation", "keyTakeaway"],
                     properties: {
-                      bullets: {
+                      stepNumber: { type: "number", description: "Step number starting from 1" },
+                      stepTitle: { type: "string", description: "Skill name (e.g., 'Identify the center from standard form')" },
+                      microGoal: { type: "string", description: "What student will learn in this step" },
+                      prompt: { type: "string", description: "Short Socratic question (answerable in <20 seconds)" },
+                      choices: {
                         type: "array",
-                        items: { type: "string" },
-                        description: "3 key method steps for similar problems"
+                        description: "Exactly 4 MC options (a-d) with misconception-based distractors",
+                        items: {
+                          type: "object",
+                          required: ["id", "text", "isCorrect"],
+                          properties: {
+                            id: { type: "string", description: "Choice letter: a, b, c, or d" },
+                            text: { type: "string", description: "Choice text with LaTeX if needed" },
+                            isCorrect: { type: "boolean", description: "True for the correct choice only" }
+                          }
+                        }
                       },
-                      proTip: {
-                        type: "string",
-                        description: "Optional conceptual shortcut"
-                      }
+                      choiceFeedback: {
+                        type: "array",
+                        description: "Feedback for each choice explaining why right/wrong",
+                        items: {
+                          type: "object",
+                          properties: {
+                            choiceId: { type: "string" },
+                            feedback: { type: "string" }
+                          }
+                        }
+                      },
+                      hints: {
+                        type: "array",
+                        description: "Exactly 3 escalating hints: Tier 1 (definition) → Tier 2 (math setup) → Tier 3 (one algebra step)",
+                        items: {
+                          type: "object",
+                          required: ["tier", "text"],
+                          properties: {
+                            tier: { type: "number", description: "1, 2, or 3" },
+                            text: { type: "string", description: "Hint text with LaTeX if needed" }
+                          }
+                        }
+                      },
+                      explanation: { type: "string", description: "Full explanation after answering (sentence + math block + interpretation)" },
+                      keyTakeaway: { type: "string", description: "ONE general rule reusable on similar problems" },
+                      isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" }
                     }
-                  },
-                  topicSuggestions: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "Topic IDs or new topic names"
-                  },
-                  unmappedTopicSuggestions: {
-                    type: "array",
-                    items: { type: "string" },
-                    description: "New topic names if not in allowed list"
-                  },
-                  questionType: {
-                    type: "string",
-                    description: "Question type/category"
-                  },
-                  isNewQuestionType: {
-                    type: "boolean",
-                    description: "True if this is a new question type"
-                  },
+                  }
+                },
+                methodSummary: {
+                  type: "object",
+                  description: "3-bullet method summary and optional pro tip",
+                  properties: {
+                    bullets: {
+                      type: "array",
+                      items: { type: "string" },
+                      description: "3 key method steps for similar problems"
+                    },
+                    proTip: {
+                      type: "string",
+                      description: "Optional conceptual shortcut"
+                    }
+                  }
+                },
+                topicSuggestions: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "Topic IDs or new topic names"
+                },
+                unmappedTopicSuggestions: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "New topic names if not in allowed list"
+                },
+                questionType: {
+                  type: "string",
+                  description: "Question type/category"
+                },
+                isNewQuestionType: {
+                  type: "boolean",
+                  description: "True if this is a new question type"
                 },
               },
             },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "analyze_question" } },
+          }]
+        }],
+        toolConfig: {
+          functionCallingConfig: {
+            mode: "ANY",
+            allowedFunctionNames: ["analyze_question"]
+          }
+        },
+        generationConfig: {
+          temperature: 0.2
+        }
       }),
     });
 
@@ -398,15 +394,15 @@ Return your response using the analyze_question function.`;
     const geminiResult = await geminiResponse.json();
     console.log("Gemini analysis received");
 
-    // Parse the tool call response
+    // Parse the function call response from Gemini native API
     let analysis: AnalysisResult | null = null;
     
     try {
-      const toolCall = geminiResult.choices?.[0]?.message?.tool_calls?.[0];
-      if (toolCall?.function?.arguments) {
-        analysis = JSON.parse(toolCall.function.arguments);
+      const functionCall = geminiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+      if (functionCall?.name === "analyze_question" && functionCall?.args) {
+        analysis = functionCall.args as AnalysisResult;
       } else {
-        console.error("No tool call found:", JSON.stringify(geminiResult));
+        console.error("No function call found:", JSON.stringify(geminiResult));
       }
     } catch (parseError) {
       console.error("Failed to parse Gemini response:", parseError);
