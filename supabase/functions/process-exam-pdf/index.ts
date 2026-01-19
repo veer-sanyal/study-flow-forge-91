@@ -126,13 +126,27 @@ serve(async (req) => {
     
     const extractionPrompt = `You are an expert at extracting exam questions from PDF documents.
 
-Analyze this exam PDF and extract ALL questions with ONLY the following information:
-1. The question prompt (preserve any mathematical notation using LaTeX)
-2. Multiple choice options if present (just the choice letters/numbers and text, do NOT determine which is correct yet)
-3. The order in which the question appears in the exam
+When extracting a question from a PDF, preserve visual layout.
 
-IMPORTANT RULES:
-- Preserve all mathematical notation using LaTeX format (e.g., \\frac{a}{b}, \\sqrt{x})
+Return JSON with:
+- number (if present)
+- stem_blocks: ordered list of blocks with type "text" or "display_math"
+- choices: label + latex
+
+Layout rules:
+1) If a line is mostly mathematical or visually centered, output it as a separate "display_math" block.
+2) Surrounding narrative must remain in "text" blocks (do NOT wrap full sentences in LaTeX).
+3) Preserve line breaks exactly as the PDF's intent: narrative line(s) → centered equation line → narrative continuation.
+
+LaTeX normalization:
+- Use \\frac for all fractions, \\sqrt for radicals, \\le for inequalities, \\pi for pi.
+- Use \\quad for spacing in display lines.
+- Use \\left( ... \\right) for grouped numerators like \\pi(2\\sqrt{2}-1).
+- Keep punctuation (comma/period) exactly as shown (inside the relevant block).
+
+Output must be directly renderable in KaTeX/MathJax with no extra commentary.
+
+ADDITIONAL RULES:
 - Number questions in the order they appear (questionOrder: 1, 2, 3, etc.)
 - Extract the source exam name from the document header if visible
 - DO NOT try to determine which answer is correct - that will be done in a separate step

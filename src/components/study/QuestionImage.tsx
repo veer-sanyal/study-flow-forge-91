@@ -29,10 +29,10 @@ export function QuestionImage({
 
   return (
     <div 
-      className={`aspect-square w-full max-w-md mx-auto flex items-center justify-center overflow-hidden ${className}`}
+      className={`aspect-square w-full max-w-md mx-auto flex items-center justify-center relative ${className}`}
     >
       {(isProcessing || isLoading) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-muted/50 backdrop-blur-sm">
+        <div className="absolute inset-0 flex items-center justify-center">
           <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
         </div>
       )}
