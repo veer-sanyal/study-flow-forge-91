@@ -14,13 +14,12 @@ import {
   BookOpen,
   Target,
   Sparkles,
-  AlertTriangle,
-  RefreshCw
+  AlertTriangle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
-import { GuideStep, GuideMe, MethodSummary, MiniVariant } from "@/types/guide";
+import { GuideStep, GuideMe, MethodSummary } from "@/types/guide";
 
 interface GuideMeDrawerProps {
   open: boolean;
@@ -33,7 +32,6 @@ interface GuideMeDrawerProps {
 function normalizeGuideData(data: GuideStep[] | GuideMe): {
   steps: GuideStep[];
   methodSummary?: MethodSummary;
-  miniVariant?: MiniVariant;
 } {
   if (Array.isArray(data)) {
     return { steps: data };
@@ -41,7 +39,6 @@ function normalizeGuideData(data: GuideStep[] | GuideMe): {
   return {
     steps: data.steps || [],
     methodSummary: data.methodSummary,
-    miniVariant: data.miniVariant,
   };
 }
 
@@ -58,10 +55,8 @@ export function GuideMeDrawer({
   const [hintsRevealed, setHintsRevealed] = useState<number>(0);
   const [stepsCompleted, setStepsCompleted] = useState<Set<number>>(new Set());
   const [showSummary, setShowSummary] = useState(false);
-  const [showMiniVariant, setShowMiniVariant] = useState(false);
-  const [miniVariantRevealed, setMiniVariantRevealed] = useState(false);
 
-  const { steps, methodSummary, miniVariant } = useMemo(() => normalizeGuideData(rawSteps), [rawSteps]);
+  const { steps, methodSummary } = useMemo(() => normalizeGuideData(rawSteps), [rawSteps]);
   
   const currentStep = steps[currentStepIndex];
   const progress = steps.length > 0 ? ((currentStepIndex + (isSubmitted ? 1 : 0)) / steps.length) * 100 : 0;
@@ -98,8 +93,6 @@ export function GuideMeDrawer({
         resetStep();
         setStepsCompleted(new Set());
         setShowSummary(false);
-        setShowMiniVariant(false);
-        setMiniVariantRevealed(false);
       }
     } else {
       setCurrentStepIndex(prev => prev + 1);
@@ -114,8 +107,6 @@ export function GuideMeDrawer({
     resetStep();
     setStepsCompleted(new Set());
     setShowSummary(false);
-    setShowMiniVariant(false);
-    setMiniVariantRevealed(false);
   }, [onComplete, onOpenChange, resetStep]);
 
   const handleRevealHint = useCallback(() => {
@@ -130,8 +121,6 @@ export function GuideMeDrawer({
     resetStep();
     setStepsCompleted(new Set());
     setShowSummary(false);
-    setShowMiniVariant(false);
-    setMiniVariantRevealed(false);
   }, [onOpenChange, resetStep]);
 
   if (steps.length === 0) {
@@ -201,52 +190,6 @@ export function GuideMeDrawer({
               </motion.div>
             )}
 
-            {/* Mini variant section */}
-            {miniVariant && !showMiniVariant && (
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={() => setShowMiniVariant(true)}
-              >
-                <RefreshCw className="h-4 w-4" />
-                Try a Practice Variant
-              </Button>
-            )}
-
-            {showMiniVariant && miniVariant && (
-              <motion.div
-                initial={prefersReducedMotion ? {} : { opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="p-4 rounded-lg bg-muted/50 space-y-3"
-              >
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <RefreshCw className="h-4 w-4 text-primary" />
-                  Practice Variant
-                </h3>
-                <div className="text-sm">
-                  <MathRenderer content={miniVariant.prompt} />
-                </div>
-                
-                {!miniVariantRevealed ? (
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => setMiniVariantRevealed(true)}
-                  >
-                    Show Answer
-                  </Button>
-                ) : (
-                  <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                    <p className="text-sm font-medium text-green-700 dark:text-green-300 mb-1">
-                      Answer:
-                    </p>
-                    <div className="text-sm">
-                      <MathRenderer content={miniVariant.answer} />
-                    </div>
-                  </div>
-                )}
-              </motion.div>
-            )}
 
             {/* Finish button */}
             <Button className="w-full gap-2" onClick={handleFinish}>

@@ -567,35 +567,32 @@ function QuestionCard({
           {(() => {
             // Handle both old format (array) and new format (object with steps property)
             const getGuideData = (guideMeSteps: Json | null) => {
-              if (!guideMeSteps) return { steps: [], methodSummary: null, miniVariant: null };
-              if (Array.isArray(guideMeSteps)) return { steps: guideMeSteps, methodSummary: null, miniVariant: null };
+              if (!guideMeSteps) return { steps: [], methodSummary: null };
+              if (Array.isArray(guideMeSteps)) return { steps: guideMeSteps, methodSummary: null };
               if (typeof guideMeSteps === 'object') {
                 const data = guideMeSteps as { 
                   steps?: unknown[]; 
                   methodSummary?: { bullets?: string[]; proTip?: string };
-                  miniVariant?: { prompt?: string; answer?: string };
                 };
                 return { 
                   steps: data.steps || [], 
                   methodSummary: data.methodSummary || null,
-                  miniVariant: data.miniVariant || null 
                 };
               }
-              return { steps: [], methodSummary: null, miniVariant: null };
+              return { steps: [], methodSummary: null };
             };
             
             const guideData = getGuideData(question.guide_me_steps);
             const hasSteps = guideData.steps.length > 0;
             const hasSummary = guideData.methodSummary?.bullets?.length;
-            const hasMiniVariant = guideData.miniVariant?.prompt;
             
-            if (!hasSteps && !hasSummary && !hasMiniVariant) return null;
+            if (!hasSteps && !hasSummary) return null;
             
             return (
               <details className="pt-2 border-t">
                 <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium flex items-center gap-2">
                   <Wand2 className="h-4 w-4" />
-                  View Guide Me ({guideData.steps.length} steps{hasSummary ? ' + Summary' : ''}{hasMiniVariant ? ' + Variant' : ''})
+                  View Guide Me ({guideData.steps.length} steps{hasSummary ? ' + Summary' : ''})
                 </summary>
                 <div className="mt-3 space-y-4">
                   {/* Steps */}
@@ -638,28 +635,6 @@ function QuestionCard({
                     </div>
                   )}
                   
-                  {/* Mini Variant */}
-                  {guideData.miniVariant?.prompt && (
-                    <div className="rounded-lg border bg-blue-500/5 p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <FileText className="h-4 w-4 text-blue-500" />
-                        <span className="font-medium text-sm">Practice Variant</span>
-                      </div>
-                      <div className="prose prose-sm dark:prose-invert">
-                        <MathRenderer content={guideData.miniVariant.prompt} />
-                      </div>
-                      {guideData.miniVariant.answer && (
-                        <details className="mt-2">
-                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
-                            Show Answer
-                          </summary>
-                          <div className="mt-2 p-2 rounded bg-blue-500/10 border border-blue-500/20 text-sm prose prose-sm dark:prose-invert">
-                            <MathRenderer content={guideData.miniVariant.answer} />
-                          </div>
-                        </details>
-                      )}
-                    </div>
-                  )}
                 </div>
               </details>
             );

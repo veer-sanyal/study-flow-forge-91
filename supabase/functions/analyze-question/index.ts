@@ -40,10 +40,7 @@ interface MethodSummary {
   proTip?: string;
 }
 
-interface MiniVariant {
-  prompt: string;
-  answer: string;
-}
+// MiniVariant removed - not needed for question analysis
 
 interface AnalysisResult {
   correctAnswer: string;
@@ -51,7 +48,6 @@ interface AnalysisResult {
   detailedSolution: string;
   guideMeSteps: GuideStep[];
   methodSummary: MethodSummary;
-  miniVariant?: MiniVariant;
   topicSuggestions: string[];
   questionType: string;
 }
@@ -238,13 +234,9 @@ ${questionTypesList}
    - proTip: (optional) A faster conceptual shortcut if one exists
      Example for sphere/plane: "A sphere intersects a plane iff distance(center, plane) ≤ radius"
 
-6. MINI VARIANT (optional but encouraged):
-   - prompt: A slightly modified version of the problem for extra practice
-   - answer: The answer to the variant
+6. TOPICS: Map to topic IDs from the allowed list. If no exact match, suggest new topic names.
 
-7. TOPICS: Map to topic IDs from the allowed list. If no exact match, suggest new topic names.
-
-8. QUESTION TYPE: Category (e.g., "Sphere Intersection", "Volume of Rotation"). Use existing if possible.
+7. QUESTION TYPE: Category (e.g., "Sphere Intersection", "Volume of Rotation"). Use existing if possible.
 
 Return your response using the analyze_question function.`;
 
@@ -357,14 +349,6 @@ Return your response using the analyze_question function.`;
                         type: "string",
                         description: "Optional conceptual shortcut"
                       }
-                    }
-                  },
-                  miniVariant: {
-                    type: "object",
-                    description: "Optional practice variant",
-                    properties: {
-                      prompt: { type: "string" },
-                      answer: { type: "string" }
                     }
                   },
                   topicSuggestions: {
@@ -501,7 +485,6 @@ Return your response using the analyze_question function.`;
     const guideData = {
       steps: analysis.guideMeSteps || [],
       methodSummary: analysis.methodSummary || { bullets: [] },
-      miniVariant: analysis.miniVariant || null,
     };
 
     // Update the question
@@ -537,7 +520,6 @@ Return your response using the analyze_question function.`;
       topicsMapped: mappedTopicIds.length,
       guideMeSteps: analysis.guideMeSteps?.length || 0,
       hasMethodSummary: !!analysis.methodSummary?.bullets?.length,
-      hasMiniVariant: !!analysis.miniVariant,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
