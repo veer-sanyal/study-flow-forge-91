@@ -39,26 +39,31 @@ interface Question {
 
 interface JobQuestionReviewProps {
   jobId: string;
-  sourceExam: string;
+  coursePackId: string;
+  questionsExtracted: number;
   isExpanded: boolean;
   onToggle: () => void;
 }
 
-function useQuestionsForJob(sourceExam: string | null) {
+function useQuestionsForJob(coursePackId: string | null, jobId: string | null) {
   return useQuery({
-    queryKey: ["questions-for-job", sourceExam],
+    queryKey: ["questions-for-job", coursePackId, jobId],
     queryFn: async () => {
-      if (!sourceExam) return [];
+      if (!coursePackId) return [];
+      
+      // Get questions for this course pack that need review
+      // This includes all recently extracted questions
       const { data, error } = await supabase
         .from("questions")
-        .select("id, prompt, choices, correct_answer, needs_review, guide_me_steps, question_order, difficulty, hint, topic_ids, question_type_id")
-        .eq("source_exam", sourceExam)
+        .select("id, prompt, choices, correct_answer, needs_review, guide_me_steps, question_order, difficulty, hint, topic_ids, question_type_id, source_exam")
+        .eq("course_pack_id", coursePackId)
+        .order("source_exam", { ascending: false })
         .order("question_order", { ascending: true });
 
       if (error) throw error;
-      return data as unknown as Question[];
+      return data as unknown as (Question & { source_exam: string | null })[];
     },
-    enabled: !!sourceExam,
+    enabled: !!coursePackId,
   });
 }
 
@@ -202,8 +207,8 @@ function QuestionCard({ question, onAnalyze, onApprove, isAnalyzing }: {
   );
 }
 
-export function JobQuestionReview({ jobId, sourceExam, isExpanded, onToggle }: JobQuestionReviewProps) {
-  const { data: questions, isLoading } = useQuestionsForJob(isExpanded ? sourceExam : null);
+export function JobQuestionReview({ jobId, coursePackId, questionsExtracted, isExpanded, onToggle }: JobQuestionReviewProps) {
+  const { data: questions, isLoading } = useQuestionsForJob(isExpanded ? coursePackId : null, jobId);
   const analyzeQuestion = useAnalyzeQuestion();
   const approveQuestion = useApproveQuestion();
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
@@ -263,19 +268,34 @@ export function JobQuestionReview({ jobId, sourceExam, isExpanded, onToggle }: J
                 </div>
               ) : !questions?.length ? (
                 <div className="text-center py-6 text-sm text-muted-foreground">
-                  No questions found for this job
+                  No questions found for this course pack
                 </div>
               ) : (
                 <ScrollArea className="max-h-[400px]">
-                  <div className="space-y-2 pr-2">
-                    {questions.map((question) => (
-                      <QuestionCard
-                        key={question.id}
-                        question={question}
-                        onAnalyze={() => handleAnalyze(question.id)}
-                        onApprove={() => approveQuestion.mutate(question.id)}
-                        isAnalyzing={analyzingId === question.id}
-                      />
+                  <div className="space-y-4 pr-2">
+                    {/* Group questions by source exam */}
+                    {Object.entries(
+                      questions.reduce((acc, q) => {
+                        const exam = q.source_exam || "Unknown Exam";
+                        if (!acc[exam]) acc[exam] = [];
+                        acc[exam].push(q);
+                        return acc;
+                      }, {} as Record<string, typeof questions>)
+                    ).map(([examName, examQuestions]) => (
+                      <div key={examName} className="space-y-2">
+                        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wide px-1">
+                          {examName} ({examQuestions.length} questions)
+                        </h4>
+                        {examQuestions.map((question) => (
+                          <QuestionCard
+                            key={question.id}
+                            question={question}
+                            onAnalyze={() => handleAnalyze(question.id)}
+                            onApprove={() => approveQuestion.mutate(question.id)}
+                            isAnalyzing={analyzingId === question.id}
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </ScrollArea>
