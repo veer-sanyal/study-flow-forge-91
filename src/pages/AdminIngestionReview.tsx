@@ -46,7 +46,11 @@ import {
   Loader2,
   Wand2,
   Upload,
-  FileText
+  FileText,
+  Lightbulb,
+  Eye,
+  MessageSquare,
+  BookOpen
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
@@ -180,6 +184,174 @@ function useAnalyzeQuestion() {
       toast.error(`Analysis failed: ${error.message}`);
     },
   });
+}
+
+// Guide Me Step Card with interactive hints
+function GuideMeStepCard({ 
+  step, 
+  stepIndex 
+}: { 
+  step: {
+    stepNumber?: number;
+    prompt?: string;
+    choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
+    hints?: Array<{ tier: number; text: string }>;
+    explanation?: string;
+    keyTakeaway?: string;
+  };
+  stepIndex: number;
+}) {
+  const [revealedHints, setRevealedHints] = useState(0);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [showKeyTakeaway, setShowKeyTakeaway] = useState(false);
+  
+  const totalHints = step.hints?.length || 0;
+  
+  const handleRevealHint = () => {
+    if (revealedHints < totalHints) {
+      setRevealedHints(prev => prev + 1);
+    }
+  };
+
+  return (
+    <div className="rounded-lg border bg-card overflow-hidden">
+      {/* Step Header - Primary color */}
+      <div className="px-4 py-3 bg-primary/10 border-b flex items-center gap-2">
+        <Badge variant="default" className="text-xs">Step {step.stepNumber || stepIndex + 1}</Badge>
+      </div>
+      
+      {/* Prompt Section */}
+      <div className="p-4 border-b bg-card">
+        <div className="prose prose-sm dark:prose-invert">
+          <MathRenderer content={step.prompt || ''} />
+        </div>
+      </div>
+      
+      {/* Choices Section - Slightly muted background */}
+      {step.choices && step.choices.length > 0 && (
+        <div className="p-4 border-b bg-muted/30">
+          <div className="text-xs font-medium text-muted-foreground mb-2">Choices</div>
+          <div className="space-y-1.5">
+            {step.choices.map((choice) => (
+              <div 
+                key={choice.id} 
+                className={`flex items-center gap-2 text-sm p-2 rounded ${
+                  choice.isCorrect 
+                    ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30' 
+                    : 'bg-background text-muted-foreground border border-transparent'
+                }`}
+              >
+                <span className="font-medium w-6">{choice.id.toUpperCase()}.</span>
+                <MathRenderer content={choice.text} />
+                {choice.isCorrect && <Check className="h-3 w-3 ml-auto flex-shrink-0" />}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      
+      {/* Hints Section - Blue tinted */}
+      {totalHints > 0 && (
+        <div className="p-4 border-b bg-blue-500/5">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Lightbulb className="h-4 w-4 text-blue-500" />
+              <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
+                Hints {revealedHints > 0 && `(${revealedHints}/${totalHints})`}
+              </span>
+            </div>
+            {revealedHints < totalHints && (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 text-xs gap-1 border-blue-500/30 text-blue-600 hover:bg-blue-500/10"
+                onClick={handleRevealHint}
+              >
+                <Eye className="h-3 w-3" />
+                Show Hint ({revealedHints + 1}/{totalHints})
+              </Button>
+            )}
+          </div>
+          {revealedHints > 0 && (
+            <div className="space-y-2">
+              {step.hints?.slice(0, revealedHints).map((hint, idx) => (
+                <div 
+                  key={idx} 
+                  className="p-3 rounded bg-blue-500/10 border border-blue-500/20"
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400">
+                      Tier {hint.tier}
+                    </Badge>
+                  </div>
+                  <div className="text-sm prose prose-sm dark:prose-invert">
+                    <MathRenderer content={hint.text} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {revealedHints === 0 && (
+            <div className="text-xs text-muted-foreground italic">
+              Click "Show Hint" to reveal hints progressively
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Explanation Section - Amber tinted */}
+      {step.explanation && (
+        <div className="p-4 border-b bg-amber-500/5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <MessageSquare className="h-4 w-4 text-amber-600" />
+              <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Explanation</span>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-7 text-xs gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+              onClick={() => setShowExplanation(!showExplanation)}
+            >
+              <Eye className="h-3 w-3" />
+              {showExplanation ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          {showExplanation && (
+            <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-sm prose prose-sm dark:prose-invert">
+              <MathRenderer content={step.explanation} />
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Key Takeaway Section - Green tinted */}
+      {step.keyTakeaway && (
+        <div className="p-4 bg-green-500/5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-4 w-4 text-green-600" />
+              <span className="text-xs font-medium text-green-700 dark:text-green-400">Key Takeaway</span>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-7 text-xs gap-1 border-green-500/30 text-green-600 hover:bg-green-500/10"
+              onClick={() => setShowKeyTakeaway(!showKeyTakeaway)}
+            >
+              <Eye className="h-3 w-3" />
+              {showKeyTakeaway ? 'Hide' : 'Show'}
+            </Button>
+          </div>
+          {showKeyTakeaway && (
+            <div className="p-3 rounded bg-green-500/10 border border-green-500/20 text-sm prose prose-sm dark:prose-invert">
+              <MathRenderer content={step.keyTakeaway} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function QuestionCard({
@@ -410,41 +582,9 @@ function QuestionCard({
                   choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
                   hints?: Array<{ tier: number; text: string }>;
                   explanation?: string;
+                  keyTakeaway?: string;
                 }>).map((step, idx) => (
-                  <div key={idx} className="p-4 rounded-lg border bg-card">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline" className="text-xs">Step {step.stepNumber || idx + 1}</Badge>
-                    </div>
-                    <div className="prose prose-sm dark:prose-invert mb-3">
-                      <MathRenderer content={step.prompt || ''} />
-                    </div>
-                    {step.choices && step.choices.length > 0 && (
-                      <div className="space-y-1 mb-3">
-                        {step.choices.map((choice) => (
-                          <div 
-                            key={choice.id} 
-                            className={`flex items-center gap-2 text-sm p-2 rounded ${
-                              choice.isCorrect ? 'bg-green-500/10 text-green-700 dark:text-green-400' : 'text-muted-foreground'
-                            }`}
-                          >
-                            <span className="font-medium">{choice.id.toUpperCase()}.</span>
-                            <MathRenderer content={choice.text} />
-                            {choice.isCorrect && <Check className="h-3 w-3 ml-auto" />}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {step.hints && step.hints.length > 0 && (
-                      <div className="text-xs text-muted-foreground">
-                        <span className="font-medium">Hints:</span> {step.hints.length} tiers
-                      </div>
-                    )}
-                    {step.explanation && (
-                      <div className="text-xs text-muted-foreground mt-1">
-                        <span className="font-medium">Explanation:</span> {step.explanation.substring(0, 100)}...
-                      </div>
-                    )}
-                  </div>
+                  <GuideMeStepCard key={idx} step={step} stepIndex={idx} />
                 ))}
               </div>
             </details>
