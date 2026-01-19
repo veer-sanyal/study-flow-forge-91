@@ -94,79 +94,94 @@ function CourseCard({
       {...(prefersReducedMotion ? reducedMotionProps : staggerItem)}
     >
       <Card
-        className="group cursor-pointer overflow-hidden border-0 shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
+        className="group cursor-pointer overflow-hidden border-0 bg-card shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
         onClick={() => navigate(`/admin/questions/${course.id}`)}
       >
-        <div className={`h-32 bg-gradient-to-br ${gradient} relative overflow-hidden`}>
+        {/* Header with gradient */}
+        <div className={`h-28 bg-gradient-to-br ${gradient} relative overflow-hidden`}>
           {/* Decorative circles */}
-          <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full ${accentColor} opacity-30`} />
-          <div className={`absolute -right-8 top-8 w-16 h-16 rounded-full ${accentColor} opacity-20`} />
+          <div className={`absolute -right-6 -top-6 w-28 h-28 rounded-full ${accentColor} opacity-20`} />
+          <div className={`absolute -right-2 top-12 w-16 h-16 rounded-full ${accentColor} opacity-15`} />
           
-          {/* Published badge */}
+          {/* Status badge */}
           <div className="absolute top-3 right-3">
-            {course.isPublished ? (
-              <Badge className="gap-1 bg-green-500/90 text-white">
-                <Globe className="h-3 w-3" />
-                Published
-              </Badge>
-            ) : (
-              <Badge variant="secondary" className="gap-1 bg-black/30 text-white border-0">
-                <GlobeLock className="h-3 w-3" />
-                Draft
-              </Badge>
-            )}
+            <Badge 
+              className={`gap-1.5 text-xs font-medium shadow-sm ${
+                course.isPublished 
+                  ? "bg-white/95 text-green-700 hover:bg-white" 
+                  : "bg-white/90 text-muted-foreground hover:bg-white"
+              }`}
+            >
+              {course.isPublished ? (
+                <>
+                  <Globe className="h-3 w-3" />
+                  Live
+                </>
+              ) : (
+                <>
+                  <GlobeLock className="h-3 w-3" />
+                  Draft
+                </>
+              )}
+            </Badge>
           </div>
           
           {/* Course title */}
-          <div className="absolute bottom-4 left-4 right-4">
-            <h3 className="text-xl font-bold text-white truncate">
+          <div className="absolute bottom-3 left-4 right-4">
+            <h3 className="text-lg font-bold text-white drop-shadow-sm truncate">
               {course.title}
             </h3>
           </div>
         </div>
 
-        <CardContent className="p-4 space-y-3">
+        {/* Content section */}
+        <CardContent className="p-4 space-y-4">
+          {/* Description if exists */}
           {course.description && (
             <p className="text-sm text-muted-foreground line-clamp-2">
               {course.description}
             </p>
           )}
 
-          <div className="flex items-center gap-4 text-sm">
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <FileQuestion className="h-4 w-4" />
-              <span>{course.questionCount} questions</span>
+          {/* Stats row */}
+          <div className="flex items-center gap-6">
+            <div className="flex flex-col">
+              <span className="text-lg font-semibold text-foreground">{course.questionCount}</span>
+              <span className="text-xs text-muted-foreground">questions</span>
             </div>
-            <div className="flex items-center gap-1.5 text-muted-foreground">
-              <BookOpen className="h-4 w-4" />
-              <span>{course.examCount} exams</span>
+            <div className="w-px h-8 bg-border" />
+            <div className="flex flex-col">
+              <span className="text-lg font-semibold text-foreground">{course.examCount}</span>
+              <span className="text-xs text-muted-foreground">exams</span>
             </div>
+            {course.needsReviewCount > 0 && (
+              <>
+                <div className="w-px h-8 bg-border" />
+                <div className="flex flex-col">
+                  <span className="text-lg font-semibold text-destructive">{course.needsReviewCount}</span>
+                  <span className="text-xs text-muted-foreground">need review</span>
+                </div>
+              </>
+            )}
           </div>
 
-          <div className="flex items-center justify-between gap-2">
-            {course.needsReviewCount > 0 && (
-              <Badge variant="destructive" className="gap-1">
-                <AlertCircle className="h-3 w-3" />
-                {course.needsReviewCount} need review
-              </Badge>
+          {/* Action button */}
+          <Button
+            variant={course.isPublished ? "outline" : "default"}
+            size="sm"
+            className="w-full gap-2"
+            onClick={handlePublishClick}
+            disabled={isPublishing}
+          >
+            {isPublishing ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : course.isPublished ? (
+              <GlobeLock className="h-4 w-4" />
+            ) : (
+              <Globe className="h-4 w-4" />
             )}
-            <Button
-              variant={course.isPublished ? "outline" : "default"}
-              size="sm"
-              className="ml-auto gap-1"
-              onClick={handlePublishClick}
-              disabled={isPublishing}
-            >
-              {isPublishing ? (
-                <Loader2 className="h-3 w-3 animate-spin" />
-              ) : course.isPublished ? (
-                <GlobeLock className="h-3 w-3" />
-              ) : (
-                <Globe className="h-3 w-3" />
-              )}
-              {course.isPublished ? "Unpublish" : "Publish"}
-            </Button>
-          </div>
+            {course.isPublished ? "Unpublish Course" : "Publish Course"}
+          </Button>
         </CardContent>
       </Card>
     </motion.div>
