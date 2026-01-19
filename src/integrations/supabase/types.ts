@@ -294,8 +294,10 @@ export type Database = {
         Row: {
           choices: Json | null
           correct_answer: string | null
+          course_pack_id: string | null
           created_at: string
           difficulty: number | null
+          guide_me_steps: Json | null
           hint: string | null
           id: string
           image_url: string | null
@@ -313,8 +315,10 @@ export type Database = {
         Insert: {
           choices?: Json | null
           correct_answer?: string | null
+          course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
+          guide_me_steps?: Json | null
           hint?: string | null
           id?: string
           image_url?: string | null
@@ -332,8 +336,10 @@ export type Database = {
         Update: {
           choices?: Json | null
           correct_answer?: string | null
+          course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
+          guide_me_steps?: Json | null
           hint?: string | null
           id?: string
           image_url?: string | null
@@ -349,6 +355,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "questions_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "questions_question_type_id_fkey"
             columns: ["question_type_id"]
