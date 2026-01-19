@@ -9,7 +9,42 @@ interface MathRendererProps {
   className?: string;
 }
 
+/**
+ * Fallback: detect unwrapped LaTeX and add $ delimiters
+ * Handles cases where AI extraction missed wrapping math expressions
+ */
+function ensureMathDelimiters(content: string): string {
+  // If already has delimiters, return as-is
+  if (content.includes('$') || content.includes('\\(') || content.includes('\\[')) {
+    return content;
+  }
+  
+  // Check if content looks like pure LaTeX (starts with common LaTeX commands)
+  const latexPatterns = [
+    /^\\frac\b/,
+    /^\\int\b/,
+    /^\\sqrt\b/,
+    /^\\sum\b/,
+    /^\\prod\b/,
+    /^\\lim\b/,
+    /^\\infty\b/,
+    /^\\pi\b/,
+    /^\\[a-zA-Z]+\{/, // Generic \command{
+  ];
+  
+  const trimmed = content.trim();
+  const looksLikePureMath = latexPatterns.some(pattern => pattern.test(trimmed));
+  
+  if (looksLikePureMath) {
+    return `$${content}$`;
+  }
+  
+  return content;
+}
+
 export function MathRenderer({ content, className }: MathRendererProps) {
+  const processedContent = ensureMathDelimiters(content);
+  
   return (
     <div className={cn("math-content", className)}>
       <ReactMarkdown
@@ -23,7 +58,7 @@ export function MathRenderer({ content, className }: MathRendererProps) {
           li: ({ children }) => <li className="ml-2">{children}</li>,
         }}
       >
-        {content}
+        {processedContent}
       </ReactMarkdown>
     </div>
   );
