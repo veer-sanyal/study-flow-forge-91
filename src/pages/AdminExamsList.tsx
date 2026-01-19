@@ -2,7 +2,7 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PageTransition } from "@/components/motion/PageTransition";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,24 +21,18 @@ import {
   FileText, 
   Trash2, 
   AlertCircle,
-  ChevronRight 
+  ChevronRight,
+  Calendar
 } from "lucide-react";
-import { parseExamName, sortExams, getExamDisplayLabel, ParsedExamInfo } from "@/lib/examUtils";
-import { useState, useMemo } from "react";
+import { 
+  parseExamName, 
+  groupExamsByYearAndSemester, 
+  getShortExamLabel,
+  ExamInfo,
+  YearGroup 
+} from "@/lib/examUtils";
+import { useState } from "react";
 import { toast } from "sonner";
-
-interface ExamInfo {
-  sourceExam: string;
-  parsed: ParsedExamInfo;
-  questionCount: number;
-  needsReviewCount: number;
-  midtermNumber: number | null;
-}
-
-interface YearGroup {
-  year: string;
-  exams: ExamInfo[];
-}
 
 function useCoursePack(courseId: string) {
   return useQuery({
@@ -93,36 +87,8 @@ function useExamsForCourse(courseId: string) {
         });
       });
 
-      // Sort exams
-      exams.sort((a, b) => sortExams(a.parsed, b.parsed));
-
-      // Group by year
-      const yearGroups: YearGroup[] = [];
-      const groupMap = new Map<string, ExamInfo[]>();
-
-      exams.forEach((exam) => {
-        const yearKey = exam.parsed.year?.toString() || "Unknown Year";
-        if (!groupMap.has(yearKey)) {
-          groupMap.set(yearKey, []);
-        }
-        groupMap.get(yearKey)!.push(exam);
-      });
-
-      // Sort years descending
-      const sortedYears = Array.from(groupMap.keys()).sort((a, b) => {
-        const aNum = parseInt(a) || 0;
-        const bNum = parseInt(b) || 0;
-        return bNum - aNum;
-      });
-
-      sortedYears.forEach((year) => {
-        yearGroups.push({
-          year,
-          exams: groupMap.get(year)!,
-        });
-      });
-
-      return yearGroups;
+      // Group by year and semester
+      return groupExamsByYearAndSemester(exams);
     },
     enabled: !!courseId,
   });
@@ -162,23 +128,9 @@ function ExamCard({
   onDelete: (sourceExam: string) => void;
 }) {
   const navigate = useNavigate();
-
-  // Build display label with midterm info
-  const displayLabel = useMemo(() => {
-    const parts: string[] = [];
-    
-    if (exam.parsed.semester) parts.push(exam.parsed.semester);
-    if (exam.parsed.year) parts.push(exam.parsed.year.toString());
-
-    // Add midterm label
-    if (exam.midtermNumber) {
-      parts.push(`• Midterm ${exam.midtermNumber}`);
-    } else if (exam.parsed.examType) {
-      parts.push(`• ${exam.parsed.examType}`);
-    }
-
-    return parts.length > 0 ? parts.join(" ") : exam.sourceExam;
-  }, [exam]);
+  
+  // Get short label (just "Midterm 1", "Final", etc.)
+  const displayLabel = getShortExamLabel(exam.parsed);
 
   const handleClick = () => {
     // Encode the exam name for URL
@@ -234,19 +186,22 @@ function ExamListSkeleton() {
   return (
     <div className="space-y-6">
       {[...Array(2)].map((_, i) => (
-        <div key={i} className="space-y-3">
-          <Skeleton className="h-6 w-24" />
-          {[...Array(3)].map((_, j) => (
-            <Card key={j}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <Skeleton className="h-10 w-10 rounded-lg" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-4 w-48" />
-                  <Skeleton className="h-3 w-24" />
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div key={i} className="space-y-4">
+          <Skeleton className="h-7 w-16" />
+          <div className="space-y-3">
+            <Skeleton className="h-5 w-24" />
+            {[...Array(2)].map((_, j) => (
+              <Card key={j}>
+                <CardContent className="p-4 flex items-center gap-3">
+                  <Skeleton className="h-10 w-10 rounded-lg" />
+                  <div className="flex-1 space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         </div>
       ))}
     </div>
@@ -270,6 +225,7 @@ export default function AdminExamsList() {
   };
 
   const isLoading = courseLoading || examsLoading;
+  const hasExams = yearGroups && yearGroups.length > 0;
 
   return (
     <PageTransition>
@@ -303,10 +259,10 @@ export default function AdminExamsList() {
           </div>
         </div>
 
-        {/* Exam List */}
+        {/* Exam List - Hierarchy: Year → Semester → Exam */}
         {isLoading ? (
           <ExamListSkeleton />
-        ) : yearGroups?.length === 0 ? (
+        ) : !hasExams ? (
           <Card className="p-8 text-center">
             <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-semibold mb-2">No exams yet</h3>
@@ -316,19 +272,37 @@ export default function AdminExamsList() {
           </Card>
         ) : (
           <div className="space-y-8">
-            {yearGroups?.map((group) => (
-              <div key={group.year} className="space-y-3">
-                <h2 className="text-lg font-semibold text-muted-foreground">
-                  {group.year}
+            {yearGroups?.map((yearGroup) => (
+              <div key={yearGroup.year} className="space-y-6">
+                {/* Year Header */}
+                <h2 className="text-xl font-bold text-foreground">
+                  {yearGroup.year}
                 </h2>
-                <div className="space-y-2">
-                  {group.exams.map((exam) => (
-                    <ExamCard
-                      key={exam.sourceExam}
-                      exam={exam}
-                      courseId={courseId!}
-                      onDelete={setExamToDelete}
-                    />
+                
+                {/* Semesters within the year */}
+                <div className="space-y-6 pl-2 border-l-2 border-muted">
+                  {yearGroup.semesters.map((semesterGroup) => (
+                    <div key={`${yearGroup.year}-${semesterGroup.semester}`} className="space-y-3 pl-4">
+                      {/* Semester Header */}
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground" />
+                        <h3 className="text-base font-semibold text-muted-foreground">
+                          {semesterGroup.semester}
+                        </h3>
+                      </div>
+                      
+                      {/* Exams within the semester */}
+                      <div className="space-y-2">
+                        {semesterGroup.exams.map((exam) => (
+                          <ExamCard
+                            key={exam.sourceExam}
+                            exam={exam}
+                            courseId={courseId!}
+                            onDelete={setExamToDelete}
+                          />
+                        ))}
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
