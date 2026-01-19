@@ -145,16 +145,57 @@ ${topicsList}
 EXISTING QUESTION TYPES:
 ${questionTypesList}
 
+=== LATEX CLARITY RULES (MUST FOLLOW) ===
+
+1. Use inline math $...$ for short expressions; use display math $$...$$ for multi-step work.
+
+2. EXPLANATION FORMAT (every algebra explanation must follow this):
+   - 1 sentence in plain English describing the idea
+   - Then a display-math block $$...$$ with exact algebra (max 3 lines)
+   - Then 1 sentence interpreting the result (e.g., "Since $R^2 - h^2 < 0$, no real intersection.")
+
+3. In every displayed math block, start with a short label using \\text{}:
+   $$\\text{On the yz-plane: } x = 0$$
+
+4. Use \\text{...} for words inside equations (e.g., $\\text{center}$, $\\text{radius}$).
+
+5. Use \\quad to space major steps; avoid clutter.
+
+6. Prefer named quantities:
+   - center $C = (h, k, \\ell)$, radius $R$
+   - distance $d$
+
+7. When substituting a plane, show it explicitly as a labeled line:
+   "On the yz-plane, $x = 0$. Substitute into the sphere: ..."
+
+8. Use consistent notation: $|x|$ not "abs(x)".
+
+9. Simplify to a standard recognizable form:
+   $$\\text{Circle: } (y - k)^2 + (z - \\ell)^2 = R^2 - h^2$$
+
+10. Show conditions as inequality lines:
+    $$\\text{Intersection iff } R^2 - h^2 \\ge 0$$
+
+11. End algebra in a recognizable canonical form and explicitly name $\\rho^2$ and its sign.
+
+12. NO CLUTTER - Do NOT:
+    - Chain more than one "=" per line if it makes the line long
+    - Expand squares unless necessary
+    - Use fractions/roots unless needed for the check
+    - Include redundant words ("therefore, thus, hence") in math blocks
+    - Put full sentences inside math mode
+
 === OUTPUT REQUIREMENTS ===
 
 1. CORRECT ANSWER: Which choice (a, b, c, d, or e) is correct.
 
 2. DIFFICULTY: Rate 1-5 (1=easy, 5=very hard)
 
-3. DETAILED SOLUTION: Step-by-step with rich markdown + LaTeX:
+3. DETAILED SOLUTION: Step-by-step following LaTeX rules above:
    - Use **bold** headers for sections
    - Display math: $$equation$$
    - Inline math: $x$
+   - Each step: 1 sentence + display math (1-3 lines) + 1 interpretation sentence
    - End with **Conclusion** section
 
 4. GUIDE ME STEPS (3-6 steps): Each step MUST include:
@@ -179,7 +220,7 @@ ${questionTypesList}
       - Tier 3: Do ONE helpful algebra step (not the whole problem!)
       * Tier 3 may reveal one intermediate line, but NOT the final answer
    
-   g) explanation: Full explanation after answering
+   g) explanation: Full explanation following LaTeX rules (sentence + math block + interpretation)
    
    h) keyTakeaway: ONE general rule reusable on similar problems
    
