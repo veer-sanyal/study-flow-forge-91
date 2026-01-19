@@ -126,19 +126,28 @@ serve(async (req) => {
     
     const extractionPrompt = `You are an expert at extracting exam questions from PDF documents.
 
-Extract ALL questions with:
-1. The question prompt (preserve layout and mathematical notation using LaTeX)
-2. Multiple choice options (just label and text, do NOT determine which is correct)
-3. The order in which the question appears
+Extract ALL questions with precise LaTeX formatting.
 
-LAYOUT RULES:
-- If a line is mostly mathematical or visually centered, use display math ($$...$$)
-- Keep narrative in plain text, don't wrap sentences in LaTeX
-- Preserve line breaks: narrative → centered equation → narrative continuation
+QUESTION PROMPT RULES:
+- Narrative text stays as plain text (no LaTeX wrapping)
+- Centered equations or multi-step math: use display math $$...$$
+- Inline math within sentences: use $...$
+- Punctuation (periods, question marks) should be OUTSIDE math delimiters when they belong to the sentence
+- Preserve the visual layout exactly as shown in the PDF
+
+CHOICE TEXT RULES (CRITICAL):
+- ALL mathematical expressions in choices MUST be wrapped in $...$ delimiters
+- Example: "$\\int_{1}^{2} x^3 + 1 \\, dx$" NOT "\\int_{1}^{2} x^3 + 1 \\, dx"
+- Pure text choices don't need math delimiters
+- Mixed text and math: "The answer is $x^2 + 1$"
 
 LATEX FORMATTING:
-- Use \\frac for fractions, \\sqrt for radicals, \\le/\\ge for inequalities, \\pi for pi
-- Use \\left( ... \\right) for grouped expressions
+- Use \\frac for fractions, \\sqrt for radicals
+- Use \\int_{a}^{b} for definite integrals
+- Use \\le / \\ge for inequalities
+- Use \\, for thin spacing in integrals (before dx)
+- Use \\quad for larger spacing
+- Use \\left( ... \\right) for auto-sizing parentheses
 - Output must be KaTeX/MathJax renderable
 
 RULES:
@@ -170,7 +179,7 @@ Return your response using the extract_questions function.`;
         tools: [{
           functionDeclarations: [{
             name: "extract_questions",
-            description: "Extract questions from an exam PDF",
+            description: "Extract questions from an exam PDF with proper LaTeX math delimiters",
             parameters: {
               type: "object",
               properties: {
@@ -187,14 +196,20 @@ Return your response using the extract_questions function.`;
                   items: {
                     type: "object",
                     properties: {
-                      prompt: { type: "string", description: "The question text with LaTeX math notation" },
+                      prompt: { 
+                        type: "string", 
+                        description: "Question text. Use $$...$$ for display math, $...$ for inline math. Punctuation outside delimiters." 
+                      },
                       choices: {
                         type: "array",
                         items: {
                           type: "object",
                           properties: {
                             id: { type: "string", description: "Choice letter (a, b, c, d, e)" },
-                            text: { type: "string", description: "Choice text" },
+                            text: { 
+                              type: "string", 
+                              description: "Choice text. ALL math expressions MUST be wrapped in $...$ delimiters. Example: '$\\\\frac{1}{2}$'" 
+                            },
                           },
                         },
                       },
