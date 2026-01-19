@@ -29,7 +29,7 @@ export function QuestionImage({
 
   return (
     <div 
-      className={`aspect-square w-full max-w-md mx-auto flex items-center justify-center relative ${className}`}
+      className={`w-full max-w-sm mx-auto flex items-center justify-center relative ${className}`}
     >
       {(isProcessing || isLoading) && (
         <div className="absolute inset-0 flex items-center justify-center">
@@ -39,7 +39,7 @@ export function QuestionImage({
       <img 
         src={src} 
         alt={alt}
-        className={`max-w-[90%] max-h-[90%] object-contain transition-opacity duration-200
+        className={`max-w-full max-h-64 object-contain transition-opacity duration-200
           dark:invert dark:brightness-90 dark:contrast-110
           ${isLoading ? 'opacity-0' : 'opacity-100'}`}
         onLoad={() => setIsLoading(false)}
