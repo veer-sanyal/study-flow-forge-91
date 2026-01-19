@@ -173,7 +173,7 @@ ${question.prompt}
 CHOICES (exact text):
 ${choicesText}
 
-AVAILABLE TOPICS (you MUST map to these IDs only):
+AVAILABLE TOPICS (map to these IDs only):
 ${topicsList}
 
 EXISTING QUESTION TYPES (use one of these if possible):
@@ -183,31 +183,70 @@ ${questionTypesList}
 GROUNDING + GUARDRAILS
 ========================
 - Use ONLY the information in QUESTION and CHOICES. Do NOT assume extra constraints, units, diagrams, or hidden context.
-- Do NOT fabricate topic IDs or question types. Use exactly what is provided.
+- Do NOT fabricate topic IDs or question types. Use exactly what is provided in the lists.
 - If the prompt is ambiguous, state the ambiguity in 1 short sentence and proceed with the most standard interpretation.
-- Do NOT generate hints/solutions that rely on information not present.
+- Do NOT include any meta/UI options as answers (e.g., “Skip”, “Not sure”, “I need help”). All choices must be content answers.
 
 ========================
-LATEX CLARITY RULES (MUST FOLLOW)
+LATEX + RENDERING RULES (MUST FOLLOW)
 ========================
-Renderer supports ONLY $...$ (inline) and $$...$$ (display).
+Renderer supports ONLY $...$ (inline) and $$...$$ (display). Do NOT use \( \) or \[ \].
 
-1) Inline math: $...$ for short expressions inside sentences.
-2) Display math: $$...$$ for multi-step work. Keep display blocks to MAX 3 lines.
-3) NEVER put full sentences inside math mode. Use plain English outside math.
-4) In every display block, start with a short label using \text{...}, e.g.:
-   $$\text{On the yz-plane: } x=0$$
-5) Use \text{...} for words inside equations.
-6) Use \quad sparingly for major spacing.
-7) Prefer named quantities when applicable: center $C=(h,k,\ell)$, radius $R$, distance $d$.
-8) Use consistent notation: $|x|$ (not abs(x)).
-9) Prefer canonical forms and explicit conditions:
-   $$\text{Circle: } (y-k)^2+(z-\ell)^2=\rho^2$$
-   $$\text{Intersection iff } \rho^2\ge 0$$
-10) NO CLUTTER:
-   - Avoid long lines and chained equalities
-   - Don’t expand unless necessary
-   - Use \frac and \sqrt when needed, but keep work minimal and clean
+INLINE vs DISPLAY:
+- Use inline math $...$ ONLY for short expressions.
+- Use display math $$...$$ for any multi-step work, substitutions, derived equations, or any “long” expression.
+
+========================
+VISUAL READABILITY RULES (CRITICAL)
+========================
+These rules exist to prevent “math + text mush” and must be followed everywhere (solution + Guide Me).
+
+1) BLOCK SPACING (newline discipline)
+- Use blank lines to separate blocks.
+- Never place display math immediately adjacent to text.
+  Always include a blank line BEFORE and AFTER any $$...$$ block.
+
+2) INLINE MATH LIMIT
+- At most ONE inline math segment per sentence.
+- If a sentence would need 2+ inline math segments, rewrite using a display math block instead.
+
+3) DISPLAY MATH TRIGGERS (use $$...$$ if any are true)
+- Expression contains 2+ +/− terms (e.g., (x-1)^2+(y-2)^2+...)
+- Expression includes equality/inequality and is longer than ~20–25 characters
+- Expression contains parentheses with powers (e.g., (x-h)^2)
+- Expression is the result of a substitution/simplification
+- Expression is something the student should “see as a whole” (sphere forms, circle forms, integral setup)
+
+4) LONG EQUATION RULE (required formatting)
+- If an equation is long, format it using aligned with at most 2 lines:
+
+$$
+\begin{aligned}
+\text{label: } &\quad \text{(short label only)} \\
+\text{line 1} \\
+\text{line 2 (optional)}
+\end{aligned}
+$$
+
+- Keep aligned blocks to MAX 2 math lines (plus an optional short label line).
+- Do NOT chain many equalities on one line.
+
+5) TEXT vs MATH
+- Keep narrative in plain text.
+- Use \text{...} inside math ONLY for short labels (not full sentences).
+- Never put long phrases inside math mode.
+
+========================
+LATEX STYLE RULES (MUST FOLLOW)
+========================
+- Fractions: \frac{...}{...}
+- Radicals: \sqrt{...}
+- Inequalities: \le, \ge
+- Integrals: \int_{a}^{b} \cdots \, dx  (include \, before dx)
+- Spacing: \quad only when needed
+- Parentheses: \left( ... \right) for tall expressions
+- Absolute value: |x| (not abs(x))
+- Avoid expanding unless necessary.
 
 ========================
 OUTPUT FORMAT (STRICT)
@@ -231,45 +270,86 @@ Include these top-level fields:
 ========================
 DETAILED SOLUTION REQUIREMENTS
 ========================
-Write detailedSolution with these rules:
-- Use **bold** section headers: **Plan**, **Work**, **Final Check**, **Conclusion**
-- **Work** must be step-by-step.
-- Every algebra step must follow EXACTLY:
-  1) 1 plain-English sentence describing the idea
-  2) then one $$...$$ block (1–3 lines)
-  3) then 1 sentence interpreting the result
-- Add **Final Check**: 1–2 lines verifying reasonableness (sign/domain/choice elimination).
-- In **Conclusion**, state the correct choice letter and match to the exact choice text.
+Write detailedSolution with these sections and constraints:
+
+**Plan**
+- Exactly 1 sentence. No math.
+
+**Work**
+- Step-by-step.
+- Every step MUST follow this exact 3-part pattern:
+  1) 1 plain-English sentence describing the idea (max 1 sentence)
+  2) then one $$...$$ block with exact math (max 3 lines; use aligned if long)
+  3) then 1 plain-English interpretation sentence (max 1 sentence)
+- Enforce the Visual Readability Rules above (blank lines around display math, etc.).
+
+**Final Check**
+- 1–2 lines verifying reasonableness (domain/sign/choice elimination).
+
+**Conclusion**
+- State the correct choice letter AND match to exact choice text.
 
 ========================
 GUIDE ME STEPS (3–6 steps, STRICT)
 ========================
 Each step MUST include:
+
 a) stepTitle: short skill name
-b) microGoal: 1 sentence describing what the student learns
+
+b) microGoal: 1 sentence describing what the student learns (no math unless tiny)
+
 c) prompt: short Socratic question (<= 140 characters, answerable in < 20 seconds)
-d) choices: EXACTLY 4 options (a–d), ALL must be content answers (NO meta/UI options like “Skip”, “Not sure”, “I need help”)
+   - Avoid long inline math in the prompt.
+   - If math is needed, keep it minimal (prefer “Which plane sets x=0?” over long equations).
+
+d) choices: EXACTLY 4 options (a–d)
+   - ALL must be content answers (NO meta/UI options like “Skip”, “Not sure”, “I need help”)
+   - Keep each choice <= 90 characters unless it is pure LaTeX.
+   - Wrong choices must be realistic misconceptions.
+
 e) correctChoice: one of ["a","b","c","d"]
-f) choiceFeedback: feedback for EACH option (<= 1 sentence each):
+
+f) choiceFeedback: feedback for EACH option (<= 1 sentence each)
    - correct: why it’s right
    - wrong: why it’s tempting but wrong (name the misconception)
-g) hints: Tier1/Tier2/Tier3 with escalation (not rephrasing):
+   - Keep feedback short and clear.
+
+g) hints: Tier1/Tier2/Tier3 with escalation (not rephrasing)
    - Tier1: 1 sentence recall (definition/concept)
    - Tier2: 1 sentence translate to setup
-   - Tier3: EXACTLY one helpful algebra move (ONE math line) + 1 short sentence
-   - Tier3 must NOT finish the full problem and must NOT reveal the final answer early
-h) explanation: MUST follow the same “1 sentence + $$...$$ + 1 sentence” format and ONLY cover THIS step’s microGoal
-i) keyTakeaway: 1 general rule reusable for similar problems
-j) isMisconceptionCheck: boolean
-k) misconceptionType: one of ["definition","setup","algebra_sign"] (choose the primary misconception tested)
+   - Tier3: EXACTLY one helpful algebra move (ONE display math line) + 1 short sentence
+     * Tier3 MUST NOT finish the full problem or reveal the final answer early.
+     * Tier3 MUST obey blank lines around $$...$$.
+
+h) explanation: must ONLY justify this step’s microGoal and MUST be:
+   - 1 sentence (idea)
+   - blank line
+   - $$...$$ (max 2 math lines; use aligned if needed)
+   - blank line
+   - 1 sentence (interpretation)
+   * Do NOT restate the entire problem.
+   * Do NOT leak the final choice before the final step.
+
+i) keyTakeaway: 1 general rule reusable for similar problems (plain English)
+
+j) isMisconceptionCheck: boolean (at least one step must be true)
+
+k) misconceptionType: one of ["definition","setup","algebra_sign"] (primary misconception tested)
 
 QUALITY RULES FOR GUIDE ME:
 - Do NOT reveal the final answer choice until the FINAL step.
 - Steps should progress concept → setup → compute → interpret → choose.
-- Include at least ONE step with isMisconceptionCheck=true.
 - Prefer conceptual checks before computation.
+- Include at least ONE step with isMisconceptionCheck=true.
 - If a faster conceptual criterion exists, do NOT use it to shortcut early steps.
   Mention it only at the end inside methodSummary.proTip (1 sentence).
+
+========================
+METHOD SUMMARY
+========================
+Provide:
+- bullets: exactly 3 short bullet items describing the universal method
+- proTip (optional): 1 sentence shortcut (only at the end, non-spoiling)
 
 ========================
 TOPIC + TYPE MAPPING
@@ -279,8 +359,7 @@ TOPIC + TYPE MAPPING
 - questionType must match EXISTING QUESTION TYPES if possible.
 - If none match, questionType="Other" and provide questionTypeSuggestion.
 
-Now generate the analysis and return using analyze_question.
-`;
+Now generate the analysis and return using analyze_question.`;
 
     console.log("Calling Gemini for analysis...");
 
