@@ -100,6 +100,7 @@ export function QuestionPlayer({
         difficulty={question.difficulty}
         questionNumber={questionNumber}
         totalQuestions={totalQuestions}
+        imageUrl={question.imageUrl}
       />
 
       {/* Hint panel */}

@@ -27,6 +27,7 @@ export interface StudyQuestion {
   sourceExam: string | null;
   solutionSteps: string[] | null;
   questionType: string;
+  imageUrl: string | null;
 }
 
 // Map database question to study question format
@@ -58,6 +59,7 @@ export function mapDbQuestionToStudy(
     sourceExam: dbQuestion.source_exam,
     solutionSteps: dbQuestion.solution_steps as string[] | null,
     questionType: questionTypeName,
+    imageUrl: dbQuestion.image_url,
   };
 }
 

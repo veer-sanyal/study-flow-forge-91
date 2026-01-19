@@ -1,0 +1,53 @@
+import { useState } from "react";
+import { Loader2 } from "lucide-react";
+
+interface QuestionImageProps {
+  src: string;
+  alt?: string;
+  isProcessing?: boolean;
+  className?: string;
+}
+
+/**
+ * A square-framed image container that:
+ * 1. Centers the image within an aspect-square frame
+ * 2. Adapts colors for dark mode using CSS invert (for line drawings)
+ * 3. Shows loading state during processing
+ */
+export function QuestionImage({ 
+  src, 
+  alt = "Question diagram", 
+  isProcessing = false,
+  className = ""
+}: QuestionImageProps) {
+  const [isLoading, setIsLoading] = useState(true);
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError) {
+    return null;
+  }
+
+  return (
+    <div 
+      className={`aspect-square w-full max-w-md mx-auto rounded-lg border bg-muted/30 flex items-center justify-center overflow-hidden ${className}`}
+    >
+      {(isProcessing || isLoading) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-muted/50 backdrop-blur-sm">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      )}
+      <img 
+        src={src} 
+        alt={alt}
+        className={`max-w-[90%] max-h-[90%] object-contain transition-opacity duration-200
+          dark:invert dark:brightness-90 dark:contrast-110
+          ${isLoading ? 'opacity-0' : 'opacity-100'}`}
+        onLoad={() => setIsLoading(false)}
+        onError={() => {
+          setIsLoading(false);
+          setHasError(true);
+        }}
+      />
+    </div>
+  );
+}

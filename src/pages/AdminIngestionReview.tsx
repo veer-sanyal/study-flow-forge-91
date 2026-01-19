@@ -57,6 +57,7 @@ import {
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { MathRenderer } from "@/components/study/MathRenderer";
+import { QuestionImage } from "@/components/study/QuestionImage";
 import { useAllTopics, useUploadQuestionImage } from "@/hooks/use-questions";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
@@ -496,13 +497,11 @@ function QuestionCard({
 
           {/* Image */}
           {question.image_url && (
-            <div className="rounded-lg overflow-hidden border bg-muted/50 max-w-md">
-              <img 
-                src={question.image_url} 
-                alt="Question diagram" 
-                className="w-full h-auto"
-              />
-            </div>
+            <QuestionImage 
+              src={question.image_url} 
+              alt="Question diagram"
+              className="max-w-md"
+            />
           )}
 
           {/* Choices */}
@@ -764,13 +763,11 @@ function EditQuestionDialog({
                   </div>
                 ) : editedQuestion.image_url ? (
                   <div className="space-y-3">
-                    <div className="rounded-lg overflow-hidden border bg-muted/50 max-w-sm mx-auto">
-                      <img 
-                        src={editedQuestion.image_url} 
-                        alt="Question diagram" 
-                        className="w-full h-auto"
-                      />
-                    </div>
+                    <QuestionImage 
+                      src={editedQuestion.image_url} 
+                      alt="Question diagram"
+                      className="max-w-sm"
+                    />
                     <div className="text-center text-sm text-muted-foreground">
                       Drag & drop a new image to replace, or click to select
                     </div>
