@@ -28,7 +28,6 @@ interface GuideStep {
 interface AnalysisResult {
   correctAnswer: string;
   difficulty: number;
-  hint: string;
   detailedSolution: string;
   guideMeSteps: GuideStep[];
   topicSuggestions: string[];
@@ -128,27 +127,25 @@ Provide the following analysis:
 
 2. DIFFICULTY: Rate from 1-5 (1=easy, 5=very hard)
 
-3. HINT: A brief hint for students who are stuck (don't give away the answer)
-
-4. DETAILED SOLUTION: A complete step-by-step solution with:
+3. DETAILED SOLUTION: A complete step-by-step solution with:
    - Full LaTeX formatting for all math (e.g., \\frac{a}{b}, \\sqrt{x}, \\int)
    - Explain the reasoning behind each step in plain language
    - Use numbered steps
    - Include intermediate calculations
    - Format as a single string with \\n for line breaks
 
-5. GUIDE ME STEPS: Create 2-5 scaffolded steps that help students DISCOVER the answer (don't give it directly). Each step should:
+4. GUIDE ME STEPS: Create 2-5 scaffolded steps that help students DISCOVER the answer (don't give it directly). Each step should:
    - Have a guiding question prompt
    - Have EXACTLY 4 multiple choice options (a, b, c, d) with one correct
-   - Have 3 hint tiers:
-     * Tier 1: Gentle nudge
-     * Tier 2: Conceptual hint  
-     * Tier 3: Near-answer hint
+   - Have 3 hint tiers (these help with THIS guide step, NOT the main question):
+     * Tier 1: Gentle conceptual nudge (doesn't reveal the step answer)
+     * Tier 2: More specific guidance (still doesn't reveal the step answer)
+     * Tier 3: Strong hint that points toward the step answer
    - Have an explanation of why the correct choice is right
 
-6. TOPICS: Map to topic IDs from the allowed list above. If no exact match, suggest new topic names.
+5. TOPICS: Map to topic IDs from the allowed list above. If no exact match, suggest new topic names.
 
-7. QUESTION TYPE: The category (e.g., "Volume of Rotation", "Arc Length"). Use existing types if possible.
+6. QUESTION TYPE: The category (e.g., "Volume of Rotation", "Arc Length"). Use existing types if possible.
 
 Return your response using the analyze_question function.`;
 
@@ -185,11 +182,7 @@ Return your response using the analyze_question function.`;
                     type: "number", 
                     description: "Difficulty 1-5" 
                   },
-                  hint: { 
-                    type: "string", 
-                    description: "A helpful hint without giving away the answer" 
-                  },
-                  detailedSolution: { 
+                  detailedSolution: {
                     type: "string", 
                     description: "Complete step-by-step solution with LaTeX and explanations" 
                   },
@@ -340,7 +333,7 @@ Return your response using the analyze_question function.`;
           .insert({
             name: analysis.questionType,
             course_pack_id: question.course_pack_id,
-            status: "proposed",
+            status: "active",
           })
           .select("id")
           .single();
@@ -366,7 +359,6 @@ Return your response using the analyze_question function.`;
         correct_answer: analysis.correctAnswer,
         solution_steps: analysis.detailedSolution ? [analysis.detailedSolution] : null,
         guide_me_steps: analysis.guideMeSteps || null,
-        hint: analysis.hint || null,
         difficulty: analysis.difficulty || 3,
         topic_ids: mappedTopicIds,
         unmapped_topic_suggestions: unmappedSuggestions.length > 0 ? unmappedSuggestions : null,

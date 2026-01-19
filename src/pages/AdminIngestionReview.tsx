@@ -203,7 +203,10 @@ function QuestionCard({
   onUploadImage: (file: File) => void;
   isAnalyzing: boolean;
 }) {
-  const hasGuideMe = question.guide_me_steps && Array.isArray(question.guide_me_steps) && question.guide_me_steps.length > 0;
+  const hasGuideMe = question.guide_me_steps && 
+    (Array.isArray(question.guide_me_steps) 
+      ? question.guide_me_steps.length > 0 
+      : typeof question.guide_me_steps === 'object' && Object.keys(question.guide_me_steps).length > 0);
   const needsAnalysis = !question.correct_answer || !hasGuideMe;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -381,14 +384,6 @@ function QuestionCard({
             ))}
           </div>
 
-          {/* Hint */}
-          {question.hint && (
-            <div className="pt-2">
-              <span className="text-sm font-medium text-muted-foreground">Hint: </span>
-              <span className="text-sm">{question.hint}</span>
-            </div>
-          )}
-
           {/* Solution Preview */}
           {question.solution_steps && question.solution_steps.length > 0 && (
             <details className="pt-2 border-t">
@@ -427,7 +422,6 @@ function EditQuestionDialog({
         prompt: question.prompt,
         choices: question.choices,
         difficulty: question.difficulty,
-        hint: question.hint,
         topic_ids: question.topic_ids,
         question_order: question.question_order,
       });
@@ -443,7 +437,7 @@ function EditQuestionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh]">
+      <DialogContent className="max-w-2xl max-h-[90vh] z-50">
         <DialogHeader>
           <DialogTitle>Edit Question #{question.question_order || 1}</DialogTitle>
         </DialogHeader>
@@ -490,7 +484,7 @@ function EditQuestionDialog({
                   <Button
                     variant={choice.isCorrect ? "default" : "outline"}
                     size="sm"
-                    className={choice.isCorrect ? "bg-green-500 hover:bg-green-600" : ""}
+                    className={`min-w-[90px] ${choice.isCorrect ? "bg-green-500 hover:bg-green-600" : ""}`}
                     onClick={() => {
                       const newChoices = editedQuestion.choices?.map((c, i) => ({
                         ...c,
@@ -499,7 +493,14 @@ function EditQuestionDialog({
                       setEditedQuestion({ ...editedQuestion, choices: newChoices });
                     }}
                   >
-                    {choice.isCorrect ? <Check className="h-4 w-4" /> : "Correct"}
+                    {choice.isCorrect ? (
+                      <>
+                        <Check className="h-4 w-4 mr-1" />
+                        Correct
+                      </>
+                    ) : (
+                      "Set Correct"
+                    )}
                   </Button>
                 </div>
               ))}
@@ -533,17 +534,6 @@ function EditQuestionDialog({
                 min={1}
                 value={editedQuestion.question_order || 1}
                 onChange={(e) => setEditedQuestion({ ...editedQuestion, question_order: parseInt(e.target.value) })}
-              />
-            </div>
-
-            {/* Hint */}
-            <div className="space-y-2">
-              <Label>Hint</Label>
-              <Textarea
-                value={editedQuestion.hint || ""}
-                onChange={(e) => setEditedQuestion({ ...editedQuestion, hint: e.target.value })}
-                rows={2}
-                placeholder="A helpful hint for students"
               />
             </div>
 
@@ -631,7 +621,13 @@ export default function AdminIngestionReview() {
   const stats = useMemo(() => {
     if (!questions) return { total: 0, needsAnalysis: 0, readyToApprove: 0, approved: 0 };
     
-    const needsAnalysis = questions.filter(q => !q.correct_answer || !q.guide_me_steps).length;
+    const needsAnalysis = questions.filter(q => {
+      const hasGuide = q.guide_me_steps && 
+        (Array.isArray(q.guide_me_steps) 
+          ? q.guide_me_steps.length > 0 
+          : typeof q.guide_me_steps === 'object' && Object.keys(q.guide_me_steps as object).length > 0);
+      return !q.correct_answer || !hasGuide;
+    }).length;
     const approved = questions.filter(q => !q.needs_review && q.correct_answer && q.guide_me_steps).length;
     const readyToApprove = questions.length - needsAnalysis - approved;
     
