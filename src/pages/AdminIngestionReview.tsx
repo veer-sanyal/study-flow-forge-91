@@ -658,10 +658,11 @@ function EditQuestionDialog({
   onOpenChange: (open: boolean) => void;
   onSave: (updates: Partial<Question>) => void;
   topics: { id: string; title: string }[];
-  onUploadImage: (file: File) => void;
+  onUploadImage: (file: File) => Promise<string | undefined>;
 }) {
   const [editedQuestion, setEditedQuestion] = useState<Partial<Question>>({});
   const [isDragging, setIsDragging] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useMemo(() => {
@@ -692,19 +693,35 @@ function EditQuestionDialog({
     setIsDragging(false);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files?.[0];
     if (file && file.type.startsWith('image/')) {
-      onUploadImage(file);
+      setIsUploading(true);
+      try {
+        const newUrl = await onUploadImage(file);
+        if (newUrl) {
+          setEditedQuestion(prev => ({ ...prev, image_url: newUrl }));
+        }
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      onUploadImage(file);
+      setIsUploading(true);
+      try {
+        const newUrl = await onUploadImage(file);
+        if (newUrl) {
+          setEditedQuestion(prev => ({ ...prev, image_url: newUrl }));
+        }
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -740,11 +757,16 @@ function EditQuestionDialog({
                   className="hidden"
                   onChange={handleFileChange}
                 />
-                {question.image_url ? (
+                {isUploading ? (
+                  <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
+                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <div className="text-sm font-medium">Uploading image...</div>
+                  </div>
+                ) : editedQuestion.image_url ? (
                   <div className="space-y-3">
                     <div className="rounded-lg overflow-hidden border bg-muted/50 max-w-sm mx-auto">
                       <img 
-                        src={question.image_url} 
+                        src={editedQuestion.image_url} 
                         alt="Question diagram" 
                         className="w-full h-auto"
                       />
@@ -1059,12 +1081,16 @@ export default function AdminIngestionReview() {
     }
   };
 
-  const handleUploadImage = async (questionId: string, file: File) => {
+  const handleUploadImage = async (questionId: string, file: File): Promise<string | undefined> => {
     try {
-      await uploadImage.mutateAsync({ questionId, file });
+      const url = await uploadImage.mutateAsync({ questionId, file });
       toast.success("Image uploaded!");
+      // Also invalidate our local query
+      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
+      return url;
     } catch (error) {
       toast.error("Failed to upload image");
+      return undefined;
     }
   };
 
