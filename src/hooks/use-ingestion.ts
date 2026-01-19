@@ -221,13 +221,14 @@ export function useGenerateTopicsFromEvents() {
 
   return useMutation({
     mutationFn: async (coursePackId: string) => {
-      // Fetch all calendar events for this course pack
+      // Fetch all calendar events for this course pack - only topic events
       const { data: events, error: eventsError } = await supabase
         .from("calendar_events")
         .select("*")
         .eq("course_pack_id", coursePackId)
-        .in("event_type", ["lesson", "review"]) // Only lessons and reviews become topics
-        .order("week_number", { ascending: true });
+        .eq("event_type", "topic") // Only topic events become topics
+        .order("week_number", { ascending: true })
+        .order("event_date", { ascending: true });
 
       if (eventsError) throw eventsError;
 
@@ -242,31 +243,30 @@ export function useGenerateTopicsFromEvents() {
       const existingTitles = new Set(existingTopics?.map(t => t.title.toLowerCase()) || []);
 
       // Extract unique topics from events
-      const topicsToCreate: { title: string; description: string; scheduled_week: number }[] = [];
+      const topicsToCreate: { 
+        title: string; 
+        description: string; 
+        scheduled_week: number;
+        event_date: string | null;
+      }[] = [];
       const seenTitles = new Set<string>();
 
       for (const event of events || []) {
-        // Use topics_covered if available, otherwise use the event title
-        const topicStrings = event.topics_covered && event.topics_covered.length > 0
-          ? event.topics_covered
-          : [event.title];
-
-        for (const topicStr of topicStrings) {
-          const normalizedTitle = topicStr.trim();
-          const lowerTitle = normalizedTitle.toLowerCase();
-          
-          // Skip if already exists or we've seen it
-          if (existingTitles.has(lowerTitle) || seenTitles.has(lowerTitle)) {
-            continue;
-          }
-
-          seenTitles.add(lowerTitle);
-          topicsToCreate.push({
-            title: normalizedTitle,
-            description: event.description || "",
-            scheduled_week: event.week_number,
-          });
+        const normalizedTitle = event.title.trim();
+        const lowerTitle = normalizedTitle.toLowerCase();
+        
+        // Skip if already exists or we've seen it
+        if (existingTitles.has(lowerTitle) || seenTitles.has(lowerTitle)) {
+          continue;
         }
+
+        seenTitles.add(lowerTitle);
+        topicsToCreate.push({
+          title: normalizedTitle,
+          description: event.description || "",
+          scheduled_week: event.week_number,
+          event_date: event.event_date,
+        });
       }
 
       if (topicsToCreate.length === 0) {

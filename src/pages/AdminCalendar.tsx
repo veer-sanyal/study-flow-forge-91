@@ -359,6 +359,7 @@ export default function AdminCalendar() {
 
   const getEventTypeBadge = (type: string) => {
     const colors: Record<string, string> = {
+      topic: "bg-blue-500/20 text-blue-400",
       lesson: "bg-blue-500/20 text-blue-400",
       recitation: "bg-purple-500/20 text-purple-400",
       exam: "bg-red-500/20 text-red-400",
@@ -648,7 +649,7 @@ export default function AdminCalendar() {
                                           </p>
                                         </div>
                                         <div className="text-xs text-muted-foreground/70 mt-2 max-w-sm">
-                                          AI will extract lessons, exams, quizzes, homework, and other events from your calendar
+                                          AI will extract distinct topics with exact dates, exams, and quizzes from your calendar
                                         </div>
                                       </>
                                     )}
