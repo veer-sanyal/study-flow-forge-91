@@ -554,11 +554,6 @@ function QuestionCard({
             ) : (
               <span className="text-sm text-muted-foreground italic">No topics mapped</span>
             )}
-            {question.unmapped_topic_suggestions?.map((suggestion) => (
-              <Badge key={suggestion} variant="secondary" className="text-xs bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200">
-                {suggestion} (suggested)
-              </Badge>
-            ))}
           </div>
 
           {/* Solution Preview */}

@@ -174,6 +174,7 @@ export type Database = {
           file_name: string
           file_path: string
           id: string
+          is_final: boolean
           kind: string
           progress_pct: number | null
           questions_extracted: number | null
@@ -192,6 +193,7 @@ export type Database = {
           file_name: string
           file_path: string
           id?: string
+          is_final?: boolean
           kind?: string
           progress_pct?: number | null
           questions_extracted?: number | null
@@ -210,6 +212,7 @@ export type Database = {
           file_name?: string
           file_path?: string
           id?: string
+          is_final?: boolean
           kind?: string
           progress_pct?: number | null
           questions_extracted?: number | null
@@ -480,6 +483,7 @@ export type Database = {
           created_at: string
           description: string | null
           id: string
+          midterm_coverage: number | null
           prerequisite_topic_ids: string[] | null
           scheduled_week: number | null
           title: string
@@ -490,6 +494,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          midterm_coverage?: number | null
           prerequisite_topic_ids?: string[] | null
           scheduled_week?: number | null
           title: string
@@ -500,6 +505,7 @@ export type Database = {
           created_at?: string
           description?: string | null
           id?: string
+          midterm_coverage?: number | null
           prerequisite_topic_ids?: string[] | null
           scheduled_week?: number | null
           title?: string
