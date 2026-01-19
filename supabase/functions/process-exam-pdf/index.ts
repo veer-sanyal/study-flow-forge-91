@@ -6,47 +6,15 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-interface GuideHint {
-  tier: number;
-  text: string;
-}
-
-interface GuideStepChoice {
-  id: string;
-  text: string;
-  isCorrect: boolean;
-}
-
-interface GuideStep {
-  stepNumber: number;
-  prompt: string;
-  choices: GuideStepChoice[];
-  hints: GuideHint[];
-  explanation: string;
-}
-
 interface ExtractedQuestion {
   prompt: string;
-  choices: { id: string; text: string; isCorrect: boolean }[];
-  correctAnswer?: string;
-  solutionSteps?: string[];
-  detailedSolution?: string;
-  guideMeSteps?: GuideStep[];
-  hint?: string;
-  difficulty?: number;
-  topicSuggestions: string[];
-  sourceExam: string;
-  questionType?: string;
-  isNewQuestionType?: boolean;
-  questionOrder?: number;
-  midtermNumber?: number;
+  choices: { id: string; text: string }[];
+  questionOrder: number;
 }
 
 interface ProcessingResult {
   questionsExtracted: number;
-  questionsMapped: number;
-  questionsPendingReview: number;
-  questions: ExtractedQuestion[];
+  message: string;
 }
 
 serve(async (req) => {
@@ -74,11 +42,6 @@ serve(async (req) => {
     }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
-    
-    // Create a client with user's token for RLS checks
-    const userSupabase = createClient(SUPABASE_URL, Deno.env.get("SUPABASE_ANON_KEY")!, {
-      global: { headers: { Authorization: authHeader } },
-    });
 
     const { jobId } = await req.json();
     
@@ -146,85 +109,34 @@ serve(async (req) => {
     
     // Convert to base64 in chunks to avoid stack overflow for large files
     let binaryString = "";
-    const chunkSize = 32768; // Process 32KB at a time
+    const chunkSize = 32768;
     for (let i = 0; i < uint8Array.length; i += chunkSize) {
       const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
       binaryString += String.fromCharCode.apply(null, [...chunk]);
     }
     const base64Pdf = btoa(binaryString);
 
-    // Get existing topics for mapping
-    const { data: existingTopics } = await supabase
-      .from("topics")
-      .select("id, title")
-      .eq("course_pack_id", job.course_pack_id);
-
-    const topicsList = existingTopics?.map(t => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics defined yet";
-
-    // Get existing question types for this course
-    const { data: existingQuestionTypes } = await supabase
-      .from("question_types")
-      .select("id, name, aliases")
-      .eq("course_pack_id", job.course_pack_id);
-
-    const questionTypesList = existingQuestionTypes?.map(qt => {
-      const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
-      return `- ${qt.name}${aliases} (ID: ${qt.id})`;
-    }).join("\n") || "No question types defined yet for this course";
-
     await supabase
       .from("ingestion_jobs")
       .update({ current_step: "B1", progress_pct: 25 })
       .eq("id", jobId);
 
-    // Step B1-B4: Call Gemini to extract questions
-    console.log("Step B1-B4: Extracting questions with Gemini...");
+    // Step B1: Call Gemini to extract ONLY questions and choices (Phase 1 - lightweight)
+    console.log("Step B1: Extracting questions with Gemini (Phase 1 - lightweight)...");
     
-    const extractionPrompt = `You are an expert at extracting exam questions from PDF documents and creating educational scaffolding.
+    const extractionPrompt = `You are an expert at extracting exam questions from PDF documents.
 
-Analyze this exam PDF and extract ALL questions with the following information for each:
+Analyze this exam PDF and extract ALL questions with ONLY the following information:
 1. The question prompt (preserve any mathematical notation using LaTeX)
-2. Multiple choice options if present (with the correct answer marked)
-3. The correct answer
-4. A DETAILED step-by-step solution with full LaTeX formatting and reasoning explanations
-5. Guide Me scaffolded steps (2-5 steps to help students discover the answer themselves)
-6. A hint for students
-7. Estimated difficulty (1-5 scale)
-8. Topic suggestions from this list of ALLOWED topics:
-${topicsList}
-9. Question type/category (e.g., "Volume of Rotation", "Arc Length", "Work Problem", "Taylor Series")
-10. Question order (the order in which the question appears in the exam, starting from 1)
-11. Midterm number (1, 2, or 3 - infer from the document title/header if visible)
-
-EXISTING QUESTION TYPES FOR THIS COURSE:
-${questionTypesList}
+2. Multiple choice options if present (just the choice letters/numbers and text, do NOT determine which is correct yet)
+3. The order in which the question appears in the exam
 
 IMPORTANT RULES:
-- Only suggest topics from the ALLOWED list above
-- If you cannot map to an existing topic, provide your best suggestion for what the topic should be called
 - Preserve all mathematical notation using LaTeX format (e.g., \\frac{a}{b}, \\sqrt{x})
-- Extract the source exam name from the document header if visible (e.g., "Fall 2023 Midterm 1")
-- For question types: TRY to match to an existing question type first. Only mark isNewQuestionType=true if none of the existing types match.
-- Question types should be specific but not too granular (e.g., "Volume of Rotation" not "Volume of Rotation using Shell Method")
-- Number questions in the order they appear in the exam (questionOrder: 1, 2, 3, etc.)
-
-GUIDE ME STEPS RULES (CRITICAL):
-- Generate 2-5 scaffolded steps per question
-- Each step has EXACTLY 4 multiple choice options (one correct, three incorrect but plausible)
-- Steps should guide the student to DISCOVER the answer, NOT give it directly
-- Step prompts should be guiding questions like "What concept applies here?" or "What should we identify first?"
-- Include 3 hint tiers per step:
-  - Tier 1: Gentle nudge (e.g., "Think about the relationship between...")
-  - Tier 2: Conceptual hint (e.g., "Remember the formula for...")
-  - Tier 3: Near-answer hint (e.g., "You need to calculate the derivative of...")
-- Each step's explanation should describe why the correct choice is right
-
-DETAILED SOLUTION RULES:
-- Provide a complete step-by-step solution using LaTeX for all math
-- Explain the reasoning behind each step in plain language
-- Use clear formatting with numbered steps
-- Include intermediate calculations and explain WHY each step is taken
-- Format as a single string with \\n for line breaks
+- Number questions in the order they appear (questionOrder: 1, 2, 3, etc.)
+- Extract the source exam name from the document header if visible
+- DO NOT try to determine which answer is correct - that will be done in a separate step
+- DO NOT generate hints, solutions, or guide me steps - those will be done separately
 
 Return your response using the extract_questions function.`;
 
@@ -235,7 +147,7 @@ Return your response using the extract_questions function.`;
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
+        model: "google/gemini-2.5-flash",
         messages: [
           {
             role: "user",
@@ -265,7 +177,7 @@ Return your response using the extract_questions function.`;
                   },
                   midtermNumber: {
                     type: "number",
-                    description: "The midterm number (1, 2, or 3) if identifiable from the document",
+                    description: "The midterm number (1, 2, or 3) if identifiable",
                   },
                   questions: {
                     type: "array",
@@ -278,84 +190,19 @@ Return your response using the extract_questions function.`;
                           items: {
                             type: "object",
                             properties: {
-                              id: { type: "string" },
-                              text: { type: "string" },
-                              isCorrect: { type: "boolean" },
+                              id: { type: "string", description: "Choice letter (a, b, c, d, e)" },
+                              text: { type: "string", description: "Choice text" },
                             },
-                            required: ["id", "text", "isCorrect"],
                           },
-                        },
-                        correctAnswer: { type: "string" },
-                        solutionSteps: { type: "array", items: { type: "string" } },
-                        detailedSolution: { 
-                          type: "string", 
-                          description: "Full step-by-step solution with LaTeX formatting, reasoning, and explanations" 
-                        },
-                        guideMeSteps: {
-                          type: "array",
-                          description: "2-5 scaffolded steps to help students discover the answer",
-                          items: {
-                            type: "object",
-                            properties: {
-                              stepNumber: { type: "number" },
-                              prompt: { type: "string", description: "Guiding question for this step" },
-                              choices: {
-                                type: "array",
-                                description: "Exactly 4 multiple choice options (a, b, c, d)",
-                                items: {
-                                  type: "object",
-                                  properties: {
-                                    id: { type: "string", description: "Choice ID: a, b, c, or d" },
-                                    text: { type: "string", description: "Choice text" },
-                                    isCorrect: { type: "boolean", description: "Whether this choice is correct" }
-                                  }
-                                }
-                              },
-                              hints: {
-                                type: "array",
-                                description: "3 hint tiers (tier 1, 2, 3) with text for each",
-                                items: {
-                                  type: "object",
-                                  properties: {
-                                    tier: { type: "number", description: "Hint tier: 1=gentle nudge, 2=conceptual, 3=near-answer" },
-                                    text: { type: "string", description: "The hint text" }
-                                  }
-                                }
-                              },
-                              explanation: { type: "string", description: "Why the correct choice is right" }
-                            }
-                          }
-                        },
-                        hint: { type: "string" },
-                        difficulty: { type: "number", minimum: 1, maximum: 5 },
-                        topicSuggestions: {
-                          type: "array",
-                          items: { type: "string" },
-                          description: "Topic titles or IDs from the allowed list",
-                        },
-                        unmappedTopicSuggestions: {
-                          type: "array",
-                          items: { type: "string" },
-                          description: "New topic suggestions if none from allowed list match",
-                        },
-                        questionType: {
-                          type: "string",
-                          description: "The type/category of this question (e.g., 'Volume of Rotation', 'Arc Length')",
-                        },
-                        isNewQuestionType: {
-                          type: "boolean",
-                          description: "True if this is a new question type not in the existing list",
                         },
                         questionOrder: {
                           type: "number",
-                          description: "The order/number of this question in the exam (1, 2, 3, etc.)",
+                          description: "The order of this question in the exam",
                         },
                       },
-                      required: ["prompt", "topicSuggestions", "guideMeSteps", "detailedSolution"],
                     },
                   },
                 },
-                required: ["sourceExam", "questions"],
               },
             },
           },
@@ -395,16 +242,21 @@ Return your response using the extract_questions function.`;
 
     await supabase
       .from("ingestion_jobs")
-      .update({ current_step: "B5", progress_pct: 60 })
+      .update({ current_step: "B2", progress_pct: 60 })
       .eq("id", jobId);
 
     // Parse the tool call response
-    let extractedData: { sourceExam: string; midtermNumber?: number; questions: any[] } = { sourceExam: job.file_name, questions: [] };
+    let extractedData: { sourceExam: string; midtermNumber?: number; questions: ExtractedQuestion[] } = { 
+      sourceExam: job.file_name, 
+      questions: [] 
+    };
     
     try {
       const toolCall = geminiResult.choices?.[0]?.message?.tool_calls?.[0];
       if (toolCall?.function?.arguments) {
         extractedData = JSON.parse(toolCall.function.arguments);
+      } else {
+        console.error("No tool call found in response:", JSON.stringify(geminiResult));
       }
     } catch (parseError) {
       console.error("Failed to parse Gemini response:", parseError);
@@ -412,118 +264,58 @@ Return your response using the extract_questions function.`;
 
     console.log(`Extracted ${extractedData.questions.length} questions from ${extractedData.sourceExam}`);
 
+    if (extractedData.questions.length === 0) {
+      await supabase
+        .from("ingestion_jobs")
+        .update({ 
+          status: "failed", 
+          error_message: "No questions extracted from PDF. Please check the PDF format." 
+        })
+        .eq("id", jobId);
+      
+      return new Response(JSON.stringify({ error: "No questions found in PDF" }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
     await supabase
       .from("ingestion_jobs")
       .update({ 
-        current_step: "B6", 
+        current_step: "B3", 
         progress_pct: 70,
         questions_extracted: extractedData.questions.length 
       })
       .eq("id", jobId);
 
-    // Step B6-B7: Map topics, handle question types, and insert questions
-    console.log("Step B6-B7: Mapping topics, handling question types, and inserting questions...");
+    // Step B3: Insert questions with needs_review=true and needs_analysis=true
+    console.log("Step B3: Inserting questions (pending analysis)...");
     
-    const topicMap = new Map(existingTopics?.map(t => [t.title.toLowerCase(), t.id]) || []);
-    const questionTypeMap = new Map(existingQuestionTypes?.map(qt => [qt.name.toLowerCase(), qt.id]) || []);
-    
-    // Also add aliases to the map
-    existingQuestionTypes?.forEach(qt => {
-      if (qt.aliases) {
-        qt.aliases.forEach((alias: string) => {
-          questionTypeMap.set(alias.toLowerCase(), qt.id);
-        });
-      }
-    });
-
-    let mapped = 0;
-    let pendingReview = 0;
-
-    // Determine the document-level midterm number
     const docMidtermNumber = extractedData.midtermNumber || null;
 
     for (const q of extractedData.questions) {
-      // Try to map topic suggestions to existing topic IDs
-      const mappedTopicIds: string[] = [];
-      const unmappedSuggestions: string[] = [];
+      // Format choices without isCorrect (will be set during analysis)
+      const formattedChoices = q.choices?.map(c => ({
+        id: c.id,
+        text: c.text,
+        isCorrect: false, // Will be updated during analysis
+      })) || null;
 
-      for (const suggestion of q.topicSuggestions || []) {
-        // Check if it's already a UUID
-        if (suggestion.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)) {
-          mappedTopicIds.push(suggestion);
-        } else {
-          // Try to match by title
-          const matchedId = topicMap.get(suggestion.toLowerCase());
-          if (matchedId) {
-            mappedTopicIds.push(matchedId);
-          } else {
-            unmappedSuggestions.push(suggestion);
-          }
-        }
-      }
-
-      // Add any explicit unmapped suggestions
-      if (q.unmappedTopicSuggestions) {
-        unmappedSuggestions.push(...q.unmappedTopicSuggestions);
-      }
-
-      // Handle question type
-      let questionTypeId: string | null = null;
-      if (q.questionType) {
-        // Try to match to existing question type
-        const matchedTypeId = questionTypeMap.get(q.questionType.toLowerCase());
-        if (matchedTypeId) {
-          questionTypeId = matchedTypeId;
-        } else if (q.isNewQuestionType) {
-          // Create new question type with proposed status
-          const { data: newType, error: typeError } = await supabase
-            .from("question_types")
-            .insert({
-              name: q.questionType,
-              course_pack_id: job.course_pack_id,
-              status: "proposed",
-            })
-            .select("id")
-            .single();
-          
-          if (!typeError && newType) {
-            questionTypeId = newType.id;
-            // Add to map for future questions in this batch
-            questionTypeMap.set(q.questionType.toLowerCase(), newType.id);
-            console.log(`Created new question type: ${q.questionType}`);
-          } else {
-            console.error("Failed to create question type:", typeError);
-          }
-        }
-      }
-
-      const needsReview = mappedTopicIds.length === 0 || unmappedSuggestions.length > 0;
-      if (needsReview) {
-        pendingReview++;
-      } else {
-        mapped++;
-      }
-
-      // Build detailed solution - either from extracted or from solution steps
-      const detailedSolution = q.detailedSolution || 
-        (q.solutionSteps ? q.solutionSteps.join('\n\n') : null);
-
-      // Insert the question
       const { error: insertError } = await supabase
         .from("questions")
         .insert({
           prompt: q.prompt,
-          choices: q.choices || null,
-          correct_answer: q.correctAnswer || null,
-          solution_steps: detailedSolution ? [detailedSolution] : (q.solutionSteps || null),
-          guide_me_steps: q.guideMeSteps || null,
-          hint: q.hint || null,
-          difficulty: q.difficulty || 3,
-          topic_ids: mappedTopicIds,
+          choices: formattedChoices,
+          correct_answer: null, // Will be set during analysis
+          solution_steps: null, // Will be set during analysis
+          guide_me_steps: null, // Will be set during analysis
+          hint: null, // Will be set during analysis
+          difficulty: null, // Will be set during analysis
+          topic_ids: [], // Will be set during analysis
           source_exam: extractedData.sourceExam,
-          needs_review: needsReview,
-          unmapped_topic_suggestions: unmappedSuggestions.length > 0 ? unmappedSuggestions : null,
-          question_type_id: questionTypeId,
+          needs_review: true, // Needs analysis
+          unmapped_topic_suggestions: null,
+          question_type_id: null, // Will be set during analysis
           course_pack_id: job.course_pack_id,
           midterm_number: docMidtermNumber,
           question_order: q.questionOrder || null,
@@ -539,22 +331,20 @@ Return your response using the extract_questions function.`;
       .from("ingestion_jobs")
       .update({
         status: "completed",
-        current_step: "B7",
+        current_step: "B4",
         progress_pct: 100,
         questions_extracted: extractedData.questions.length,
-        questions_mapped: mapped,
-        questions_pending_review: pendingReview,
+        questions_mapped: 0,
+        questions_pending_review: extractedData.questions.length, // All need analysis
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
 
-    console.log(`Job ${jobId} completed. Extracted: ${extractedData.questions.length}, Mapped: ${mapped}, Pending Review: ${pendingReview}`);
+    console.log(`Job ${jobId} completed. Extracted: ${extractedData.questions.length} questions (all pending analysis)`);
 
     const result: ProcessingResult = {
       questionsExtracted: extractedData.questions.length,
-      questionsMapped: mapped,
-      questionsPendingReview: pendingReview,
-      questions: extractedData.questions,
+      message: `Extracted ${extractedData.questions.length} questions. Use "Analyze" on each question to generate solutions and guide-me steps.`,
     };
 
     return new Response(JSON.stringify(result), {

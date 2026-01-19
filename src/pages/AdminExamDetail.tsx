@@ -44,7 +44,9 @@ import {
   Edit2,
   Trash2,
   Save,
-  RotateCcw
+  RotateCcw,
+  Loader2,
+  Wand2
 } from "lucide-react";
 import { useState, useMemo } from "react";
 import { toast } from "sonner";
@@ -169,6 +171,29 @@ function useDeleteQuestion() {
   });
 }
 
+function useAnalyzeQuestion() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (questionId: string) => {
+      const { data, error } = await supabase.functions.invoke("analyze-question", {
+        body: { questionId },
+      });
+
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["questions-for-exam"] });
+      toast.success(`Analysis complete! Answer: ${data.correctAnswer}, ${data.guideMeSteps} guide steps generated`);
+    },
+    onError: (error) => {
+      toast.error(`Analysis failed: ${error.message}`);
+    },
+  });
+}
+
 function QuestionCard({ 
   question, 
   index,
@@ -177,6 +202,8 @@ function QuestionCard({
   onApprove,
   onEdit,
   onDelete,
+  onAnalyze,
+  isAnalyzing,
 }: { 
   question: Question;
   index: number;
@@ -185,8 +212,11 @@ function QuestionCard({
   onApprove: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onAnalyze: () => void;
+  isAnalyzing: boolean;
 }) {
   const hasGuideMe = question.guide_me_steps && Array.isArray(question.guide_me_steps) && question.guide_me_steps.length > 0;
+  const needsAnalysis = !question.correct_answer || !hasGuideMe;
 
   return (
     <Card className={`${question.needs_review ? 'border-destructive/50 bg-destructive/5' : ''}`}>
@@ -226,7 +256,23 @@ function QuestionCard({
           </div>
 
           <div className="flex items-center gap-1">
-            {question.needs_review && (
+            {needsAnalysis && (
+              <Button 
+                variant="default" 
+                size="sm" 
+                className="gap-1"
+                onClick={onAnalyze}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                {isAnalyzing ? "Analyzing..." : "Analyze"}
+              </Button>
+            )}
+            {question.needs_review && !needsAnalysis && (
               <Button 
                 variant="ghost" 
                 size="sm" 
@@ -511,9 +557,11 @@ export default function AdminExamDetail() {
   const { data: allTopics } = useAllTopics();
   const updateQuestion = useUpdateQuestion();
   const deleteQuestion = useDeleteQuestion();
+  const analyzeQuestion = useAnalyzeQuestion();
 
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
+  const [analyzingQuestionId, setAnalyzingQuestionId] = useState<string | null>(null);
 
   // Build topic map
   const topicsMap = useMemo(() => {
@@ -524,6 +572,15 @@ export default function AdminExamDetail() {
 
   const handleApprove = (questionId: string) => {
     updateQuestion.mutate({ id: questionId, needs_review: false });
+  };
+
+  const handleAnalyze = async (questionId: string) => {
+    setAnalyzingQuestionId(questionId);
+    try {
+      await analyzeQuestion.mutateAsync(questionId);
+    } finally {
+      setAnalyzingQuestionId(null);
+    }
   };
 
   const handleSaveEdit = (updates: Partial<Question>) => {
@@ -540,6 +597,7 @@ export default function AdminExamDetail() {
   };
 
   const needsReviewCount = questions?.filter((q) => q.needs_review).length || 0;
+  const needsAnalysisCount = questions?.filter((q) => !q.correct_answer || !q.guide_me_steps).length || 0;
 
   return (
     <PageTransition>
@@ -580,7 +638,12 @@ export default function AdminExamDetail() {
                   <h1 className="text-xl font-bold">{decodedExamName}</h1>
                   <p className="text-sm text-muted-foreground">
                     {questions?.length || 0} questions
-                    {needsReviewCount > 0 && (
+                    {needsAnalysisCount > 0 && (
+                      <span className="text-amber-600 ml-2">
+                        • {needsAnalysisCount} need analysis
+                      </span>
+                    )}
+                    {needsReviewCount > 0 && needsAnalysisCount === 0 && (
                       <span className="text-destructive ml-2">
                         • {needsReviewCount} need review
                       </span>
@@ -612,6 +675,8 @@ export default function AdminExamDetail() {
                   onApprove={() => handleApprove(question.id)}
                   onEdit={() => setEditingQuestion(question)}
                   onDelete={() => setQuestionToDelete(question.id)}
+                  onAnalyze={() => handleAnalyze(question.id)}
+                  isAnalyzing={analyzingQuestionId === question.id}
                 />
               ))}
             </div>
