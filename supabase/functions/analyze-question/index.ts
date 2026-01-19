@@ -23,6 +23,7 @@ interface GuideStep {
   choices: GuideStepChoice[];
   hints: GuideHint[];
   explanation: string;
+  keyTakeaway: string;
 }
 
 interface AnalysisResult {
@@ -127,12 +128,26 @@ Provide the following analysis:
 
 2. DIFFICULTY: Rate from 1-5 (1=easy, 5=very hard)
 
-3. DETAILED SOLUTION: A complete step-by-step solution with:
-   - Full LaTeX formatting for all math (e.g., \\frac{a}{b}, \\sqrt{x}, \\int)
+3. DETAILED SOLUTION: A beautifully formatted step-by-step solution. Use rich markdown + LaTeX formatting:
+   
+   **FORMATTING REQUIREMENTS:**
+   - Use **bold** headers for each major section (e.g., **Step 1: Identify the Problem**)
+   - Use bullet points (- or •) for listing related items or cases
+   - Put key equations on their own lines using display math: $$equation$$
+   - Use inline math $x$ for variables mentioned in text
+   - Add blank lines between sections for visual breathing room
+   - Use \\textbf{} inside LaTeX for emphasis on key terms
+   - For multi-case analysis, use structured bullets like:
+     - For case A: $equation$ \\Rightarrow result
+     - For case B: $equation$ \\Rightarrow result
+   - End with a clear **Conclusion** section summarizing the answer
+   - Use \\implies or \\Rightarrow for logical flow between steps
+   
+   **CONTENT REQUIREMENTS:**
    - Explain the reasoning behind each step in plain language
-   - Use numbered steps
-   - Include intermediate calculations
-   - Format as a single string with \\n for line breaks
+   - Show ALL intermediate calculations
+   - Highlight key insights and why they matter
+   - Connect back to the original question at the end
 
 4. GUIDE ME STEPS: Create 2-5 scaffolded steps that help students DISCOVER the answer (don't give it directly). Each step should:
    - Have a guiding question prompt
@@ -142,6 +157,7 @@ Provide the following analysis:
      * Tier 2: More specific guidance (still doesn't reveal the step answer)
      * Tier 3: Strong hint that points toward the step answer
    - Have an explanation of why the correct choice is right
+   - Have a keyTakeaway summarizing the core concept learned
 
 5. TOPICS: Map to topic IDs from the allowed list above. If no exact match, suggest new topic names.
 
@@ -184,7 +200,7 @@ Return your response using the analyze_question function.`;
                   },
                   detailedSolution: {
                     type: "string", 
-                    description: "Complete step-by-step solution with LaTeX and explanations" 
+                    description: "Beautifully formatted solution with **bold headers**, bullet points, display math $$equation$$, logical flow using \\Rightarrow, and a clear **Conclusion** section" 
                   },
                   guideMeSteps: {
                     type: "array",
@@ -217,7 +233,8 @@ Return your response using the analyze_question function.`;
                             }
                           }
                         },
-                        explanation: { type: "string" }
+                        explanation: { type: "string", description: "Why the correct answer is right" },
+                        keyTakeaway: { type: "string", description: "Core concept or skill learned from this step" }
                       }
                     }
                   },
