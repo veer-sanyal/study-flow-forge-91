@@ -81,6 +81,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
         sourceExam: q.source_exam,
         solutionSteps: q.solution_steps as string[] | null,
         questionType: 'multiple_choice', // Default for now
+        imageUrl: null, // Recommended questions don't include image_url yet
         // Include scoring metadata for debugging
         _score: q.score,
         _dueUrgency: q.due_urgency,

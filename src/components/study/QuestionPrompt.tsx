@@ -1,4 +1,5 @@
 import { MathRenderer } from "./MathRenderer";
+import { QuestionImage } from "./QuestionImage";
 import { Badge } from "@/components/ui/badge";
 
 interface QuestionPromptProps {
@@ -8,6 +9,7 @@ interface QuestionPromptProps {
   difficulty: number;
   questionNumber: number;
   totalQuestions?: number; // Optional for infinite mode
+  imageUrl?: string | null;
 }
 
 export function QuestionPrompt({
@@ -17,6 +19,7 @@ export function QuestionPrompt({
   difficulty,
   questionNumber,
   totalQuestions,
+  imageUrl,
 }: QuestionPromptProps) {
   return (
     <div className="space-y-4">
@@ -54,6 +57,11 @@ export function QuestionPrompt({
       <div className="text-lg leading-relaxed">
         <MathRenderer content={prompt} />
       </div>
+
+      {/* Question image */}
+      {imageUrl && (
+        <QuestionImage src={imageUrl} alt="Question diagram" />
+      )}
     </div>
   );
 }
