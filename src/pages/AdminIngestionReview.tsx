@@ -499,7 +499,7 @@ function QuestionCard({
 
           {/* Image */}
           {question.image_url && (
-            <div className="relative group max-w-md">
+            <div className="relative group max-w-sm mx-auto">
               <QuestionImage 
                 src={question.image_url} 
                 alt="Question diagram"
