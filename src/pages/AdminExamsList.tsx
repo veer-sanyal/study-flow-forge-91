@@ -281,7 +281,7 @@ export default function AdminExamsList() {
                 
                 {/* Semesters within the year */}
                 <div className="space-y-6 pl-2 border-l-2 border-muted">
-                  {yearGroup.semesters.map((semesterGroup) => (
+                  {yearGroup.semesters?.map((semesterGroup) => (
                     <div key={`${yearGroup.year}-${semesterGroup.semester}`} className="space-y-3 pl-4">
                       {/* Semester Header */}
                       <div className="flex items-center gap-2">
@@ -293,7 +293,7 @@ export default function AdminExamsList() {
                       
                       {/* Exams within the semester */}
                       <div className="space-y-2">
-                        {semesterGroup.exams.map((exam) => (
+                        {semesterGroup.exams?.map((exam) => (
                           <ExamCard
                             key={exam.sourceExam}
                             exam={exam}
