@@ -365,7 +365,8 @@ export default function AdminIngestion() {
                       {job.status === "completed" && job.questions_extracted > 0 && (
                         <JobQuestionReview
                           jobId={job.id}
-                          sourceExam={job.file_name}
+                          coursePackId={job.course_pack_id}
+                          questionsExtracted={job.questions_extracted}
                           isExpanded={expandedJobId === job.id}
                           onToggle={() => setExpandedJobId(
                             expandedJobId === job.id ? null : job.id
