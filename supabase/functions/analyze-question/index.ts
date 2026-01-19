@@ -78,7 +78,7 @@ serve(async (req) => {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { questionId } = await req.json();
-    
+
     if (!questionId) {
       return new Response(JSON.stringify({ error: "questionId is required" }), {
         status: 400,
@@ -109,7 +109,7 @@ serve(async (req) => {
       .select("id, title")
       .eq("course_pack_id", question.course_pack_id);
 
-    const topicsList = existingTopics?.map(t => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics defined yet";
+    const topicsList = existingTopics?.map((t) => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics defined yet";
 
     // Get existing question types
     const { data: existingQuestionTypes } = await supabase
@@ -117,18 +117,21 @@ serve(async (req) => {
       .select("id, name, aliases")
       .eq("course_pack_id", question.course_pack_id);
 
-    const questionTypesList = existingQuestionTypes?.map(qt => {
-      const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
-      return `- ${qt.name}${aliases} (ID: ${qt.id})`;
-    }).join("\n") || "No question types defined yet";
+    const questionTypesList =
+      existingQuestionTypes
+        ?.map((qt) => {
+          const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
+          return `- ${qt.name}${aliases} (ID: ${qt.id})`;
+        })
+        .join("\n") || "No question types defined yet";
 
     // Format the question for analysis
     const choicesText = question.choices?.map((c: any) => `${c.id}) ${c.text}`).join("\n") || "No choices";
-    
+
     // Check if question has an image and fetch it
     let imageBase64: string | null = null;
     let imageMimeType: string | null = null;
-    
+
     if (question.image_url) {
       console.log("Question has image, fetching...", question.image_url);
       try {
@@ -136,16 +139,16 @@ serve(async (req) => {
         if (imageResponse.ok) {
           const imageBuffer = await imageResponse.arrayBuffer();
           const uint8Array = new Uint8Array(imageBuffer);
-          
+
           // Convert to base64 in chunks to avoid stack overflow
-          let binary = '';
+          let binary = "";
           const chunkSize = 32768;
           for (let i = 0; i < uint8Array.length; i += chunkSize) {
             const chunk = uint8Array.slice(i, i + chunkSize);
             binary += String.fromCharCode(...chunk);
           }
           imageBase64 = btoa(binary);
-          
+
           // Determine mime type from URL or content-type header
           const contentType = imageResponse.headers.get("content-type");
           imageMimeType = contentType || "image/png";
@@ -158,282 +161,334 @@ serve(async (req) => {
       }
     }
 
-    const analysisPrompt = `You are an expert math tutor generating a "Guide Me" learning scaffold for an exam question.
+    const analysisPrompt = `You are an expert math tutor generating an analysis + a “Guide Me” learning scaffold for an exam question.
 
-GOAL: Teach the TRANSFERABLE REASONING PROCESS, not just the answer. Each step must be reusable for similar problems.
+PRIMARY GOAL:
+Teach the TRANSFERABLE REASONING PROCESS (reusable for similar problems), not just the answer.
 
+INPUTS:
 QUESTION:
 ${question.prompt}
 
-CHOICES:
+CHOICES (exact text):
 ${choicesText}
 
-AVAILABLE TOPICS (you MUST map to these):
+AVAILABLE TOPICS (you MUST map to these IDs only):
 ${topicsList}
 
-EXISTING QUESTION TYPES:
+EXISTING QUESTION TYPES (use one of these if possible):
 ${questionTypesList}
 
-=== LATEX CLARITY RULES (MUST FOLLOW) ===
+========================
+GROUNDING + GUARDRAILS
+========================
+- Use ONLY the information in QUESTION and CHOICES. Do NOT assume extra constraints, units, diagrams, or hidden context.
+- Do NOT fabricate topic IDs or question types. Use exactly what is provided.
+- If the prompt is ambiguous, state the ambiguity in 1 short sentence and proceed with the most standard interpretation.
+- Do NOT generate hints/solutions that rely on information not present.
 
-1. Use inline math $...$ for short expressions; use display math $$...$$ for multi-step work.
+========================
+LATEX CLARITY RULES (MUST FOLLOW)
+========================
+Renderer supports ONLY $...$ (inline) and $$...$$ (display).
 
-2. EXPLANATION FORMAT (every algebra explanation must follow this):
-   - 1 sentence in plain English describing the idea
-   - Then a display-math block $$...$$ with exact algebra (max 3 lines)
-   - Then 1 sentence interpreting the result (e.g., "Since $R^2 - h^2 < 0$, no real intersection.")
+1) Inline math: $...$ for short expressions inside sentences.
+2) Display math: $$...$$ for multi-step work. Keep display blocks to MAX 3 lines.
+3) NEVER put full sentences inside math mode. Use plain English outside math.
+4) In every display block, start with a short label using \text{...}, e.g.:
+   $$\text{On the yz-plane: } x=0$$
+5) Use \text{...} for words inside equations.
+6) Use \quad sparingly for major spacing.
+7) Prefer named quantities when applicable: center $C=(h,k,\ell)$, radius $R$, distance $d$.
+8) Use consistent notation: $|x|$ (not abs(x)).
+9) Prefer canonical forms and explicit conditions:
+   $$\text{Circle: } (y-k)^2+(z-\ell)^2=\rho^2$$
+   $$\text{Intersection iff } \rho^2\ge 0$$
+10) NO CLUTTER:
+   - Avoid long lines and chained equalities
+   - Don’t expand unless necessary
+   - Use \frac and \sqrt when needed, but keep work minimal and clean
 
-3. In every displayed math block, start with a short label using \\text{}:
-   $$\\text{On the yz-plane: } x = 0$$
+========================
+OUTPUT FORMAT (STRICT)
+========================
+Return ONLY a JSON object that matches the analyze_question function schema.
+Do not include any extra commentary.
 
-4. Use \\text{...} for words inside equations (e.g., $\\text{center}$, $\\text{radius}$).
+Include these top-level fields:
+- correctChoiceLetter: one of ["a","b","c","d","e"] (or more if present)
+- correctChoiceText: exact choice text as shown in CHOICES
+- difficulty: integer 1–5
+- plan: 1 sentence describing the method (no math)
+- detailedSolution: structured sections (see below)
+- guideMeSteps: array of 3–6 steps (see below)
+- methodSummary: { bullets: [3 items], proTip?: string }
+- topicIds: array of topic IDs from AVAILABLE TOPICS only
+- topicSuggestions: array of strings (ONLY if topicIds is empty)
+- questionType: one of EXISTING QUESTION TYPES if possible, else "Other"
+- questionTypeSuggestion: string (ONLY if questionType is "Other")
 
-5. Use \\quad to space major steps; avoid clutter.
+========================
+DETAILED SOLUTION REQUIREMENTS
+========================
+Write detailedSolution with these rules:
+- Use **bold** section headers: **Plan**, **Work**, **Final Check**, **Conclusion**
+- **Work** must be step-by-step.
+- Every algebra step must follow EXACTLY:
+  1) 1 plain-English sentence describing the idea
+  2) then one $$...$$ block (1–3 lines)
+  3) then 1 sentence interpreting the result
+- Add **Final Check**: 1–2 lines verifying reasonableness (sign/domain/choice elimination).
+- In **Conclusion**, state the correct choice letter and match to the exact choice text.
 
-6. Prefer named quantities:
-   - center $C = (h, k, \\ell)$, radius $R$
-   - distance $d$
+========================
+GUIDE ME STEPS (3–6 steps, STRICT)
+========================
+Each step MUST include:
+a) stepTitle: short skill name
+b) microGoal: 1 sentence describing what the student learns
+c) prompt: short Socratic question (<= 140 characters, answerable in < 20 seconds)
+d) choices: EXACTLY 4 options (a–d), ALL must be content answers (NO meta/UI options like “Skip”, “Not sure”, “I need help”)
+e) correctChoice: one of ["a","b","c","d"]
+f) choiceFeedback: feedback for EACH option (<= 1 sentence each):
+   - correct: why it’s right
+   - wrong: why it’s tempting but wrong (name the misconception)
+g) hints: Tier1/Tier2/Tier3 with escalation (not rephrasing):
+   - Tier1: 1 sentence recall (definition/concept)
+   - Tier2: 1 sentence translate to setup
+   - Tier3: EXACTLY one helpful algebra move (ONE math line) + 1 short sentence
+   - Tier3 must NOT finish the full problem and must NOT reveal the final answer early
+h) explanation: MUST follow the same “1 sentence + $$...$$ + 1 sentence” format and ONLY cover THIS step’s microGoal
+i) keyTakeaway: 1 general rule reusable for similar problems
+j) isMisconceptionCheck: boolean
+k) misconceptionType: one of ["definition","setup","algebra_sign"] (choose the primary misconception tested)
 
-7. When substituting a plane, show it explicitly as a labeled line:
-   "On the yz-plane, $x = 0$. Substitute into the sphere: ..."
+QUALITY RULES FOR GUIDE ME:
+- Do NOT reveal the final answer choice until the FINAL step.
+- Steps should progress concept → setup → compute → interpret → choose.
+- Include at least ONE step with isMisconceptionCheck=true.
+- Prefer conceptual checks before computation.
+- If a faster conceptual criterion exists, do NOT use it to shortcut early steps.
+  Mention it only at the end inside methodSummary.proTip (1 sentence).
 
-8. Use consistent notation: $|x|$ not "abs(x)".
+========================
+TOPIC + TYPE MAPPING
+========================
+- topicIds must contain ONLY IDs from AVAILABLE TOPICS.
+- If none match, topicIds=[], and fill topicSuggestions with 1–3 concise names.
+- questionType must match EXISTING QUESTION TYPES if possible.
+- If none match, questionType="Other" and provide questionTypeSuggestion.
 
-9. Simplify to a standard recognizable form:
-   $$\\text{Circle: } (y - k)^2 + (z - \\ell)^2 = R^2 - h^2$$
-
-10. Show conditions as inequality lines:
-    $$\\text{Intersection iff } R^2 - h^2 \\ge 0$$
-
-11. End algebra in a recognizable canonical form and explicitly name $\\rho^2$ and its sign.
-
-12. NO CLUTTER - Do NOT:
-    - Chain more than one "=" per line if it makes the line long
-    - Expand squares unless necessary
-    - Use fractions/roots unless needed for the check
-    - Include redundant words ("therefore, thus, hence") in math blocks
-    - Put full sentences inside math mode
-
-=== OUTPUT REQUIREMENTS ===
-
-1. CORRECT ANSWER: Which choice (a, b, c, d, or e) is correct.
-
-2. DIFFICULTY: Rate 1-5 (1=easy, 5=very hard)
-
-3. DETAILED SOLUTION: Step-by-step following LaTeX rules above:
-   - Use **bold** headers for sections
-   - Display math: $$equation$$
-   - Inline math: $x$
-   - Each step: 1 sentence + display math (1-3 lines) + 1 interpretation sentence
-   - End with **Conclusion** section
-
-4. GUIDE ME STEPS (3-6 steps): Each step MUST include:
-
-   a) stepTitle: Skill name (e.g., "Identify the sphere center from standard form")
-   
-   b) microGoal: What the student will learn (1 sentence)
-   
-   c) prompt: Short Socratic question (answerable in <20 seconds)
-   
-   d) choices: EXACTLY 4 options (a-d) where:
-      - One is correct
-      - Three are REALISTIC MISCONCEPTIONS (common student errors like: confusing center vs radius, forgetting sign conventions, using wrong formula, mixing up cases)
-   
-   e) choiceFeedback: One explanation for EACH option:
-      - For correct: Why it's right
-      - For wrong: Why it's tempting but wrong (explain the misconception)
-   
-   f) hints (3 tiers that ESCALATE, not rephrase):
-      - Tier 1: Recall a definition or concept ("What is the standard form?")
-      - Tier 2: Translate concept to math setup ("So what value does x equal?")
-      - Tier 3: Do ONE helpful algebra step (not the whole problem!)
-      * Tier 3 may reveal one intermediate line, but NOT the final answer
-   
-   g) explanation: Full explanation following LaTeX rules (sentence + math block + interpretation)
-   
-   h) keyTakeaway: ONE general rule reusable on similar problems
-   
-   i) isMisconceptionCheck: true if this step specifically tests a common mistake
-
-   QUALITY RULES for steps:
-   - Do NOT reveal the final answer until the last step
-   - Prefer conceptual checks before computation
-   - Include at least ONE step marked isMisconceptionCheck=true
-   - Use plain language, minimal fluff
-   - If a faster conceptual criterion exists, mention it
-
-5. METHOD SUMMARY:
-   - bullets: 3 key method steps that work for ALL similar problems
-   - proTip: (optional) A faster conceptual shortcut if one exists
-     Example for sphere/plane: "A sphere intersects a plane iff distance(center, plane) ≤ radius"
-
-6. TOPICS: Map to topic IDs from the allowed list. If no exact match, suggest new topic names.
-
-7. QUESTION TYPE: Category (e.g., "Sphere Intersection", "Volume of Rotation"). Use existing if possible.
-
-Return your response using the analyze_question function.`;
+Now generate the analysis and return using analyze_question.
+`;
 
     console.log("Calling Gemini for analysis...");
 
     // Build content parts - include image if available
     const contentParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
-    
+
     if (imageBase64 && imageMimeType) {
       // Add image first for better context
       contentParts.push({
         inlineData: {
           mimeType: imageMimeType,
-          data: imageBase64
-        }
+          data: imageBase64,
+        },
       });
-      contentParts.push({ text: "The above image is the diagram/figure for this question. Use it to understand the visual context.\n\n" + analysisPrompt });
+      contentParts.push({
+        text:
+          "The above image is the diagram/figure for this question. Use it to understand the visual context.\n\n" +
+          analysisPrompt,
+      });
     } else {
       contentParts.push({ text: analysisPrompt });
     }
 
-    const geminiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + GEMINI_API_KEY, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: contentParts
-        }],
-        tools: [{
-          functionDeclarations: [{
-            name: "analyze_question",
-            description: "Provide complete analysis with enhanced Guide Me scaffold",
-            parameters: {
-              type: "object",
-              required: ["correctAnswer", "difficulty", "detailedSolution", "guideMeSteps", "methodSummary", "topicSuggestions", "questionType"],
-              properties: {
-                correctAnswer: { 
-                  type: "string", 
-                  description: "The correct choice letter (a, b, c, d, or e)" 
-                },
-                difficulty: { 
-                  type: "number", 
-                  description: "Difficulty 1-5" 
-                },
-                detailedSolution: {
-                  type: "string", 
-                  description: "Formatted solution with **bold headers**, display math $$equation$$, and **Conclusion**" 
-                },
-                guideMeSteps: {
-                  type: "array",
-                  description: "REQUIRED: 3-6 scaffolded steps teaching transferable reasoning. MUST have at least 3 steps.",
-                  items: {
-                    type: "object",
-                    required: ["stepNumber", "stepTitle", "microGoal", "prompt", "choices", "hints", "explanation", "keyTakeaway"],
-                    properties: {
-                      stepNumber: { type: "number", description: "Step number starting from 1" },
-                      stepTitle: { type: "string", description: "Skill name (e.g., 'Identify the center from standard form')" },
-                      microGoal: { type: "string", description: "What student will learn in this step" },
-                      prompt: { type: "string", description: "Short Socratic question (answerable in <20 seconds)" },
-                      choices: {
-                        type: "array",
-                        description: "Exactly 4 MC options (a-d) with misconception-based distractors",
-                        items: {
-                          type: "object",
-                          required: ["id", "text", "isCorrect"],
-                          properties: {
-                            id: { type: "string", description: "Choice letter: a, b, c, or d" },
-                            text: { type: "string", description: "Choice text with LaTeX if needed" },
-                            isCorrect: { type: "boolean", description: "True for the correct choice only" }
-                          }
-                        }
-                      },
-                      choiceFeedback: {
-                        type: "array",
-                        description: "Feedback for each choice explaining why right/wrong",
-                        items: {
-                          type: "object",
-                          properties: {
-                            choiceId: { type: "string" },
-                            feedback: { type: "string" }
-                          }
-                        }
-                      },
-                      hints: {
-                        type: "array",
-                        description: "Exactly 3 escalating hints: Tier 1 (definition) → Tier 2 (math setup) → Tier 3 (one algebra step)",
-                        items: {
-                          type: "object",
-                          required: ["tier", "text"],
-                          properties: {
-                            tier: { type: "number", description: "1, 2, or 3" },
-                            text: { type: "string", description: "Hint text with LaTeX if needed" }
-                          }
-                        }
-                      },
-                      explanation: { type: "string", description: "Full explanation after answering (sentence + math block + interpretation)" },
-                      keyTakeaway: { type: "string", description: "ONE general rule reusable on similar problems" },
-                      isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" }
-                    }
-                  }
-                },
-                methodSummary: {
-                  type: "object",
-                  description: "3-bullet method summary and optional pro tip",
-                  properties: {
-                    bullets: {
-                      type: "array",
-                      items: { type: "string" },
-                      description: "3 key method steps for similar problems"
-                    },
-                    proTip: {
-                      type: "string",
-                      description: "Optional conceptual shortcut"
-                    }
-                  }
-                },
-                topicSuggestions: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "Topic IDs or new topic names"
-                },
-                unmappedTopicSuggestions: {
-                  type: "array",
-                  items: { type: "string" },
-                  description: "New topic names if not in allowed list"
-                },
-                questionType: {
-                  type: "string",
-                  description: "Question type/category"
-                },
-                isNewQuestionType: {
-                  type: "boolean",
-                  description: "True if this is a new question type"
-                },
-              },
-            },
-          }]
-        }],
-        toolConfig: {
-          functionCallingConfig: {
-            mode: "ANY",
-            allowedFunctionNames: ["analyze_question"]
-          }
+    const geminiResponse = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" +
+        GEMINI_API_KEY,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-        generationConfig: {
-          temperature: 0.2
-        }
-      }),
-    });
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: contentParts,
+            },
+          ],
+          tools: [
+            {
+              functionDeclarations: [
+                {
+                  name: "analyze_question",
+                  description: "Provide complete analysis with enhanced Guide Me scaffold",
+                  parameters: {
+                    type: "object",
+                    required: [
+                      "correctAnswer",
+                      "difficulty",
+                      "detailedSolution",
+                      "guideMeSteps",
+                      "methodSummary",
+                      "topicSuggestions",
+                      "questionType",
+                    ],
+                    properties: {
+                      correctAnswer: {
+                        type: "string",
+                        description: "The correct choice letter (a, b, c, d, or e)",
+                      },
+                      difficulty: {
+                        type: "number",
+                        description: "Difficulty 1-5",
+                      },
+                      detailedSolution: {
+                        type: "string",
+                        description:
+                          "Formatted solution with **bold headers**, display math $$equation$$, and **Conclusion**",
+                      },
+                      guideMeSteps: {
+                        type: "array",
+                        description:
+                          "REQUIRED: 3-6 scaffolded steps teaching transferable reasoning. MUST have at least 3 steps.",
+                        items: {
+                          type: "object",
+                          required: [
+                            "stepNumber",
+                            "stepTitle",
+                            "microGoal",
+                            "prompt",
+                            "choices",
+                            "hints",
+                            "explanation",
+                            "keyTakeaway",
+                          ],
+                          properties: {
+                            stepNumber: { type: "number", description: "Step number starting from 1" },
+                            stepTitle: {
+                              type: "string",
+                              description: "Skill name (e.g., 'Identify the center from standard form')",
+                            },
+                            microGoal: { type: "string", description: "What student will learn in this step" },
+                            prompt: {
+                              type: "string",
+                              description: "Short Socratic question (answerable in <20 seconds)",
+                            },
+                            choices: {
+                              type: "array",
+                              description: "Exactly 4 MC options (a-d) with misconception-based distractors",
+                              items: {
+                                type: "object",
+                                required: ["id", "text", "isCorrect"],
+                                properties: {
+                                  id: { type: "string", description: "Choice letter: a, b, c, or d" },
+                                  text: { type: "string", description: "Choice text with LaTeX if needed" },
+                                  isCorrect: { type: "boolean", description: "True for the correct choice only" },
+                                },
+                              },
+                            },
+                            choiceFeedback: {
+                              type: "array",
+                              description: "Feedback for each choice explaining why right/wrong",
+                              items: {
+                                type: "object",
+                                properties: {
+                                  choiceId: { type: "string" },
+                                  feedback: { type: "string" },
+                                },
+                              },
+                            },
+                            hints: {
+                              type: "array",
+                              description:
+                                "Exactly 3 escalating hints: Tier 1 (definition) → Tier 2 (math setup) → Tier 3 (one algebra step)",
+                              items: {
+                                type: "object",
+                                required: ["tier", "text"],
+                                properties: {
+                                  tier: { type: "number", description: "1, 2, or 3" },
+                                  text: { type: "string", description: "Hint text with LaTeX if needed" },
+                                },
+                              },
+                            },
+                            explanation: {
+                              type: "string",
+                              description: "Full explanation after answering (sentence + math block + interpretation)",
+                            },
+                            keyTakeaway: {
+                              type: "string",
+                              description: "ONE general rule reusable on similar problems",
+                            },
+                            isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" },
+                          },
+                        },
+                      },
+                      methodSummary: {
+                        type: "object",
+                        description: "3-bullet method summary and optional pro tip",
+                        properties: {
+                          bullets: {
+                            type: "array",
+                            items: { type: "string" },
+                            description: "3 key method steps for similar problems",
+                          },
+                          proTip: {
+                            type: "string",
+                            description: "Optional conceptual shortcut",
+                          },
+                        },
+                      },
+                      topicSuggestions: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "Topic IDs or new topic names",
+                      },
+                      unmappedTopicSuggestions: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "New topic names if not in allowed list",
+                      },
+                      questionType: {
+                        type: "string",
+                        description: "Question type/category",
+                      },
+                      isNewQuestionType: {
+                        type: "boolean",
+                        description: "True if this is a new question type",
+                      },
+                    },
+                  },
+                },
+              ],
+            },
+          ],
+          toolConfig: {
+            functionCallingConfig: {
+              mode: "ANY",
+              allowedFunctionNames: ["analyze_question"],
+            },
+          },
+          generationConfig: {
+            temperature: 0.2,
+          },
+        }),
+      },
+    );
 
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
       console.error("Gemini API error:", geminiResponse.status, errorText);
-      
+
       if (geminiResponse.status === 429) {
         return new Response(JSON.stringify({ error: "Rate limit exceeded. Please try again later." }), {
           status: 429,
           headers: { ...corsHeaders, "Content-Type": "application/json" },
         });
       }
-      
+
       return new Response(JSON.stringify({ error: "AI analysis failed" }), {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -445,7 +500,7 @@ Return your response using the analyze_question function.`;
 
     // Parse the function call response from Gemini native API
     let analysis: AnalysisResult | null = null;
-    
+
     try {
       const functionCall = geminiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
       if (functionCall?.name === "analyze_question" && functionCall?.args) {
@@ -467,11 +522,11 @@ Return your response using the analyze_question function.`;
     console.log("Analysis complete, updating question...");
 
     // Map topics
-    const topicMap = new Map(existingTopics?.map(t => [t.title.toLowerCase(), t.id]) || []);
-    const questionTypeMap = new Map(existingQuestionTypes?.map(qt => [qt.name.toLowerCase(), qt.id]) || []);
-    
+    const topicMap = new Map(existingTopics?.map((t) => [t.title.toLowerCase(), t.id]) || []);
+    const questionTypeMap = new Map(existingQuestionTypes?.map((qt) => [qt.name.toLowerCase(), qt.id]) || []);
+
     // Add aliases
-    existingQuestionTypes?.forEach(qt => {
+    existingQuestionTypes?.forEach((qt) => {
       if (qt.aliases) {
         qt.aliases.forEach((alias: string) => {
           questionTypeMap.set(alias.toLowerCase(), qt.id);
@@ -512,7 +567,7 @@ Return your response using the analyze_question function.`;
           })
           .select("id")
           .single();
-        
+
         if (!typeError && newType) {
           questionTypeId = newType.id;
           console.log(`Created new question type: ${analysis.questionType}`);
@@ -521,10 +576,11 @@ Return your response using the analyze_question function.`;
     }
 
     // Update choices with correct answer
-    const updatedChoices = question.choices?.map((c: any) => ({
-      ...c,
-      isCorrect: c.id.toLowerCase() === analysis!.correctAnswer.toLowerCase(),
-    })) || null;
+    const updatedChoices =
+      question.choices?.map((c: any) => ({
+        ...c,
+        isCorrect: c.id.toLowerCase() === analysis!.correctAnswer.toLowerCase(),
+      })) || null;
 
     // Build the complete guide_me_steps object with all enhanced data
     const guideData = {
@@ -558,25 +614,24 @@ Return your response using the analyze_question function.`;
 
     console.log(`Question ${questionId} analysis complete`);
 
-    return new Response(JSON.stringify({ 
-      success: true, 
-      correctAnswer: analysis.correctAnswer,
-      difficulty: analysis.difficulty,
-      topicsMapped: mappedTopicIds.length,
-      guideMeSteps: analysis.guideMeSteps?.length || 0,
-      hasMethodSummary: !!analysis.methodSummary?.bullets?.length,
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
-
+    return new Response(
+      JSON.stringify({
+        success: true,
+        correctAnswer: analysis.correctAnswer,
+        difficulty: analysis.difficulty,
+        topicsMapped: mappedTopicIds.length,
+        guideMeSteps: analysis.guideMeSteps?.length || 0,
+        hasMethodSummary: !!analysis.methodSummary?.bullets?.length,
+      }),
+      {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
   } catch (error) {
     console.error("Analysis error:", error);
-    return new Response(
-      JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }),
-      {
-        status: 500,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      }
-    );
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : "Unknown error" }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
 });
