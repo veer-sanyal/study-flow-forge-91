@@ -272,6 +272,7 @@ Return your response using the analyze_question function.`;
               description: "Provide complete analysis with enhanced Guide Me scaffold",
               parameters: {
                 type: "object",
+                required: ["correctAnswer", "difficulty", "detailedSolution", "guideMeSteps", "methodSummary", "topicSuggestions", "questionType"],
                 properties: {
                   correctAnswer: { 
                     type: "string", 
@@ -287,23 +288,28 @@ Return your response using the analyze_question function.`;
                   },
                   guideMeSteps: {
                     type: "array",
-                    description: "3-6 scaffolded steps teaching transferable reasoning",
+                    description: "REQUIRED: 3-6 scaffolded steps teaching transferable reasoning. MUST have at least 3 steps.",
+                    minItems: 3,
                     items: {
                       type: "object",
+                      required: ["stepNumber", "stepTitle", "microGoal", "prompt", "choices", "hints", "explanation", "keyTakeaway"],
                       properties: {
-                        stepNumber: { type: "number" },
-                        stepTitle: { type: "string", description: "Skill name" },
-                        microGoal: { type: "string", description: "What student will learn" },
-                        prompt: { type: "string", description: "Socratic question" },
+                        stepNumber: { type: "number", description: "Step number starting from 1" },
+                        stepTitle: { type: "string", description: "Skill name (e.g., 'Identify the center from standard form')" },
+                        microGoal: { type: "string", description: "What student will learn in this step" },
+                        prompt: { type: "string", description: "Short Socratic question (answerable in <20 seconds)" },
                         choices: {
                           type: "array",
-                          description: "4 MC options with misconception-based distractors",
+                          minItems: 4,
+                          maxItems: 4,
+                          description: "Exactly 4 MC options (a-d) with misconception-based distractors",
                           items: {
                             type: "object",
+                            required: ["id", "text", "isCorrect"],
                             properties: {
-                              id: { type: "string" },
-                              text: { type: "string" },
-                              isCorrect: { type: "boolean" }
+                              id: { type: "string", description: "Choice letter: a, b, c, or d" },
+                              text: { type: "string", description: "Choice text with LaTeX if needed" },
+                              isCorrect: { type: "boolean", description: "True for the correct choice only" }
                             }
                           }
                         },
@@ -320,17 +326,20 @@ Return your response using the analyze_question function.`;
                         },
                         hints: {
                           type: "array",
-                          description: "3 escalating hints: definition → math setup → one algebra step",
+                          minItems: 3,
+                          maxItems: 3,
+                          description: "Exactly 3 escalating hints: Tier 1 (definition) → Tier 2 (math setup) → Tier 3 (one algebra step)",
                           items: {
                             type: "object",
+                            required: ["tier", "text"],
                             properties: {
-                              tier: { type: "number" },
-                              text: { type: "string" }
+                              tier: { type: "number", description: "1, 2, or 3" },
+                              text: { type: "string", description: "Hint text with LaTeX if needed" }
                             }
                           }
                         },
-                        explanation: { type: "string", description: "Full explanation after answering" },
-                        keyTakeaway: { type: "string", description: "General rule reusable on similar problems" },
+                        explanation: { type: "string", description: "Full explanation after answering (sentence + math block + interpretation)" },
+                        keyTakeaway: { type: "string", description: "ONE general rule reusable on similar problems" },
                         isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" }
                       }
                     }

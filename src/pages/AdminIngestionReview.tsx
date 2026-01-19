@@ -375,10 +375,18 @@ function QuestionCard({
   onUploadImage: (file: File) => void;
   isAnalyzing: boolean;
 }) {
-  const hasGuideMe = question.guide_me_steps && 
-    (Array.isArray(question.guide_me_steps) 
-      ? question.guide_me_steps.length > 0 
-      : typeof question.guide_me_steps === 'object' && Object.keys(question.guide_me_steps).length > 0);
+  // Check for guide me steps - handle both old format (array) and new format (object with steps property)
+  const getGuideSteps = (guideMeSteps: Json | null): Array<unknown> => {
+    if (!guideMeSteps) return [];
+    if (Array.isArray(guideMeSteps)) return guideMeSteps;
+    if (typeof guideMeSteps === 'object' && 'steps' in guideMeSteps && Array.isArray((guideMeSteps as { steps: unknown[] }).steps)) {
+      return (guideMeSteps as { steps: unknown[] }).steps;
+    }
+    return [];
+  };
+  
+  const guideSteps = getGuideSteps(question.guide_me_steps);
+  const hasGuideMe = guideSteps.length > 0;
   const needsAnalysis = !question.correct_answer || !hasGuideMe;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -556,26 +564,106 @@ function QuestionCard({
           )}
 
           {/* Guide Me Steps Preview */}
-          {question.guide_me_steps && Array.isArray(question.guide_me_steps) && question.guide_me_steps.length > 0 && (
-            <details className="pt-2 border-t">
-              <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium flex items-center gap-2">
-                <Wand2 className="h-4 w-4" />
-                View Guide Me ({question.guide_me_steps.length} steps)
-              </summary>
-              <div className="mt-3 space-y-4">
-                {(question.guide_me_steps as Array<{
-                  stepNumber?: number;
-                  prompt?: string;
-                  choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
-                  hints?: Array<{ tier: number; text: string }>;
-                  explanation?: string;
-                  keyTakeaway?: string;
-                }>).map((step, idx) => (
-                  <GuideMeStepCard key={idx} step={step} stepIndex={idx} />
-                ))}
-              </div>
-            </details>
-          )}
+          {(() => {
+            // Handle both old format (array) and new format (object with steps property)
+            const getGuideData = (guideMeSteps: Json | null) => {
+              if (!guideMeSteps) return { steps: [], methodSummary: null, miniVariant: null };
+              if (Array.isArray(guideMeSteps)) return { steps: guideMeSteps, methodSummary: null, miniVariant: null };
+              if (typeof guideMeSteps === 'object') {
+                const data = guideMeSteps as { 
+                  steps?: unknown[]; 
+                  methodSummary?: { bullets?: string[]; proTip?: string };
+                  miniVariant?: { prompt?: string; answer?: string };
+                };
+                return { 
+                  steps: data.steps || [], 
+                  methodSummary: data.methodSummary || null,
+                  miniVariant: data.miniVariant || null 
+                };
+              }
+              return { steps: [], methodSummary: null, miniVariant: null };
+            };
+            
+            const guideData = getGuideData(question.guide_me_steps);
+            const hasSteps = guideData.steps.length > 0;
+            const hasSummary = guideData.methodSummary?.bullets?.length;
+            const hasMiniVariant = guideData.miniVariant?.prompt;
+            
+            if (!hasSteps && !hasSummary && !hasMiniVariant) return null;
+            
+            return (
+              <details className="pt-2 border-t">
+                <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium flex items-center gap-2">
+                  <Wand2 className="h-4 w-4" />
+                  View Guide Me ({guideData.steps.length} steps{hasSummary ? ' + Summary' : ''}{hasMiniVariant ? ' + Variant' : ''})
+                </summary>
+                <div className="mt-3 space-y-4">
+                  {/* Steps */}
+                  {(guideData.steps as Array<{
+                    stepNumber?: number;
+                    prompt?: string;
+                    choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
+                    hints?: Array<{ tier: number; text: string }>;
+                    explanation?: string;
+                    keyTakeaway?: string;
+                  }>).map((step, idx) => (
+                    <GuideMeStepCard key={idx} step={step} stepIndex={idx} />
+                  ))}
+                  
+                  {/* Method Summary */}
+                  {guideData.methodSummary?.bullets && guideData.methodSummary.bullets.length > 0 && (
+                    <div className="rounded-lg border bg-primary/5 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Globe className="h-4 w-4 text-primary" />
+                        <span className="font-medium text-sm">Method Summary</span>
+                      </div>
+                      <ul className="space-y-2 pl-4">
+                        {guideData.methodSummary.bullets.map((bullet, idx) => (
+                          <li key={idx} className="text-sm list-disc prose prose-sm dark:prose-invert">
+                            <MathRenderer content={bullet} />
+                          </li>
+                        ))}
+                      </ul>
+                      {guideData.methodSummary.proTip && (
+                        <div className="mt-3 p-3 rounded bg-amber-500/10 border border-amber-500/20">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Lightbulb className="h-4 w-4 text-amber-600" />
+                            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Pro Tip</span>
+                          </div>
+                          <div className="text-sm prose prose-sm dark:prose-invert">
+                            <MathRenderer content={guideData.methodSummary.proTip} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Mini Variant */}
+                  {guideData.miniVariant?.prompt && (
+                    <div className="rounded-lg border bg-blue-500/5 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <FileText className="h-4 w-4 text-blue-500" />
+                        <span className="font-medium text-sm">Practice Variant</span>
+                      </div>
+                      <div className="prose prose-sm dark:prose-invert">
+                        <MathRenderer content={guideData.miniVariant.prompt} />
+                      </div>
+                      {guideData.miniVariant.answer && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground">
+                            Show Answer
+                          </summary>
+                          <div className="mt-2 p-2 rounded bg-blue-500/10 border border-blue-500/20 text-sm prose prose-sm dark:prose-invert">
+                            <MathRenderer content={guideData.miniVariant.answer} />
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </details>
+            );
+          })()}
         </CardContent>
       </Card>
     </motion.div>
