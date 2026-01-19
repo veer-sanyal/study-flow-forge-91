@@ -319,6 +319,7 @@ Return your response using the extract_questions function.`;
           course_pack_id: job.course_pack_id,
           midterm_number: docMidtermNumber,
           question_order: q.questionOrder || null,
+          ingestion_job_id: jobId, // Link question to its source exam/job
         });
 
       if (insertError) {
