@@ -154,15 +154,6 @@ function CourseCard({
               <span className="text-lg font-semibold text-foreground">{course.examCount}</span>
               <span className="text-xs text-muted-foreground">exams</span>
             </div>
-            {course.needsReviewCount > 0 && (
-              <>
-                <div className="w-px h-8 bg-border" />
-                <div className="flex flex-col">
-                  <span className="text-lg font-semibold text-destructive">{course.needsReviewCount}</span>
-                  <span className="text-xs text-muted-foreground">need review</span>
-                </div>
-              </>
-            )}
           </div>
 
           {/* Action button */}
