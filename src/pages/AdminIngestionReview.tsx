@@ -439,22 +439,20 @@ function QuestionCard({
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
-              {needsAnalysis && (
-                <Button 
-                  variant="default" 
-                  size="sm" 
-                  className="gap-1"
-                  onClick={onAnalyze}
-                  disabled={isAnalyzing}
-                >
-                  {isAnalyzing ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Wand2 className="h-4 w-4" />
-                  )}
-                  {isAnalyzing ? "Analyzing..." : "Analyze"}
-                </Button>
-              )}
+              <Button 
+                variant={needsAnalysis ? "default" : "outline"} 
+                size="sm" 
+                className="gap-1"
+                onClick={onAnalyze}
+                disabled={isAnalyzing}
+              >
+                {isAnalyzing ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4" />
+                )}
+                {isAnalyzing ? "Analyzing..." : needsAnalysis ? "Analyze" : "Re-analyze"}
+              </Button>
               <Button variant="ghost" size="icon" onClick={onEdit}>
                 <Edit2 className="h-4 w-4" />
               </Button>

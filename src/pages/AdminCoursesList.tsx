@@ -1,20 +1,25 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, FileQuestion, AlertCircle } from "lucide-react";
+import { BookOpen, FileQuestion, AlertCircle, Globe, GlobeLock, Loader2 } from "lucide-react";
 import { getCourseCardColor } from "@/lib/examUtils";
 import { staggerContainer, staggerItem, reducedMotionProps } from "@/lib/motion";
 import { motion } from "framer-motion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { usePublishCourse } from "@/hooks/use-ingestion";
+import { toast } from "sonner";
 
 interface CourseWithStats {
   id: string;
   title: string;
   description: string | null;
+  isPublished: boolean;
   questionCount: number;
   examCount: number;
   needsReviewCount: number;
@@ -27,7 +32,7 @@ function useCoursesWithStats() {
       // Get all course packs
       const { data: courses, error: coursesError } = await supabase
         .from("course_packs")
-        .select("id, title, description")
+        .select("id, title, description, is_published")
         .order("title");
 
       if (coursesError) throw coursesError;
@@ -40,7 +45,7 @@ function useCoursesWithStats() {
       if (questionsError) throw questionsError;
 
       // Calculate stats for each course
-      const coursesWithStats: CourseWithStats[] = courses.map((course) => {
+      const coursesWithStats: CourseWithStats[] = (courses as any[]).map((course) => {
         const courseQuestions = questions.filter(
           (q) => q.course_pack_id === course.id
         );
@@ -52,6 +57,7 @@ function useCoursesWithStats() {
           id: course.id,
           title: course.title,
           description: course.description,
+          isPublished: course.is_published ?? false,
           questionCount: courseQuestions.length,
           examCount: uniqueExams.size,
           needsReviewCount: courseQuestions.filter((q) => q.needs_review).length,
@@ -63,10 +69,25 @@ function useCoursesWithStats() {
   });
 }
 
-function CourseCard({ course, index }: { course: CourseWithStats; index: number }) {
+function CourseCard({ 
+  course, 
+  index,
+  onPublish,
+  isPublishing 
+}: { 
+  course: CourseWithStats; 
+  index: number;
+  onPublish: (courseId: string, isPublished: boolean) => void;
+  isPublishing: boolean;
+}) {
   const navigate = useNavigate();
   const { gradient, accentColor } = getCourseCardColor(course.title, index);
   const prefersReducedMotion = useReducedMotion();
+
+  const handlePublishClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onPublish(course.id, !course.isPublished);
+  };
 
   return (
     <motion.div
@@ -80,6 +101,21 @@ function CourseCard({ course, index }: { course: CourseWithStats; index: number 
           {/* Decorative circles */}
           <div className={`absolute -right-4 -top-4 w-24 h-24 rounded-full ${accentColor} opacity-30`} />
           <div className={`absolute -right-8 top-8 w-16 h-16 rounded-full ${accentColor} opacity-20`} />
+          
+          {/* Published badge */}
+          <div className="absolute top-3 right-3">
+            {course.isPublished ? (
+              <Badge className="gap-1 bg-green-500/90 text-white">
+                <Globe className="h-3 w-3" />
+                Published
+              </Badge>
+            ) : (
+              <Badge variant="secondary" className="gap-1 bg-black/30 text-white border-0">
+                <GlobeLock className="h-3 w-3" />
+                Draft
+              </Badge>
+            )}
+          </div>
           
           {/* Course title */}
           <div className="absolute bottom-4 left-4 right-4">
@@ -107,12 +143,30 @@ function CourseCard({ course, index }: { course: CourseWithStats; index: number 
             </div>
           </div>
 
-          {course.needsReviewCount > 0 && (
-            <Badge variant="destructive" className="gap-1">
-              <AlertCircle className="h-3 w-3" />
-              {course.needsReviewCount} need review
-            </Badge>
-          )}
+          <div className="flex items-center justify-between gap-2">
+            {course.needsReviewCount > 0 && (
+              <Badge variant="destructive" className="gap-1">
+                <AlertCircle className="h-3 w-3" />
+                {course.needsReviewCount} need review
+              </Badge>
+            )}
+            <Button
+              variant={course.isPublished ? "outline" : "default"}
+              size="sm"
+              className="ml-auto gap-1"
+              onClick={handlePublishClick}
+              disabled={isPublishing}
+            >
+              {isPublishing ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : course.isPublished ? (
+                <GlobeLock className="h-3 w-3" />
+              ) : (
+                <Globe className="h-3 w-3" />
+              )}
+              {course.isPublished ? "Unpublish" : "Publish"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
     </motion.div>
@@ -137,11 +191,30 @@ function CourseCardSkeleton() {
 export default function AdminCoursesList() {
   const { data: courses, isLoading, error } = useCoursesWithStats();
   const prefersReducedMotion = useReducedMotion();
+  const publishMutation = usePublishCourse();
+  const [publishingCourseId, setPublishingCourseId] = useState<string | null>(null);
 
   // Calculate overall stats
   const totalQuestions = courses?.reduce((sum, c) => sum + c.questionCount, 0) || 0;
   const totalNeedsReview = courses?.reduce((sum, c) => sum + c.needsReviewCount, 0) || 0;
   const totalApproved = totalQuestions - totalNeedsReview;
+
+  const handlePublish = (courseId: string, isPublished: boolean) => {
+    setPublishingCourseId(courseId);
+    publishMutation.mutate(
+      { courseId, isPublished },
+      {
+        onSuccess: () => {
+          toast.success(isPublished ? "Course published!" : "Course unpublished");
+          setPublishingCourseId(null);
+        },
+        onError: (err) => {
+          toast.error("Failed to update course: " + err.message);
+          setPublishingCourseId(null);
+        },
+      }
+    );
+  };
 
   return (
     <PageTransition>
@@ -195,7 +268,13 @@ export default function AdminCoursesList() {
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
             {courses?.map((course, index) => (
-              <CourseCard key={course.id} course={course} index={index} />
+              <CourseCard 
+                key={course.id} 
+                course={course} 
+                index={index}
+                onPublish={handlePublish}
+                isPublishing={publishingCourseId === course.id}
+              />
             ))}
           </motion.div>
         )}
