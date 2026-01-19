@@ -347,10 +347,25 @@ Return your response using the extract_questions function.`;
       })
       .eq("id", jobId);
 
-    // Step B3: Insert questions with needs_review=true and needs_analysis=true
-    console.log("Step B3: Inserting questions (pending analysis)...");
+    // Step B3: Delete existing questions for this source_exam, then insert new ones
+    console.log("Step B3: Deleting existing questions for this exam...");
 
     const docMidtermNumber = extractedData.midtermNumber || null;
+
+    // Delete any existing questions with the same source_exam and course_pack_id to avoid duplicates
+    const { error: deleteError } = await supabase
+      .from("questions")
+      .delete()
+      .eq("course_pack_id", job.course_pack_id)
+      .eq("source_exam", extractedData.sourceExam);
+
+    if (deleteError) {
+      console.error("Failed to delete existing questions:", deleteError);
+    } else {
+      console.log(`Deleted existing questions for exam: ${extractedData.sourceExam}`);
+    }
+
+    console.log("Inserting new questions (pending analysis)...");
 
     for (const q of extractedData.questions) {
       // Format choices without isCorrect (will be set during analysis)
