@@ -11,6 +11,11 @@ interface GuideHint {
   text: string;
 }
 
+interface ChoiceFeedback {
+  choiceId: string;
+  feedback: string;
+}
+
 interface GuideStepChoice {
   id: string;
   text: string;
@@ -19,11 +24,25 @@ interface GuideStepChoice {
 
 interface GuideStep {
   stepNumber: number;
+  stepTitle: string;
+  microGoal: string;
   prompt: string;
   choices: GuideStepChoice[];
   hints: GuideHint[];
+  choiceFeedback: ChoiceFeedback[];
   explanation: string;
   keyTakeaway: string;
+  isMisconceptionCheck?: boolean;
+}
+
+interface MethodSummary {
+  bullets: string[];
+  proTip?: string;
+}
+
+interface MiniVariant {
+  prompt: string;
+  answer: string;
 }
 
 interface AnalysisResult {
@@ -31,6 +50,8 @@ interface AnalysisResult {
   difficulty: number;
   detailedSolution: string;
   guideMeSteps: GuideStep[];
+  methodSummary: MethodSummary;
+  miniVariant?: MiniVariant;
   topicSuggestions: string[];
   questionType: string;
 }
@@ -108,7 +129,9 @@ serve(async (req) => {
     // Format the question for analysis
     const choicesText = question.choices?.map((c: any) => `${c.id}) ${c.text}`).join("\n") || "No choices";
 
-    const analysisPrompt = `You are an expert math tutor analyzing an exam question. Provide a complete analysis.
+    const analysisPrompt = `You are an expert math tutor generating a "Guide Me" learning scaffold for an exam question.
+
+GOAL: Teach the TRANSFERABLE REASONING PROCESS, not just the answer. Each step must be reusable for similar problems.
 
 QUESTION:
 ${question.prompt}
@@ -122,46 +145,65 @@ ${topicsList}
 EXISTING QUESTION TYPES:
 ${questionTypesList}
 
-Provide the following analysis:
+=== OUTPUT REQUIREMENTS ===
 
-1. CORRECT ANSWER: Identify which choice (a, b, c, d, or e) is correct.
+1. CORRECT ANSWER: Which choice (a, b, c, d, or e) is correct.
 
-2. DIFFICULTY: Rate from 1-5 (1=easy, 5=very hard)
+2. DIFFICULTY: Rate 1-5 (1=easy, 5=very hard)
 
-3. DETAILED SOLUTION: A beautifully formatted step-by-step solution. Use rich markdown + LaTeX formatting:
+3. DETAILED SOLUTION: Step-by-step with rich markdown + LaTeX:
+   - Use **bold** headers for sections
+   - Display math: $$equation$$
+   - Inline math: $x$
+   - End with **Conclusion** section
+
+4. GUIDE ME STEPS (3-6 steps): Each step MUST include:
+
+   a) stepTitle: Skill name (e.g., "Identify the sphere center from standard form")
    
-   **FORMATTING REQUIREMENTS:**
-   - Use **bold** headers for each major section (e.g., **Step 1: Identify the Problem**)
-   - Use bullet points (- or •) for listing related items or cases
-   - Put key equations on their own lines using display math: $$equation$$
-   - Use inline math $x$ for variables mentioned in text
-   - Add blank lines between sections for visual breathing room
-   - Use \\textbf{} inside LaTeX for emphasis on key terms
-   - For multi-case analysis, use structured bullets like:
-     - For case A: $equation$ \\Rightarrow result
-     - For case B: $equation$ \\Rightarrow result
-   - End with a clear **Conclusion** section summarizing the answer
-   - Use \\implies or \\Rightarrow for logical flow between steps
+   b) microGoal: What the student will learn (1 sentence)
    
-   **CONTENT REQUIREMENTS:**
-   - Explain the reasoning behind each step in plain language
-   - Show ALL intermediate calculations
-   - Highlight key insights and why they matter
-   - Connect back to the original question at the end
+   c) prompt: Short Socratic question (answerable in <20 seconds)
+   
+   d) choices: EXACTLY 4 options (a-d) where:
+      - One is correct
+      - Three are REALISTIC MISCONCEPTIONS (common student errors like: confusing center vs radius, forgetting sign conventions, using wrong formula, mixing up cases)
+   
+   e) choiceFeedback: One explanation for EACH option:
+      - For correct: Why it's right
+      - For wrong: Why it's tempting but wrong (explain the misconception)
+   
+   f) hints (3 tiers that ESCALATE, not rephrase):
+      - Tier 1: Recall a definition or concept ("What is the standard form?")
+      - Tier 2: Translate concept to math setup ("So what value does x equal?")
+      - Tier 3: Do ONE helpful algebra step (not the whole problem!)
+      * Tier 3 may reveal one intermediate line, but NOT the final answer
+   
+   g) explanation: Full explanation after answering
+   
+   h) keyTakeaway: ONE general rule reusable on similar problems
+   
+   i) isMisconceptionCheck: true if this step specifically tests a common mistake
 
-4. GUIDE ME STEPS: Create 2-5 scaffolded steps that help students DISCOVER the answer (don't give it directly). Each step should:
-   - Have a guiding question prompt
-   - Have EXACTLY 4 multiple choice options (a, b, c, d) with one correct
-   - Have 3 hint tiers (these help with THIS guide step, NOT the main question):
-     * Tier 1: Gentle conceptual nudge (doesn't reveal the step answer)
-     * Tier 2: More specific guidance (still doesn't reveal the step answer)
-     * Tier 3: Strong hint that points toward the step answer
-   - Have an explanation of why the correct choice is right
-   - Have a keyTakeaway summarizing the core concept learned
+   QUALITY RULES for steps:
+   - Do NOT reveal the final answer until the last step
+   - Prefer conceptual checks before computation
+   - Include at least ONE step marked isMisconceptionCheck=true
+   - Use plain language, minimal fluff
+   - If a faster conceptual criterion exists, mention it
 
-5. TOPICS: Map to topic IDs from the allowed list above. If no exact match, suggest new topic names.
+5. METHOD SUMMARY:
+   - bullets: 3 key method steps that work for ALL similar problems
+   - proTip: (optional) A faster conceptual shortcut if one exists
+     Example for sphere/plane: "A sphere intersects a plane iff distance(center, plane) ≤ radius"
 
-6. QUESTION TYPE: The category (e.g., "Volume of Rotation", "Arc Length"). Use existing types if possible.
+6. MINI VARIANT (optional but encouraged):
+   - prompt: A slightly modified version of the problem for extra practice
+   - answer: The answer to the variant
+
+7. TOPICS: Map to topic IDs from the allowed list. If no exact match, suggest new topic names.
+
+8. QUESTION TYPE: Category (e.g., "Sphere Intersection", "Volume of Rotation"). Use existing if possible.
 
 Return your response using the analyze_question function.`;
 
@@ -186,7 +228,7 @@ Return your response using the analyze_question function.`;
             type: "function",
             function: {
               name: "analyze_question",
-              description: "Provide complete analysis for an exam question",
+              description: "Provide complete analysis with enhanced Guide Me scaffold",
               parameters: {
                 type: "object",
                 properties: {
@@ -200,19 +242,21 @@ Return your response using the analyze_question function.`;
                   },
                   detailedSolution: {
                     type: "string", 
-                    description: "Beautifully formatted solution with **bold headers**, bullet points, display math $$equation$$, logical flow using \\Rightarrow, and a clear **Conclusion** section" 
+                    description: "Formatted solution with **bold headers**, display math $$equation$$, and **Conclusion**" 
                   },
                   guideMeSteps: {
                     type: "array",
-                    description: "2-5 scaffolded steps to guide students",
+                    description: "3-6 scaffolded steps teaching transferable reasoning",
                     items: {
                       type: "object",
                       properties: {
                         stepNumber: { type: "number" },
-                        prompt: { type: "string", description: "Guiding question" },
+                        stepTitle: { type: "string", description: "Skill name" },
+                        microGoal: { type: "string", description: "What student will learn" },
+                        prompt: { type: "string", description: "Socratic question" },
                         choices: {
                           type: "array",
-                          description: "4 multiple choice options",
+                          description: "4 MC options with misconception-based distractors",
                           items: {
                             type: "object",
                             properties: {
@@ -222,9 +266,20 @@ Return your response using the analyze_question function.`;
                             }
                           }
                         },
+                        choiceFeedback: {
+                          type: "array",
+                          description: "Feedback for each choice explaining why right/wrong",
+                          items: {
+                            type: "object",
+                            properties: {
+                              choiceId: { type: "string" },
+                              feedback: { type: "string" }
+                            }
+                          }
+                        },
                         hints: {
                           type: "array",
-                          description: "3 hint tiers",
+                          description: "3 escalating hints: definition → math setup → one algebra step",
                           items: {
                             type: "object",
                             properties: {
@@ -233,9 +288,33 @@ Return your response using the analyze_question function.`;
                             }
                           }
                         },
-                        explanation: { type: "string", description: "Why the correct answer is right" },
-                        keyTakeaway: { type: "string", description: "Core concept or skill learned from this step" }
+                        explanation: { type: "string", description: "Full explanation after answering" },
+                        keyTakeaway: { type: "string", description: "General rule reusable on similar problems" },
+                        isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" }
                       }
+                    }
+                  },
+                  methodSummary: {
+                    type: "object",
+                    description: "3-bullet method summary and optional pro tip",
+                    properties: {
+                      bullets: {
+                        type: "array",
+                        items: { type: "string" },
+                        description: "3 key method steps for similar problems"
+                      },
+                      proTip: {
+                        type: "string",
+                        description: "Optional conceptual shortcut"
+                      }
+                    }
+                  },
+                  miniVariant: {
+                    type: "object",
+                    description: "Optional practice variant",
+                    properties: {
+                      prompt: { type: "string" },
+                      answer: { type: "string" }
                     }
                   },
                   topicSuggestions: {
@@ -368,6 +447,13 @@ Return your response using the analyze_question function.`;
       isCorrect: c.id.toLowerCase() === analysis!.correctAnswer.toLowerCase(),
     })) || null;
 
+    // Build the complete guide_me_steps object with all enhanced data
+    const guideData = {
+      steps: analysis.guideMeSteps || [],
+      methodSummary: analysis.methodSummary || { bullets: [] },
+      miniVariant: analysis.miniVariant || null,
+    };
+
     // Update the question
     const { error: updateError } = await supabase
       .from("questions")
@@ -375,7 +461,7 @@ Return your response using the analyze_question function.`;
         choices: updatedChoices,
         correct_answer: analysis.correctAnswer,
         solution_steps: analysis.detailedSolution ? [analysis.detailedSolution] : null,
-        guide_me_steps: analysis.guideMeSteps || null,
+        guide_me_steps: guideData,
         difficulty: analysis.difficulty || 3,
         topic_ids: mappedTopicIds,
         unmapped_topic_suggestions: unmappedSuggestions.length > 0 ? unmappedSuggestions : null,
@@ -400,6 +486,8 @@ Return your response using the analyze_question function.`;
       difficulty: analysis.difficulty,
       topicsMapped: mappedTopicIds.length,
       guideMeSteps: analysis.guideMeSteps?.length || 0,
+      hasMethodSummary: !!analysis.methodSummary?.bullets?.length,
+      hasMiniVariant: !!analysis.miniVariant,
     }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
