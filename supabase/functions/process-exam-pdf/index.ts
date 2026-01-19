@@ -6,11 +6,32 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface GuideHint {
+  tier: number;
+  text: string;
+}
+
+interface GuideStepChoice {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+interface GuideStep {
+  stepNumber: number;
+  prompt: string;
+  choices: GuideStepChoice[];
+  hints: GuideHint[];
+  explanation: string;
+}
+
 interface ExtractedQuestion {
   prompt: string;
   choices: { id: string; text: string; isCorrect: boolean }[];
   correctAnswer?: string;
   solutionSteps?: string[];
+  detailedSolution?: string;
+  guideMeSteps?: GuideStep[];
   hint?: string;
   difficulty?: number;
   topicSuggestions: string[];
@@ -159,20 +180,21 @@ serve(async (req) => {
     // Step B1-B4: Call Gemini to extract questions
     console.log("Step B1-B4: Extracting questions with Gemini...");
     
-    const extractionPrompt = `You are an expert at extracting exam questions from PDF documents.
+    const extractionPrompt = `You are an expert at extracting exam questions from PDF documents and creating educational scaffolding.
 
 Analyze this exam PDF and extract ALL questions with the following information for each:
 1. The question prompt (preserve any mathematical notation using LaTeX)
 2. Multiple choice options if present (with the correct answer marked)
 3. The correct answer
-4. Step-by-step solution if visible
-5. A hint for students
-6. Estimated difficulty (1-5 scale)
-7. Topic suggestions from this list of ALLOWED topics:
+4. A DETAILED step-by-step solution with full LaTeX formatting and reasoning explanations
+5. Guide Me scaffolded steps (2-5 steps to help students discover the answer themselves)
+6. A hint for students
+7. Estimated difficulty (1-5 scale)
+8. Topic suggestions from this list of ALLOWED topics:
 ${topicsList}
-8. Question type/category (e.g., "Volume of Rotation", "Arc Length", "Work Problem", "Taylor Series")
-9. Question order (the order in which the question appears in the exam, starting from 1)
-10. Midterm number (1, 2, or 3 - infer from the document title/header if visible)
+9. Question type/category (e.g., "Volume of Rotation", "Arc Length", "Work Problem", "Taylor Series")
+10. Question order (the order in which the question appears in the exam, starting from 1)
+11. Midterm number (1, 2, or 3 - infer from the document title/header if visible)
 
 EXISTING QUESTION TYPES FOR THIS COURSE:
 ${questionTypesList}
@@ -185,6 +207,24 @@ IMPORTANT RULES:
 - For question types: TRY to match to an existing question type first. Only mark isNewQuestionType=true if none of the existing types match.
 - Question types should be specific but not too granular (e.g., "Volume of Rotation" not "Volume of Rotation using Shell Method")
 - Number questions in the order they appear in the exam (questionOrder: 1, 2, 3, etc.)
+
+GUIDE ME STEPS RULES (CRITICAL):
+- Generate 2-5 scaffolded steps per question
+- Each step has EXACTLY 4 multiple choice options (one correct, three incorrect but plausible)
+- Steps should guide the student to DISCOVER the answer, NOT give it directly
+- Step prompts should be guiding questions like "What concept applies here?" or "What should we identify first?"
+- Include 3 hint tiers per step:
+  - Tier 1: Gentle nudge (e.g., "Think about the relationship between...")
+  - Tier 2: Conceptual hint (e.g., "Remember the formula for...")
+  - Tier 3: Near-answer hint (e.g., "You need to calculate the derivative of...")
+- Each step's explanation should describe why the correct choice is right
+
+DETAILED SOLUTION RULES:
+- Provide a complete step-by-step solution using LaTeX for all math
+- Explain the reasoning behind each step in plain language
+- Use clear formatting with numbered steps
+- Include intermediate calculations and explain WHY each step is taken
+- Format as a single string with \\n for line breaks
 
 Return your response using the extract_questions function.`;
 
@@ -247,6 +287,50 @@ Return your response using the extract_questions function.`;
                         },
                         correctAnswer: { type: "string" },
                         solutionSteps: { type: "array", items: { type: "string" } },
+                        detailedSolution: { 
+                          type: "string", 
+                          description: "Full step-by-step solution with LaTeX formatting, reasoning, and explanations" 
+                        },
+                        guideMeSteps: {
+                          type: "array",
+                          description: "2-5 scaffolded steps to help students discover the answer",
+                          items: {
+                            type: "object",
+                            properties: {
+                              stepNumber: { type: "number" },
+                              prompt: { type: "string", description: "Guiding question for this step" },
+                              choices: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  properties: {
+                                    id: { type: "string", enum: ["a", "b", "c", "d"] },
+                                    text: { type: "string" },
+                                    isCorrect: { type: "boolean" }
+                                  },
+                                  required: ["id", "text", "isCorrect"]
+                                },
+                                minItems: 4,
+                                maxItems: 4
+                              },
+                              hints: {
+                                type: "array",
+                                items: {
+                                  type: "object",
+                                  properties: {
+                                    tier: { type: "number", enum: [1, 2, 3] },
+                                    text: { type: "string" }
+                                  },
+                                  required: ["tier", "text"]
+                                },
+                                minItems: 3,
+                                maxItems: 3
+                              },
+                              explanation: { type: "string", description: "Why the correct choice is right" }
+                            },
+                            required: ["stepNumber", "prompt", "choices", "hints", "explanation"]
+                          }
+                        },
                         hint: { type: "string" },
                         difficulty: { type: "number", minimum: 1, maximum: 5 },
                         topicSuggestions: {
@@ -272,7 +356,7 @@ Return your response using the extract_questions function.`;
                           description: "The order/number of this question in the exam (1, 2, 3, etc.)",
                         },
                       },
-                      required: ["prompt", "topicSuggestions"],
+                      required: ["prompt", "topicSuggestions", "guideMeSteps", "detailedSolution"],
                     },
                   },
                 },
@@ -425,6 +509,10 @@ Return your response using the extract_questions function.`;
         mapped++;
       }
 
+      // Build detailed solution - either from extracted or from solution steps
+      const detailedSolution = q.detailedSolution || 
+        (q.solutionSteps ? q.solutionSteps.join('\n\n') : null);
+
       // Insert the question
       const { error: insertError } = await supabase
         .from("questions")
@@ -432,7 +520,8 @@ Return your response using the extract_questions function.`;
           prompt: q.prompt,
           choices: q.choices || null,
           correct_answer: q.correctAnswer || null,
-          solution_steps: q.solutionSteps || null,
+          solution_steps: detailedSolution ? [detailedSolution] : (q.solutionSteps || null),
+          guide_me_steps: q.guideMeSteps || null,
           hint: q.hint || null,
           difficulty: q.difficulty || 3,
           topic_ids: mappedTopicIds,
@@ -440,6 +529,7 @@ Return your response using the extract_questions function.`;
           needs_review: needsReview,
           unmapped_topic_suggestions: unmappedSuggestions.length > 0 ? unmappedSuggestions : null,
           question_type_id: questionTypeId,
+          course_pack_id: job.course_pack_id,
           midterm_number: docMidtermNumber,
           question_order: q.questionOrder || null,
         });
