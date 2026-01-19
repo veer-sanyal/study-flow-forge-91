@@ -42,6 +42,8 @@ export interface GuideMe {
 }
 
 // Legacy function for backwards compatibility
+// This creates minimal placeholder steps when AI-generated guide isn't available
+// The steps encourage users to analyze the question rather than using meta-actions
 export function generateGuideStepsFromSolution(
   solutionSteps: string[] | null,
   questionPrompt: string
@@ -51,33 +53,33 @@ export function generateGuideStepsFromSolution(
   }
 
   // Fallback: Create simple guide steps from solution steps
-  // In production: Gemini generates proper structured guide steps
+  // In production: Gemini generates proper structured guide steps with real choices
   return solutionSteps.slice(0, 5).map((step, index) => ({
     id: `guide-step-${index + 1}`,
     stepNumber: index + 1,
     stepTitle: `Step ${index + 1}`,
-    microGoal: 'Understand this step',
+    microGoal: 'Work through this part of the solution',
     prompt: index === 0 
-      ? `Let's break this down. What's the first thing we should identify?`
-      : `Good! Now, what's the next step?`,
+      ? `Let's break this down. Review the first step:`
+      : `Now, review the next step:`,
     choices: [
       { id: 'a', text: step, isCorrect: true },
-      { id: 'b', text: 'Skip this step', isCorrect: false },
-      { id: 'c', text: 'I need more help', isCorrect: false },
-      { id: 'd', text: 'Not sure', isCorrect: false },
+      { id: 'b', text: 'This step is already covered', isCorrect: false },
+      { id: 'c', text: 'This follows from the previous step', isCorrect: false },
+      { id: 'd', text: 'Alternative approach needed', isCorrect: false },
     ],
     hints: [
-      { tier: 1, text: 'Think about what information we have.' },
-      { tier: 2, text: 'Consider the key concepts involved.' },
-      { tier: 3, text: `The answer involves: ${step.substring(0, 50)}...` },
+      { tier: 1, text: `Consider what we need to find in this problem.` },
+      { tier: 2, text: `Look at the given information and identify key values.` },
+      { tier: 3, text: `Apply the relevant formula or method: ${step.substring(0, 80)}...` },
     ],
     choiceFeedback: [
-      { choiceId: 'a', feedback: 'Correct!' },
-      { choiceId: 'b', feedback: 'Each step builds understanding.' },
-      { choiceId: 'c', feedback: 'Try using the hints first.' },
-      { choiceId: 'd', feedback: 'Review the hints for guidance.' },
+      { choiceId: 'a', feedback: 'This is the correct approach for this step.' },
+      { choiceId: 'b', feedback: 'This step introduces new information.' },
+      { choiceId: 'c', feedback: 'Review the logical connection between steps.' },
+      { choiceId: 'd', feedback: 'The standard approach works well here.' },
     ],
     explanation: step,
-    keyTakeaway: 'Each step builds toward the solution.',
+    keyTakeaway: 'Understanding each step helps build problem-solving intuition.',
   }));
 }
