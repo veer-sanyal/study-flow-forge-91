@@ -58,7 +58,7 @@ import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { MathRenderer } from "@/components/study/MathRenderer";
 import { QuestionImage } from "@/components/study/QuestionImage";
-import { useAllTopics, useUploadQuestionImage } from "@/hooks/use-questions";
+import { useAllTopics, useUploadQuestionImage, useRemoveQuestionImage } from "@/hooks/use-questions";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
@@ -365,6 +365,7 @@ function QuestionCard({
   onDelete,
   onAnalyze,
   onUploadImage,
+  onRemoveImage,
   isAnalyzing,
 }: { 
   question: Question;
@@ -374,6 +375,7 @@ function QuestionCard({
   onDelete: () => void;
   onAnalyze: () => void;
   onUploadImage: (file: File) => void;
+  onRemoveImage: () => void;
   isAnalyzing: boolean;
 }) {
   // Check for guide me steps - handle both old format (array) and new format (object with steps property)
@@ -497,11 +499,20 @@ function QuestionCard({
 
           {/* Image */}
           {question.image_url && (
-            <QuestionImage 
-              src={question.image_url} 
-              alt="Question diagram"
-              className="max-w-md"
-            />
+            <div className="relative group max-w-md">
+              <QuestionImage 
+                src={question.image_url} 
+                alt="Question diagram"
+              />
+              <Button
+                variant="destructive"
+                size="icon"
+                className="absolute top-2 right-2 h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={onRemoveImage}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
           )}
 
           {/* Choices */}
@@ -651,6 +662,7 @@ function EditQuestionDialog({
   onSave,
   topics,
   onUploadImage,
+  onRemoveImage,
 }: {
   question: Question | null;
   open: boolean;
@@ -658,6 +670,7 @@ function EditQuestionDialog({
   onSave: (updates: Partial<Question>) => void;
   topics: { id: string; title: string }[];
   onUploadImage: (file: File) => Promise<string | undefined>;
+  onRemoveImage: () => Promise<void>;
 }) {
   const [editedQuestion, setEditedQuestion] = useState<Partial<Question>>({});
   const [isDragging, setIsDragging] = useState(false);
@@ -768,11 +781,26 @@ function EditQuestionDialog({
                   </div>
                 ) : editedQuestion.image_url ? (
                   <div className="space-y-3">
-                    <QuestionImage 
-                      src={editedQuestion.image_url} 
-                      alt="Question diagram"
-                      className="max-w-sm"
-                    />
+                    <div className="relative group">
+                      <QuestionImage 
+                        src={editedQuestion.image_url} 
+                        alt="Question diagram"
+                        className="max-w-sm mx-auto"
+                      />
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onRemoveImage();
+                          setEditedQuestion(prev => ({ ...prev, image_url: null }));
+                        }}
+                      >
+                        <X className="h-4 w-4 mr-1" />
+                        Remove
+                      </Button>
+                    </div>
                     <div className="text-center text-sm text-muted-foreground">
                       Drag & drop a new image to replace, or click to select
                     </div>
@@ -935,6 +963,7 @@ export default function AdminIngestionReview() {
   const deleteQuestion = useDeleteQuestion();
   const analyzeQuestion = useAnalyzeQuestion();
   const uploadImage = useUploadQuestionImage();
+  const removeImage = useRemoveQuestionImage();
   
   const [publishingExam, setPublishingExam] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -1093,6 +1122,16 @@ export default function AdminIngestionReview() {
     } catch (error) {
       toast.error("Failed to upload image");
       return undefined;
+    }
+  };
+
+  const handleRemoveImage = async (questionId: string) => {
+    try {
+      await removeImage.mutateAsync(questionId);
+      toast.success("Image removed!");
+      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
+    } catch (error) {
+      toast.error("Failed to remove image");
     }
   };
 
@@ -1276,6 +1315,7 @@ export default function AdminIngestionReview() {
                       onDelete={() => setDeleteConfirm(question)}
                       onAnalyze={() => handleAnalyze(question.id)}
                       onUploadImage={(file) => handleUploadImage(question.id, file)}
+                      onRemoveImage={() => handleRemoveImage(question.id)}
                       isAnalyzing={analyzingId === question.id}
                     />
                   ))}
@@ -1293,6 +1333,12 @@ export default function AdminIngestionReview() {
           onSave={handleSaveEdit}
           topics={topicsList}
           onUploadImage={(file) => editingQuestion && handleUploadImage(editingQuestion.id, file)}
+          onRemoveImage={async () => {
+            if (editingQuestion) {
+              await handleRemoveImage(editingQuestion.id);
+              setEditingQuestion({ ...editingQuestion, image_url: null });
+            }
+          }}
         />
 
         {/* Delete Confirmation */}
