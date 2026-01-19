@@ -126,31 +126,26 @@ serve(async (req) => {
     
     const extractionPrompt = `You are an expert at extracting exam questions from PDF documents.
 
-When extracting a question from a PDF, preserve visual layout.
+Extract ALL questions with:
+1. The question prompt (preserve layout and mathematical notation using LaTeX)
+2. Multiple choice options (just label and text, do NOT determine which is correct)
+3. The order in which the question appears
 
-Return JSON with:
-- number (if present)
-- stem_blocks: ordered list of blocks with type "text" or "display_math"
-- choices: label + latex
+LAYOUT RULES:
+- If a line is mostly mathematical or visually centered, use display math ($$...$$)
+- Keep narrative in plain text, don't wrap sentences in LaTeX
+- Preserve line breaks: narrative → centered equation → narrative continuation
 
-Layout rules:
-1) If a line is mostly mathematical or visually centered, output it as a separate "display_math" block.
-2) Surrounding narrative must remain in "text" blocks (do NOT wrap full sentences in LaTeX).
-3) Preserve line breaks exactly as the PDF's intent: narrative line(s) → centered equation line → narrative continuation.
+LATEX FORMATTING:
+- Use \\frac for fractions, \\sqrt for radicals, \\le/\\ge for inequalities, \\pi for pi
+- Use \\left( ... \\right) for grouped expressions
+- Output must be KaTeX/MathJax renderable
 
-LaTeX normalization:
-- Use \\frac for all fractions, \\sqrt for radicals, \\le for inequalities, \\pi for pi.
-- Use \\quad for spacing in display lines.
-- Use \\left( ... \\right) for grouped numerators like \\pi(2\\sqrt{2}-1).
-- Keep punctuation (comma/period) exactly as shown (inside the relevant block).
-
-Output must be directly renderable in KaTeX/MathJax with no extra commentary.
-
-ADDITIONAL RULES:
-- Number questions in the order they appear (questionOrder: 1, 2, 3, etc.)
-- Extract the source exam name from the document header if visible
-- DO NOT try to determine which answer is correct - that will be done in a separate step
-- DO NOT generate hints, solutions, or guide me steps - those will be done separately
+RULES:
+- Number questions in order (questionOrder: 1, 2, 3, etc.)
+- Extract source exam name from document header if visible
+- DO NOT determine correct answers - done separately
+- DO NOT generate hints, solutions, or guides - done separately
 
 Return your response using the extract_questions function.`;
 
