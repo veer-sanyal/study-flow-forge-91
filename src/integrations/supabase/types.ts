@@ -254,6 +254,8 @@ export type Database = {
       }
       question_types: {
         Row: {
+          aliases: string[] | null
+          course_pack_id: string | null
           created_at: string
           description: string | null
           id: string
@@ -261,6 +263,8 @@ export type Database = {
           status: string
         }
         Insert: {
+          aliases?: string[] | null
+          course_pack_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
@@ -268,13 +272,23 @@ export type Database = {
           status?: string
         }
         Update: {
+          aliases?: string[] | null
+          course_pack_id?: string | null
           created_at?: string
           description?: string | null
           id?: string
           name?: string
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "question_types_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       questions: {
         Row: {

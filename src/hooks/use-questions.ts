@@ -4,6 +4,7 @@ import type { Tables, Json } from "@/integrations/supabase/types";
 
 type Question = Tables<"questions">;
 type Topic = Tables<"topics">;
+type QuestionType = Tables<"question_types">;
 
 export interface QuestionChoice {
   id: string;
@@ -11,8 +12,9 @@ export interface QuestionChoice {
   isCorrect: boolean;
 }
 
-export interface QuestionWithTopics extends Question {
+export interface QuestionWithDetails extends Question {
   topics?: Topic[];
+  question_types?: { id: string; name: string } | null;
 }
 
 export function useQuestionsForReview() {
@@ -21,12 +23,12 @@ export function useQuestionsForReview() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("questions")
-        .select("*")
+        .select("*, question_types(id, name)")
         .eq("needs_review", true)
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      return data as Question[];
+      return data as QuestionWithDetails[];
     },
   });
 }
@@ -35,13 +37,16 @@ export function useAllQuestions(filters?: {
   needsReview?: boolean; 
   sourceExam?: string;
   topicId?: string;
+  coursePackId?: string;
 }) {
   return useQuery({
     queryKey: ["questions", filters],
     queryFn: async () => {
       let query = supabase
         .from("questions")
-        .select("*")
+        .select("*, question_types(id, name)")
+        .order("midterm_number", { ascending: true, nullsFirst: false })
+        .order("question_order", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: false });
 
       if (filters?.needsReview !== undefined) {
@@ -53,10 +58,53 @@ export function useAllQuestions(filters?: {
       if (filters?.topicId) {
         query = query.contains("topic_ids", [filters.topicId]);
       }
+      // Note: coursePackId filter would require joining through topics or question_types
+      // For now, we'll filter by question_type's course_pack_id if needed
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as Question[];
+      return data as QuestionWithDetails[];
+    },
+  });
+}
+
+export function useQuestionsByCoursePack(coursePackId: string | null) {
+  return useQuery({
+    queryKey: ["questions", "by-course-pack", coursePackId],
+    queryFn: async () => {
+      if (!coursePackId) return [];
+      
+      // Get questions that have question_types belonging to this course pack
+      const { data, error } = await supabase
+        .from("questions")
+        .select("*, question_types!inner(id, name, course_pack_id)")
+        .eq("question_types.course_pack_id", coursePackId)
+        .order("midterm_number", { ascending: true, nullsFirst: false })
+        .order("question_order", { ascending: true, nullsFirst: false });
+
+      if (error) throw error;
+      return data as QuestionWithDetails[];
+    },
+    enabled: !!coursePackId,
+  });
+}
+
+export function useQuestionTypes(coursePackId?: string) {
+  return useQuery({
+    queryKey: ["question-types", coursePackId],
+    queryFn: async () => {
+      let query = supabase
+        .from("question_types")
+        .select("*")
+        .order("name");
+
+      if (coursePackId) {
+        query = query.eq("course_pack_id", coursePackId);
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+      return data as (QuestionType & { course_pack_id: string | null; aliases: string[] | null })[];
     },
   });
 }

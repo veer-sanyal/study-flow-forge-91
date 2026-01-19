@@ -15,6 +15,10 @@ interface ExtractedQuestion {
   difficulty?: number;
   topicSuggestions: string[];
   sourceExam: string;
+  questionType?: string;
+  isNewQuestionType?: boolean;
+  questionOrder?: number;
+  midtermNumber?: number;
 }
 
 interface ProcessingResult {
@@ -136,6 +140,17 @@ serve(async (req) => {
 
     const topicsList = existingTopics?.map(t => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics defined yet";
 
+    // Get existing question types for this course
+    const { data: existingQuestionTypes } = await supabase
+      .from("question_types")
+      .select("id, name, aliases")
+      .eq("course_pack_id", job.course_pack_id);
+
+    const questionTypesList = existingQuestionTypes?.map(qt => {
+      const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
+      return `- ${qt.name}${aliases} (ID: ${qt.id})`;
+    }).join("\n") || "No question types defined yet for this course";
+
     await supabase
       .from("ingestion_jobs")
       .update({ current_step: "B1", progress_pct: 25 })
@@ -155,12 +170,21 @@ Analyze this exam PDF and extract ALL questions with the following information f
 6. Estimated difficulty (1-5 scale)
 7. Topic suggestions from this list of ALLOWED topics:
 ${topicsList}
+8. Question type/category (e.g., "Volume of Rotation", "Arc Length", "Work Problem", "Taylor Series")
+9. Question order (the order in which the question appears in the exam, starting from 1)
+10. Midterm number (1, 2, or 3 - infer from the document title/header if visible)
+
+EXISTING QUESTION TYPES FOR THIS COURSE:
+${questionTypesList}
 
 IMPORTANT RULES:
 - Only suggest topics from the ALLOWED list above
 - If you cannot map to an existing topic, provide your best suggestion for what the topic should be called
 - Preserve all mathematical notation using LaTeX format (e.g., \\frac{a}{b}, \\sqrt{x})
-- Extract the source exam name from the document header if visible
+- Extract the source exam name from the document header if visible (e.g., "Fall 2023 Midterm 1")
+- For question types: TRY to match to an existing question type first. Only mark isNewQuestionType=true if none of the existing types match.
+- Question types should be specific but not too granular (e.g., "Volume of Rotation" not "Volume of Rotation using Shell Method")
+- Number questions in the order they appear in the exam (questionOrder: 1, 2, 3, etc.)
 
 Return your response using the extract_questions function.`;
 
@@ -197,7 +221,11 @@ Return your response using the extract_questions function.`;
                 properties: {
                   sourceExam: {
                     type: "string",
-                    description: "Name of the exam (e.g., 'Fall 2023 Midterm')",
+                    description: "Name of the exam (e.g., 'Fall 2023 Midterm 1')",
+                  },
+                  midtermNumber: {
+                    type: "number",
+                    description: "The midterm number (1, 2, or 3) if identifiable from the document",
                   },
                   questions: {
                     type: "array",
@@ -230,6 +258,18 @@ Return your response using the extract_questions function.`;
                           type: "array",
                           items: { type: "string" },
                           description: "New topic suggestions if none from allowed list match",
+                        },
+                        questionType: {
+                          type: "string",
+                          description: "The type/category of this question (e.g., 'Volume of Rotation', 'Arc Length')",
+                        },
+                        isNewQuestionType: {
+                          type: "boolean",
+                          description: "True if this is a new question type not in the existing list",
+                        },
+                        questionOrder: {
+                          type: "number",
+                          description: "The order/number of this question in the exam (1, 2, 3, etc.)",
                         },
                       },
                       required: ["prompt", "topicSuggestions"],
@@ -280,7 +320,7 @@ Return your response using the extract_questions function.`;
       .eq("id", jobId);
 
     // Parse the tool call response
-    let extractedData: { sourceExam: string; questions: any[] } = { sourceExam: job.file_name, questions: [] };
+    let extractedData: { sourceExam: string; midtermNumber?: number; questions: any[] } = { sourceExam: job.file_name, questions: [] };
     
     try {
       const toolCall = geminiResult.choices?.[0]?.message?.tool_calls?.[0];
@@ -291,7 +331,7 @@ Return your response using the extract_questions function.`;
       console.error("Failed to parse Gemini response:", parseError);
     }
 
-    console.log(`Extracted ${extractedData.questions.length} questions`);
+    console.log(`Extracted ${extractedData.questions.length} questions from ${extractedData.sourceExam}`);
 
     await supabase
       .from("ingestion_jobs")
@@ -302,12 +342,26 @@ Return your response using the extract_questions function.`;
       })
       .eq("id", jobId);
 
-    // Step B6-B7: Map topics and insert questions
-    console.log("Step B6-B7: Mapping topics and inserting questions...");
+    // Step B6-B7: Map topics, handle question types, and insert questions
+    console.log("Step B6-B7: Mapping topics, handling question types, and inserting questions...");
     
     const topicMap = new Map(existingTopics?.map(t => [t.title.toLowerCase(), t.id]) || []);
+    const questionTypeMap = new Map(existingQuestionTypes?.map(qt => [qt.name.toLowerCase(), qt.id]) || []);
+    
+    // Also add aliases to the map
+    existingQuestionTypes?.forEach(qt => {
+      if (qt.aliases) {
+        qt.aliases.forEach((alias: string) => {
+          questionTypeMap.set(alias.toLowerCase(), qt.id);
+        });
+      }
+    });
+
     let mapped = 0;
     let pendingReview = 0;
+
+    // Determine the document-level midterm number
+    const docMidtermNumber = extractedData.midtermNumber || null;
 
     for (const q of extractedData.questions) {
       // Try to map topic suggestions to existing topic IDs
@@ -334,6 +388,36 @@ Return your response using the extract_questions function.`;
         unmappedSuggestions.push(...q.unmappedTopicSuggestions);
       }
 
+      // Handle question type
+      let questionTypeId: string | null = null;
+      if (q.questionType) {
+        // Try to match to existing question type
+        const matchedTypeId = questionTypeMap.get(q.questionType.toLowerCase());
+        if (matchedTypeId) {
+          questionTypeId = matchedTypeId;
+        } else if (q.isNewQuestionType) {
+          // Create new question type with proposed status
+          const { data: newType, error: typeError } = await supabase
+            .from("question_types")
+            .insert({
+              name: q.questionType,
+              course_pack_id: job.course_pack_id,
+              status: "proposed",
+            })
+            .select("id")
+            .single();
+          
+          if (!typeError && newType) {
+            questionTypeId = newType.id;
+            // Add to map for future questions in this batch
+            questionTypeMap.set(q.questionType.toLowerCase(), newType.id);
+            console.log(`Created new question type: ${q.questionType}`);
+          } else {
+            console.error("Failed to create question type:", typeError);
+          }
+        }
+      }
+
       const needsReview = mappedTopicIds.length === 0 || unmappedSuggestions.length > 0;
       if (needsReview) {
         pendingReview++;
@@ -355,6 +439,9 @@ Return your response using the extract_questions function.`;
           source_exam: extractedData.sourceExam,
           needs_review: needsReview,
           unmapped_topic_suggestions: unmappedSuggestions.length > 0 ? unmappedSuggestions : null,
+          question_type_id: questionTypeId,
+          midterm_number: docMidtermNumber,
+          question_order: q.questionOrder || null,
         });
 
       if (insertError) {
