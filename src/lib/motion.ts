@@ -115,3 +115,11 @@ export const buttonPress = {
   whileHover: { scale: 1.01 },
   transition: { duration: duration.micro },
 };
+
+// Reduced motion fallback - use when prefers-reduced-motion is true
+export const reducedMotionProps = {
+  initial: { opacity: 1 },
+  animate: { opacity: 1 },
+  exit: { opacity: 1 },
+  transition: { duration: 0 },
+};
