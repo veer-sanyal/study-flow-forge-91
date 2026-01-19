@@ -126,35 +126,55 @@ serve(async (req) => {
     
     const extractionPrompt = `You are an expert at extracting exam questions from PDF documents.
 
-Extract ALL questions with precise LaTeX formatting.
+Extract ALL questions with precise LaTeX formatting that preserves the visual layout.
+
+DISPLAY MATH (CENTERED EQUATIONS) - CRITICAL:
+When you see a centered/standalone equation in the PDF (on its own line, visually separated), output it as:
+
+text before the equation
+
+$$
+equation_here
+$$
+
+text after the equation
+
+EXAMPLE - If the PDF shows:
+"Find the surface area when the curve" (centered equation: y = x³/3, 0 ≤ x ≤ 1) "is rotated..."
+
+Output EXACTLY as:
+Find the surface area of the surface generated when the curve
+
+$$
+y=\\frac{x^{3}}{3},\\quad 0\\le x\\le 1
+$$
+
+is rotated about the $x$-axis.
 
 QUESTION PROMPT RULES:
-- Narrative text stays as plain text (no LaTeX wrapping)
-- Centered equations or multi-step math: use display math $$...$$
-- Inline math within sentences: use $...$
-- Punctuation (periods, question marks) should be OUTSIDE math delimiters when they belong to the sentence
-- Preserve the visual layout exactly as shown in the PDF
+- Centered/standalone equations: use display math with $$...$$ on its OWN LINES (newline before $$, newline after $$)
+- Inline math within sentences: use $...$ (e.g., "the $x$-axis")
+- Punctuation belonging to the sentence goes OUTSIDE math delimiters
+- Preserve the EXACT visual hierarchy from the PDF
 
-CHOICE TEXT RULES (CRITICAL):
+CHOICE TEXT RULES:
 - ALL mathematical expressions in choices MUST be wrapped in $...$ delimiters
-- Example: "$\\int_{1}^{2} x^3 + 1 \\, dx$" NOT "\\int_{1}^{2} x^3 + 1 \\, dx"
-- Pure text choices don't need math delimiters
-- Mixed text and math: "The answer is $x^2 + 1$"
+- Example: "$\\frac{\\pi(2\\sqrt{2}-1)}{27}$"
+- Pure text choices don't need delimiters
 
 LATEX FORMATTING:
-- Use \\frac for fractions, \\sqrt for radicals
-- Use \\int_{a}^{b} for definite integrals
-- Use \\le / \\ge for inequalities
-- Use \\, for thin spacing in integrals (before dx)
-- Use \\quad for larger spacing
-- Use \\left( ... \\right) for auto-sizing parentheses
-- Output must be KaTeX/MathJax renderable
+- \\frac{num}{den} for fractions
+- \\sqrt{x} for square roots, \\sqrt[n]{x} for nth roots
+- \\int_{a}^{b} for definite integrals
+- \\le / \\ge for ≤ / ≥
+- \\pi for π
+- \\quad for spacing between expressions
+- \\left( ... \\right) for auto-sizing parentheses
 
 RULES:
 - Number questions in order (questionOrder: 1, 2, 3, etc.)
 - Extract source exam name from document header if visible
 - DO NOT determine correct answers - done separately
-- DO NOT generate hints, solutions, or guides - done separately
 
 Return your response using the extract_questions function.`;
 
