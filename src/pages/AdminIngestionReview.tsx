@@ -651,14 +651,18 @@ function EditQuestionDialog({
   onOpenChange,
   onSave,
   topics,
+  onUploadImage,
 }: {
   question: Question | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSave: (updates: Partial<Question>) => void;
   topics: { id: string; title: string }[];
+  onUploadImage: (file: File) => void;
 }) {
   const [editedQuestion, setEditedQuestion] = useState<Partial<Question>>({});
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useMemo(() => {
     if (question) {
@@ -668,6 +672,7 @@ function EditQuestionDialog({
         difficulty: question.difficulty,
         topic_ids: question.topic_ids,
         question_order: question.question_order,
+        image_url: question.image_url,
       });
     }
   }, [question]);
@@ -675,6 +680,32 @@ function EditQuestionDialog({
   const handleSave = () => {
     onSave(editedQuestion);
     onOpenChange(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      onUploadImage(file);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      onUploadImage(file);
+    }
   };
 
   if (!question) return null;
@@ -688,6 +719,50 @@ function EditQuestionDialog({
 
         <ScrollArea className="flex-1 overflow-auto pr-4">
           <div className="space-y-4 py-4">
+            {/* Image Upload with Drag & Drop */}
+            <div className="space-y-2">
+              <Label>Question Image</Label>
+              <div
+                className={`border-2 border-dashed rounded-lg p-4 transition-colors cursor-pointer ${
+                  isDragging 
+                    ? 'border-primary bg-primary/10' 
+                    : 'border-border hover:border-primary/50'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileChange}
+                />
+                {question.image_url ? (
+                  <div className="space-y-3">
+                    <div className="rounded-lg overflow-hidden border bg-muted/50 max-w-sm mx-auto">
+                      <img 
+                        src={question.image_url} 
+                        alt="Question diagram" 
+                        className="w-full h-auto"
+                      />
+                    </div>
+                    <div className="text-center text-sm text-muted-foreground">
+                      Drag & drop a new image to replace, or click to select
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center gap-2 py-4 text-muted-foreground">
+                    <Upload className="h-8 w-8" />
+                    <div className="text-sm font-medium">Drag & drop an image here</div>
+                    <div className="text-xs">or click to select a file</div>
+                  </div>
+                )}
+              </div>
+            </div>
+            
             {/* Prompt */}
             <div className="space-y-2">
               <Label>Question Prompt (supports LaTeX with $...$ or $$...$$)</Label>
@@ -841,6 +916,8 @@ export default function AdminIngestionReview() {
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Question | null>(null);
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
+  const [analyzeAllProgress, setAnalyzeAllProgress] = useState({ current: 0, total: 0 });
 
   const topics = useMemo(() => {
     const map = new Map<string, string>();
@@ -931,6 +1008,54 @@ export default function AdminIngestionReview() {
       await analyzeQuestion.mutateAsync(questionId);
     } finally {
       setAnalyzingId(null);
+    }
+  };
+
+  const handleAnalyzeAll = async () => {
+    if (!questions) return;
+    
+    // Get questions that need analysis
+    const questionsToAnalyze = questions.filter(q => {
+      const hasGuide = q.guide_me_steps && 
+        (Array.isArray(q.guide_me_steps) 
+          ? q.guide_me_steps.length > 0 
+          : typeof q.guide_me_steps === 'object' && Object.keys(q.guide_me_steps as object).length > 0);
+      return !q.correct_answer || !hasGuide;
+    });
+    
+    if (questionsToAnalyze.length === 0) {
+      toast.info("All questions are already analyzed!");
+      return;
+    }
+    
+    setIsAnalyzingAll(true);
+    setAnalyzeAllProgress({ current: 0, total: questionsToAnalyze.length });
+    
+    let successCount = 0;
+    let failCount = 0;
+    
+    for (let i = 0; i < questionsToAnalyze.length; i++) {
+      const question = questionsToAnalyze[i];
+      setAnalyzingId(question.id);
+      setAnalyzeAllProgress({ current: i + 1, total: questionsToAnalyze.length });
+      
+      try {
+        await analyzeQuestion.mutateAsync(question.id);
+        successCount++;
+      } catch (error) {
+        console.error(`Failed to analyze question ${question.id}:`, error);
+        failCount++;
+      }
+    }
+    
+    setAnalyzingId(null);
+    setIsAnalyzingAll(false);
+    setAnalyzeAllProgress({ current: 0, total: 0 });
+    
+    if (failCount === 0) {
+      toast.success(`Successfully analyzed all ${successCount} questions!`);
+    } else {
+      toast.warning(`Analyzed ${successCount} questions, ${failCount} failed.`);
     }
   };
 
@@ -1036,17 +1161,40 @@ export default function AdminIngestionReview() {
         <motion.div variants={staggerItem}>
           <Card>
             <CardContent className="p-4">
-              <div className="flex items-center gap-6 text-sm">
-                <div>
-                  <span className="text-muted-foreground">Total: </span>
-                  <span className="font-medium">{stats.total}</span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-6 text-sm">
+                  <div>
+                    <span className="text-muted-foreground">Total: </span>
+                    <span className="font-medium">{stats.total}</span>
+                  </div>
+                  <div>
+                    <span className="text-amber-600">{stats.needsAnalysis} need analysis</span>
+                  </div>
+                  <div>
+                    <span className="text-green-600">{stats.ready} ready</span>
+                  </div>
                 </div>
-                <div>
-                  <span className="text-amber-600">{stats.needsAnalysis} need analysis</span>
-                </div>
-                <div>
-                  <span className="text-green-600">{stats.ready} ready</span>
-                </div>
+                
+                {stats.needsAnalysis > 0 && (
+                  <Button
+                    onClick={handleAnalyzeAll}
+                    disabled={isAnalyzingAll || analyzingId !== null}
+                    className="gap-2"
+                    variant={isAnalyzingAll ? "secondary" : "default"}
+                  >
+                    {isAnalyzingAll ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Analyzing {analyzeAllProgress.current}/{analyzeAllProgress.total}...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 className="h-4 w-4" />
+                        Analyze All ({stats.needsAnalysis})
+                      </>
+                    )}
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -1116,6 +1264,7 @@ export default function AdminIngestionReview() {
           onOpenChange={(open) => !open && setEditingQuestion(null)}
           onSave={handleSaveEdit}
           topics={topicsList}
+          onUploadImage={(file) => editingQuestion && handleUploadImage(editingQuestion.id, file)}
         />
 
         {/* Delete Confirmation */}

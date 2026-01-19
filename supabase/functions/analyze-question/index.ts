@@ -124,6 +124,39 @@ serve(async (req) => {
 
     // Format the question for analysis
     const choicesText = question.choices?.map((c: any) => `${c.id}) ${c.text}`).join("\n") || "No choices";
+    
+    // Check if question has an image and fetch it
+    let imageBase64: string | null = null;
+    let imageMimeType: string | null = null;
+    
+    if (question.image_url) {
+      console.log("Question has image, fetching...", question.image_url);
+      try {
+        const imageResponse = await fetch(question.image_url);
+        if (imageResponse.ok) {
+          const imageBuffer = await imageResponse.arrayBuffer();
+          const uint8Array = new Uint8Array(imageBuffer);
+          
+          // Convert to base64 in chunks to avoid stack overflow
+          let binary = '';
+          const chunkSize = 32768;
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.slice(i, i + chunkSize);
+            binary += String.fromCharCode(...chunk);
+          }
+          imageBase64 = btoa(binary);
+          
+          // Determine mime type from URL or content-type header
+          const contentType = imageResponse.headers.get("content-type");
+          imageMimeType = contentType || "image/png";
+          console.log("Image fetched successfully, size:", imageBuffer.byteLength);
+        } else {
+          console.warn("Failed to fetch question image:", imageResponse.status);
+        }
+      } catch (imgError) {
+        console.error("Error fetching question image:", imgError);
+      }
+    }
 
     const analysisPrompt = `You are an expert math tutor generating a "Guide Me" learning scaffold for an exam question.
 
@@ -242,6 +275,22 @@ Return your response using the analyze_question function.`;
 
     console.log("Calling Gemini for analysis...");
 
+    // Build content parts - include image if available
+    const contentParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
+    
+    if (imageBase64 && imageMimeType) {
+      // Add image first for better context
+      contentParts.push({
+        inlineData: {
+          mimeType: imageMimeType,
+          data: imageBase64
+        }
+      });
+      contentParts.push({ text: "The above image is the diagram/figure for this question. Use it to understand the visual context.\n\n" + analysisPrompt });
+    } else {
+      contentParts.push({ text: analysisPrompt });
+    }
+
     const geminiResponse = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + GEMINI_API_KEY, {
       method: "POST",
       headers: {
@@ -250,7 +299,7 @@ Return your response using the analyze_question function.`;
       body: JSON.stringify({
         contents: [{
           role: "user",
-          parts: [{ text: analysisPrompt }]
+          parts: contentParts
         }],
         tools: [{
           functionDeclarations: [{
