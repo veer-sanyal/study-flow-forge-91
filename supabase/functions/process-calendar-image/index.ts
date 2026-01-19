@@ -103,36 +103,35 @@ serve(async (req) => {
     const topicList = existingTopics?.map(t => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics yet";
 
     // Call Gemini Vision API via Lovable AI Gateway
-    const systemPrompt = `You are an expert at extracting course calendar information from images.
-You will be shown an image of a course calendar/schedule. Extract ALL events including:
-- Lessons/lectures with topic names
-- Recitations
-- Exams (midterms, finals)
-- Quizzes  
-- Homework assignments
-- Class activities
-- No-class days / holidays
-- Reviews
+    const systemPrompt = `You are an expert at extracting DISTINCT TOPICS from course calendar images.
 
-For each event, identify:
-- Week number (if shown)
-- Day of week (MON, TUE, WED, THU, FRI, SAT, SUN)
-- Date (in YYYY-MM-DD format if visible)
-- Event type: lesson, recitation, exam, quiz, homework, no_class, review, activity, other
-- Title (e.g., "Lecture 01 - Vectors in the plane" or the lecture/event name)
-- Description (additional details)
-- Topics covered: IMPORTANT - Extract the FULL topic name WITH section number in format "Topic Name (Section#)"
-  Examples: "Vectors in the plane (13.1)", "Cross products (13.4)", "Volumes by slicing (6.3)"
-  If the lecture shows "Lecture 01 - Vectors in the plane (13.1)", the topic is "Vectors in the plane (13.1)"
-  Do NOT just extract the section number alone like "13.1" - always include the descriptive name.
-- Homework assignments mentioned
-- Location (if specified, like "LILY 1105")
-- Time slot (if specified)
+Your PRIMARY goal is to extract every unique TOPIC that will be covered in the course, along with the EXACT DATE it is covered.
+
+IMPORTANT RULES:
+1. ONLY extract actual academic TOPICS (math concepts, course content sections)
+2. DO NOT extract:
+   - Recitations (skip these entirely)
+   - Lectures as events (only extract the TOPICS covered in lectures)
+   - Reviews (skip these)
+   - "No class" days
+   - Generic activities
+3. If a lecture covers MULTIPLE topics on the same line, create a SEPARATE entry for EACH topic
+   Example: "Lecture 05 - Dot products (13.3) and Cross products (13.4)" becomes TWO separate topic entries:
+     - "13.3: Dot Products" on that date
+     - "13.4: Cross Products" on that date
+4. Format topic names as "SECTION#: Topic Name" (e.g., "13.1: Vectors in the Plane", "6.3: Volumes by Slicing")
+5. Extract the EXACT DATE (YYYY-MM-DD format) for when each topic is covered
+6. Still track the week number for organization purposes
+
+For EXAMS and QUIZZES, DO extract them with:
+- event_type: "exam" or "quiz"
+- The exact date
+- Week number
 
 Here are the existing topics in this course pack for reference:
 ${topicList}
 
-Be thorough - extract every single row/entry from the calendar image.`;
+Be thorough - extract every DISTINCT topic from the calendar, splitting multi-topic entries into individual topics.`;
 
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
@@ -155,7 +154,7 @@ Be thorough - extract every single row/entry from the calendar image.`;
               },
               {
                 type: "text",
-                text: "Extract all calendar events from this course schedule image. Return the structured data using the extract_calendar_events tool.",
+                text: "Extract all DISTINCT TOPICS from this course schedule image. For each topic, identify the EXACT date it is covered. If a single row contains multiple topics, create separate entries for each. Skip recitations, reviews, lectures (extract only the topics from them). Format each topic as 'SECTION#: Topic Name'. Return the structured data using the extract_calendar_events tool.",
               },
             ],
           },
@@ -165,38 +164,31 @@ Be thorough - extract every single row/entry from the calendar image.`;
             type: "function",
             function: {
               name: "extract_calendar_events",
-              description: "Extract structured calendar events from the course schedule",
+              description: "Extract distinct topics and exam events from the course schedule. Each topic should be a separate entry even if multiple topics are on the same calendar line.",
               parameters: {
                 type: "object",
                 properties: {
                   events: {
                     type: "array",
+                    description: "Array of distinct topics and exams. If a single calendar row has multiple topics, create separate entries for each.",
                     items: {
                       type: "object",
                       properties: {
                         week_number: { type: "integer", description: "Week number (1, 2, 3, etc.)" },
                         day_of_week: { type: "string", enum: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] },
-                        event_date: { type: "string", description: "Date in YYYY-MM-DD format if visible" },
+                        event_date: { type: "string", description: "EXACT date in YYYY-MM-DD format. This is REQUIRED for topics." },
                         event_type: { 
                           type: "string", 
-                          enum: ["lesson", "recitation", "exam", "quiz", "homework", "no_class", "review", "activity", "other"] 
+                          enum: ["topic", "exam", "quiz"],
+                          description: "Use 'topic' for academic content, 'exam' for midterms/finals, 'quiz' for quizzes. Do NOT use 'lesson', 'recitation', 'review', etc."
                         },
-                        title: { type: "string", description: "Event title" },
-                        description: { type: "string", description: "Additional details" },
-                        topics_covered: { 
-                          type: "array", 
-                          items: { type: "string" },
-                          description: "List of topics with FULL name and section number, e.g. 'Vectors in the plane (13.1)', 'Cross products (13.4)'. Never just the section number alone." 
+                        title: { 
+                          type: "string", 
+                          description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')." 
                         },
-                        homework_assignments: { 
-                          type: "array", 
-                          items: { type: "string" },
-                          description: "Homework assignments mentioned" 
-                        },
-                        location: { type: "string", description: "Location if specified" },
-                        time_slot: { type: "string", description: "Time if specified" },
+                        description: { type: "string", description: "Additional details or context" },
                       },
-                      required: ["week_number", "event_type", "title"],
+                      required: ["week_number", "event_type", "title", "event_date"],
                     },
                   },
                 },
@@ -301,10 +293,11 @@ Be thorough - extract every single row/entry from the calendar image.`;
           event_type: event.event_type,
           title: event.title,
           description: event.description || null,
-          topics_covered: event.topics_covered || [],
-          homework_assignments: event.homework_assignments || [],
-          location: event.location || null,
-          time_slot: event.time_slot || null,
+          // For topics, store the title as the topic covered
+          topics_covered: event.event_type === "topic" ? [event.title] : [],
+          homework_assignments: [],
+          location: null,
+          time_slot: null,
           needs_review: needsReview,
         });
 
