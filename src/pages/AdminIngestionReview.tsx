@@ -703,6 +703,8 @@ function EditQuestionDialog({
         if (newUrl) {
           setEditedQuestion(prev => ({ ...prev, image_url: newUrl }));
         }
+      } catch (err) {
+        console.error('Upload failed:', err);
       } finally {
         setIsUploading(false);
       }
@@ -718,6 +720,8 @@ function EditQuestionDialog({
         if (newUrl) {
           setEditedQuestion(prev => ({ ...prev, image_url: newUrl }));
         }
+      } catch (err) {
+        console.error('Upload failed:', err);
       } finally {
         setIsUploading(false);
       }
@@ -759,7 +763,8 @@ function EditQuestionDialog({
                 {isUploading ? (
                   <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" />
-                    <div className="text-sm font-medium">Uploading image...</div>
+                    <div className="text-sm font-medium">Uploading & processing image...</div>
+                    <div className="text-xs text-muted-foreground">Removing background...</div>
                   </div>
                 ) : editedQuestion.image_url ? (
                   <div className="space-y-3">

@@ -242,6 +242,29 @@ export function useUploadQuestionImage() {
 
       if (updateError) throw updateError;
 
+      // Process the image to remove background
+      try {
+        const { data: processData, error: processError } = await supabase.functions.invoke(
+          'process-question-image',
+          {
+            body: { imageUrl: publicUrl, questionId }
+          }
+        );
+
+        if (processError) {
+          console.error('Image processing error:', processError);
+          // Return original URL if processing fails
+          return publicUrl;
+        }
+
+        if (processData?.processedUrl && processData.processedUrl !== publicUrl) {
+          console.log('Image processed, new URL:', processData.processedUrl);
+          return processData.processedUrl;
+        }
+      } catch (err) {
+        console.error('Failed to process image:', err);
+      }
+
       return publicUrl;
     },
     onSuccess: () => {
