@@ -272,3 +272,21 @@ export function useUploadQuestionImage() {
     },
   });
 }
+
+export function useRemoveQuestionImage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (questionId: string) => {
+      const { error } = await supabase
+        .from('questions')
+        .update({ image_url: null })
+        .eq('id', questionId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
+    },
+  });
+}
