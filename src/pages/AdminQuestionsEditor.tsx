@@ -424,12 +424,35 @@ function QuestionCard({
   const hasGuideMe = guideSteps.length > 0;
   const needsAnalysis = !question.correct_answer || !hasGuideMe;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       onUploadImage(file);
     }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      onUploadImage(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
   };
 
   // Get guide data for preview
@@ -453,7 +476,26 @@ function QuestionCard({
 
   return (
     <motion.div variants={staggerItem}>
-      <Card className={`${needsAnalysis ? 'border-amber-500/50 bg-amber-500/5' : 'border-green-500/30 bg-green-500/5'}`}>
+      <Card 
+        className={`relative transition-all ${
+          isDragging 
+            ? 'border-primary border-2 bg-primary/5' 
+            : needsAnalysis 
+              ? 'border-amber-500/50 bg-amber-500/5' 
+              : 'border-green-500/30 bg-green-500/5'
+        }`}
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+      >
+        {isDragging && (
+          <div className="absolute inset-0 flex items-center justify-center bg-primary/10 z-10 rounded-lg pointer-events-none">
+            <div className="text-primary font-medium flex items-center gap-2">
+              <Upload className="h-5 w-5" />
+              Drop image here
+            </div>
+          </div>
+        )}
         <CardContent className="p-6 space-y-4">
           {/* Header */}
           <div className="flex items-start justify-between gap-4">
