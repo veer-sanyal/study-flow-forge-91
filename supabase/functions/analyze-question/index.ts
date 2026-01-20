@@ -707,16 +707,8 @@ Now generate the analysis and return using analyze_question.`;
       methodSummary: analysis.methodSummary || { bullets: [] },
     };
 
-    // Check for answer mismatch if answer key exists
-    let answerMismatch = false;
-    if (question.answer_key_answer) {
-      const aiAnswer = analysis.correctAnswer?.toUpperCase().trim();
-      const keyAnswer = question.answer_key_answer?.toUpperCase().trim();
-      if (aiAnswer && keyAnswer && aiAnswer !== keyAnswer) {
-        answerMismatch = true;
-        console.log(`Answer mismatch detected! AI: ${aiAnswer}, Key: ${keyAnswer}`);
-      }
-    }
+    // NOTE: Answer key mismatch detection is now deferred to post-analysis pass
+    // This allows batch analysis to complete first, then compare all answers at once
 
     // Update the question (no more unmapped_topic_suggestions - always force best match)
     const { error: updateError } = await supabase
@@ -731,8 +723,8 @@ Now generate the analysis and return using analyze_question.`;
         unmapped_topic_suggestions: null, // No more suggestions
         question_type_id: questionTypeId,
         midterm_number: determinedMidtermNumber,
-        needs_review: mappedTopicIds.length === 0 || answerMismatch, // Needs review if no topics or mismatch
-        answer_mismatch: answerMismatch,
+        needs_review: mappedTopicIds.length === 0, // Needs review if no topics mapped
+        // answer_mismatch will be set in post-analysis pass
       })
       .eq("id", questionId);
 
@@ -754,8 +746,6 @@ Now generate the analysis and return using analyze_question.`;
         topicsMapped: mappedTopicIds.length,
         guideMeSteps: analysis.guideMeSteps?.length || 0,
         hasMethodSummary: !!analysis.methodSummary?.bullets?.length,
-        answerMismatch: answerMismatch,
-        answerKeyAnswer: question.answer_key_answer || null,
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },

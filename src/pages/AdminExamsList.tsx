@@ -47,8 +47,12 @@ import {
   Plus,
   Upload,
   X,
-  Check
+  Check,
+  Wand2,
+  Square,
+  CheckSquare
 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   parseExamName, 
   groupExamsByYearAndSemester, 
@@ -64,6 +68,7 @@ import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useCreateIngestionJob, useProcessJob } from "@/hooks/use-ingestion";
 import { useCanHover } from "@/hooks/use-can-hover";
+import { useAnalysisQueue, QueuedExam } from "@/hooks/use-analysis-queue";
 import { cn } from "@/lib/utils";
 
 function useCoursePack(courseId: string) {
@@ -459,6 +464,9 @@ function ExamCard({
   courseId, 
   onDelete,
   onEdit,
+  isSelectionMode,
+  isSelected,
+  onToggleSelect,
 }: { 
   exam: ExamInfo & { 
     jobId?: string | null;
@@ -469,6 +477,9 @@ function ExamCard({
   courseId: string;
   onDelete: (sourceExam: string) => void;
   onEdit: (exam: { sourceExam: string; examYear: number | null; examSemester: string | null; examType: string | null }) => void;
+  isSelectionMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (sourceExam: string) => void;
 }) {
   const navigate = useNavigate();
   
@@ -476,20 +487,24 @@ function ExamCard({
   const displayLabel = getShortExamLabel(exam.parsed);
 
   const handleClick = () => {
-    // Encode the exam name for URL
-    const encodedExam = encodeURIComponent(exam.sourceExam);
-    navigate(`/admin/questions/${courseId}/${encodedExam}`);
+    if (isSelectionMode && onToggleSelect) {
+      onToggleSelect(exam.sourceExam);
+    } else {
+      const encodedExam = encodeURIComponent(exam.sourceExam);
+      navigate(`/admin/questions/${courseId}/${encodedExam}`);
+    }
   };
 
   const [isHovered, setIsHovered] = useState(false);
   const canHover = useCanHover();
-  const showActions = !canHover || isHovered;
+  const showActions = !isSelectionMode && (!canHover || isHovered);
 
   return (
     <Card 
       className={cn(
         "transition-colors cursor-pointer",
-        isHovered && "border-primary/50"
+        isHovered && !isSelectionMode && "border-primary/50",
+        isSelected && "border-primary bg-primary/5"
       )}
       onClick={handleClick}
       onMouseEnter={() => setIsHovered(true)}
@@ -497,9 +512,24 @@ function ExamCard({
     >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className="p-2 rounded-lg bg-muted">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-          </div>
+          {isSelectionMode ? (
+            <div 
+              className="flex items-center justify-center w-10 h-10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleSelect?.(exam.sourceExam);
+              }}
+            >
+              <Checkbox 
+                checked={isSelected} 
+                onCheckedChange={() => onToggleSelect?.(exam.sourceExam)}
+              />
+            </div>
+          ) : (
+            <div className="p-2 rounded-lg bg-muted">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+            </div>
+          )}
           
           <div className="flex-1 min-w-0">
             <h3 className="font-medium truncate">{displayLabel}</h3>
@@ -546,7 +576,7 @@ function ExamCard({
               </Button>
             </>
           )}
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          {!isSelectionMode && <ChevronRight className="h-5 w-5 text-muted-foreground" />}
         </div>
       </CardContent>
     </Card>
@@ -906,6 +936,7 @@ export default function AdminExamsList() {
   const deleteExam = useDeleteExamQuestions();
   const updateCourse = useUpdateCourseName();
   const updateExamDetails = useUpdateExamDetails();
+  const { queueExamsForAnalysis, isProcessing, totalQueued, runningJob } = useAnalysisQueue();
 
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
@@ -916,6 +947,82 @@ export default function AdminExamsList() {
     examSemester: string | null;
     examType: string | null;
   } | null>(null);
+
+  // Selection mode state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedExams, setSelectedExams] = useState<Set<string>>(new Set());
+
+  // Get all exams flat for easy lookup
+  const allExams = yearGroups?.flatMap(yg => 
+    yg.semesters?.flatMap(sg => sg.exams || []) || []
+  ) || [];
+
+  const handleToggleSelect = (sourceExam: string) => {
+    setSelectedExams(prev => {
+      const next = new Set(prev);
+      if (next.has(sourceExam)) {
+        next.delete(sourceExam);
+      } else {
+        next.add(sourceExam);
+      }
+      return next;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedExams.size === allExams.length) {
+      setSelectedExams(new Set());
+    } else {
+      setSelectedExams(new Set(allExams.map(e => e.sourceExam)));
+    }
+  };
+
+  const handleExitSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedExams(new Set());
+  };
+
+  const handleQueueAnalysis = async () => {
+    if (selectedExams.size === 0 || !courseId) return;
+
+    // Get question IDs for each selected exam
+    const examsToQueue: QueuedExam[] = [];
+    
+    for (const sourceExam of selectedExams) {
+      const { data: questions } = await supabase
+        .from("questions")
+        .select("id")
+        .eq("course_pack_id", courseId)
+        .eq("source_exam", sourceExam);
+
+      if (questions && questions.length > 0) {
+        examsToQueue.push({
+          coursePackId: courseId,
+          sourceExam,
+          questionIds: questions.map(q => q.id),
+        });
+      }
+    }
+
+    if (examsToQueue.length === 0) {
+      toast.error("No questions found in selected exams");
+      return;
+    }
+
+    const results = await queueExamsForAnalysis.mutateAsync(examsToQueue);
+    
+    const successCount = results.filter(r => r.jobId).length;
+    const failCount = results.filter(r => r.error).length;
+
+    if (successCount > 0) {
+      toast.success(`Queued ${successCount} exam${successCount > 1 ? "s" : ""} for analysis`);
+    }
+    if (failCount > 0) {
+      toast.error(`Failed to queue ${failCount} exam${failCount > 1 ? "s" : ""}`);
+    }
+
+    handleExitSelectionMode();
+  };
 
   const handleConfirmDelete = () => {
     if (examToDelete && courseId) {
@@ -976,31 +1083,97 @@ export default function AdminExamsList() {
           <Button 
             variant="ghost" 
             size="icon"
-            onClick={() => navigate("/admin/questions")}
+            onClick={() => isSelectionMode ? handleExitSelectionMode() : navigate("/admin/questions")}
           >
-            <ChevronLeft className="h-5 w-5" />
+            {isSelectionMode ? <X className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
           </Button>
           <div className="flex-1">
+            {isSelectionMode ? (
+              <>
+                <h1 className="text-2xl font-bold">
+                  {selectedExams.size} exam{selectedExams.size !== 1 ? "s" : ""} selected
+                </h1>
+                <p className="text-muted-foreground">
+                  Select exams to queue for analysis
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-2xl font-bold">{course?.title || "Loading..."}</h1>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8"
+                    onClick={() => setEditCourseOpen(true)}
+                  >
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                </div>
+                <p className="text-muted-foreground">
+                  Select an exam to view and edit questions
+                </p>
+              </>
+            )}
+          </div>
+          {isSelectionMode ? (
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold">{course?.title || "Loading..."}</h1>
+              <Button variant="outline" onClick={handleSelectAll}>
+                {selectedExams.size === allExams.length ? (
+                  <>
+                    <Square className="h-4 w-4 mr-2" />
+                    Deselect All
+                  </>
+                ) : (
+                  <>
+                    <CheckSquare className="h-4 w-4 mr-2" />
+                    Select All
+                  </>
+                )}
+              </Button>
               <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-8 w-8"
-                onClick={() => setEditCourseOpen(true)}
+                onClick={handleQueueAnalysis}
+                disabled={selectedExams.size === 0 || queueExamsForAnalysis.isPending}
               >
-                <Pencil className="h-4 w-4" />
+                {queueExamsForAnalysis.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Wand2 className="h-4 w-4 mr-2" />
+                )}
+                Queue Analysis ({selectedExams.size})
               </Button>
             </div>
-            <p className="text-muted-foreground">
-              Select an exam to view and edit questions
-            </p>
-          </div>
-          <Button onClick={() => setAddExamOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Exam
-          </Button>
+          ) : (
+            <div className="flex items-center gap-2">
+              {hasExams && (
+                <Button variant="outline" onClick={() => setIsSelectionMode(true)}>
+                  <Wand2 className="h-4 w-4 mr-2" />
+                  Batch Analyze
+                </Button>
+              )}
+              <Button onClick={() => setAddExamOpen(true)}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Exam
+              </Button>
+            </div>
+          )}
         </div>
+
+        {/* Queue Status Banner */}
+        {isProcessing && !isSelectionMode && (
+          <Card className="p-4 border-primary/50 bg-primary/5">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-primary" />
+              <div className="flex-1">
+                <p className="font-medium">Analysis in progress</p>
+                <p className="text-sm text-muted-foreground">
+                  {runningJob ? `Processing: ${runningJob.source_exam}` : "Starting..."} 
+                  {totalQueued > 1 && ` (${totalQueued} in queue)`}
+                </p>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Exam List - Hierarchy: Year → Semester → Exam */}
         {isLoading ? (
@@ -1043,6 +1216,9 @@ export default function AdminExamsList() {
                             courseId={courseId!}
                             onDelete={setExamToDelete}
                             onEdit={setExamToEdit}
+                            isSelectionMode={isSelectionMode}
+                            isSelected={selectedExams.has(exam.sourceExam)}
+                            onToggleSelect={handleToggleSelect}
                           />
                         ))}
                       </div>
