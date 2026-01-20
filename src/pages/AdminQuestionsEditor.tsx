@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/dialog";
 import { 
   ChevronLeft,
+  ChevronRight,
   Check,
   X,
   Image as ImageIcon,
@@ -47,25 +48,22 @@ import {
   Loader2,
   Wand2,
   Upload,
-  FileText,
+  Globe,
   Lightbulb,
-  Eye,
   MessageSquare,
   BookOpen,
-  Globe,
+  Eye,
   EyeOff,
-  Pencil
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { MathRenderer } from "@/components/study/MathRenderer";
 import { QuestionImage } from "@/components/study/QuestionImage";
 import { useAllTopics, useUploadQuestionImage, useRemoveQuestionImage } from "@/hooks/use-questions";
-import { useUpdateExamDetails } from "@/hooks/use-ingestion";
+import { usePublishExam } from "@/hooks/use-ingestion";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
-import { buildExamTitle, formatExamType, SEMESTERS, EXAM_TYPES } from "@/lib/examUtils";
 
 interface QuestionChoice {
   id: string;
@@ -93,39 +91,80 @@ interface Question {
   question_types?: { id: string; name: string } | null;
 }
 
-function useIngestionJob(jobId: string) {
+// Hooks
+function useCoursePack(courseId: string) {
   return useQuery({
-    queryKey: ["ingestion-job", jobId],
+    queryKey: ["course-pack", courseId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("ingestion_jobs")
-        .select("*, course_packs(id, title)")
-        .eq("id", jobId)
+        .from("course_packs")
+        .select("id, title")
+        .eq("id", courseId)
         .single();
 
       if (error) throw error;
       return data;
     },
-    enabled: !!jobId,
+    enabled: !!courseId,
   });
 }
 
-function useQuestionsForCoursePack(coursePackId: string | null) {
+function useQuestionsForExam(courseId: string, sourceExam: string) {
   return useQuery({
-    queryKey: ["questions-for-review", coursePackId],
+    queryKey: ["questions-for-exam", courseId, sourceExam],
     queryFn: async () => {
-      if (!coursePackId) return [];
-      
       const { data, error } = await supabase
         .from("questions")
         .select("*, question_types(id, name)")
-        .eq("course_pack_id", coursePackId)
-        .order("question_order", { ascending: true });
+        .eq("course_pack_id", courseId)
+        .eq("source_exam", sourceExam)
+        .order("question_order", { ascending: true, nullsFirst: false });
 
       if (error) throw error;
-      return data as unknown as Question[];
+      
+      return data.map((q) => ({
+        ...q,
+        choices: Array.isArray(q.choices) 
+          ? (q.choices as unknown as QuestionChoice[]) 
+          : null,
+        solution_steps: Array.isArray(q.solution_steps)
+          ? (q.solution_steps as string[])
+          : null,
+      })) as Question[];
     },
-    enabled: !!coursePackId,
+    enabled: !!courseId && !!sourceExam,
+  });
+}
+
+function useIngestionJobForExam(courseId: string, sourceExam: string) {
+  return useQuery({
+    queryKey: ["ingestion-job-for-exam", courseId, sourceExam],
+    queryFn: async () => {
+      // Try to find an ingestion job that matches this exam
+      const { data, error } = await supabase
+        .from("ingestion_jobs")
+        .select("id, is_published, exam_year, exam_semester, exam_type")
+        .eq("course_pack_id", courseId)
+        .order("created_at", { ascending: false });
+
+      if (error) throw error;
+      
+      // Find job that matches this source_exam
+      const matchingJob = data?.find(job => {
+        const parts: string[] = [];
+        if (job.exam_semester && job.exam_year) {
+          parts.push(`${job.exam_semester} ${job.exam_year}`);
+        }
+        if (job.exam_type) {
+          const typeMap: Record<string, string> = { "1": "Midterm 1", "2": "Midterm 2", "3": "Midterm 3", "f": "Final" };
+          parts.push(typeMap[job.exam_type] || job.exam_type);
+        }
+        return parts.join(" ") === sourceExam;
+      });
+      
+      return matchingJob || null;
+    },
+    enabled: !!courseId && !!sourceExam,
   });
 }
 
@@ -145,8 +184,11 @@ function useUpdateQuestion() {
       return data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
-      queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["questions-for-exam"] });
+      toast.success("Question updated");
+    },
+    onError: (error) => {
+      toast.error(`Failed to update: ${error.message}`);
     },
   });
 }
@@ -164,8 +206,12 @@ function useDeleteQuestion() {
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
-      queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["questions-for-exam"] });
+      queryClient.invalidateQueries({ queryKey: ["exams-for-course"] });
+      toast.success("Question deleted");
+    },
+    onError: (error) => {
+      toast.error(`Failed to delete: ${error.message}`);
     },
   });
 }
@@ -184,7 +230,7 @@ function useAnalyzeQuestion() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
+      queryClient.invalidateQueries({ queryKey: ["questions-for-exam"] });
       toast.success(`Analysis complete! Answer: ${data.correctAnswer}`);
     },
     onError: (error) => {
@@ -193,7 +239,7 @@ function useAnalyzeQuestion() {
   });
 }
 
-// Guide Me Step Card with interactive hints
+// Guide Me Step Card
 function GuideMeStepCard({ 
   step, 
   stepIndex 
@@ -213,28 +259,19 @@ function GuideMeStepCard({
   const [showKeyTakeaway, setShowKeyTakeaway] = useState(false);
   
   const totalHints = step.hints?.length || 0;
-  
-  const handleRevealHint = () => {
-    if (revealedHints < totalHints) {
-      setRevealedHints(prev => prev + 1);
-    }
-  };
 
   return (
     <div className="rounded-lg border bg-card overflow-hidden">
-      {/* Step Header - Primary color */}
       <div className="px-4 py-3 bg-primary/10 border-b flex items-center gap-2">
         <Badge variant="default" className="text-xs">Step {step.stepNumber || stepIndex + 1}</Badge>
       </div>
       
-      {/* Prompt Section */}
       <div className="p-4 border-b bg-card">
         <div className="prose prose-sm dark:prose-invert">
           <MathRenderer content={step.prompt || ''} />
         </div>
       </div>
       
-      {/* Choices Section - Slightly muted background */}
       {step.choices && step.choices.length > 0 && (
         <div className="p-4 border-b bg-muted/30">
           <div className="text-xs font-medium text-muted-foreground mb-2">Choices</div>
@@ -257,7 +294,6 @@ function GuideMeStepCard({
         </div>
       )}
       
-      {/* Hints Section - Blue tinted */}
       {totalHints > 0 && (
         <div className="p-4 border-b bg-blue-500/5">
           <div className="flex items-center justify-between mb-3">
@@ -272,7 +308,7 @@ function GuideMeStepCard({
                 variant="outline" 
                 size="sm" 
                 className="h-7 text-xs gap-1 border-blue-500/30 text-blue-600 hover:bg-blue-500/10"
-                onClick={handleRevealHint}
+                onClick={() => setRevealedHints(prev => prev + 1)}
               >
                 <Eye className="h-3 w-3" />
                 Show Hint ({revealedHints + 1}/{totalHints})
@@ -282,15 +318,10 @@ function GuideMeStepCard({
           {revealedHints > 0 && (
             <div className="space-y-2">
               {step.hints?.slice(0, revealedHints).map((hint, idx) => (
-                <div 
-                  key={idx} 
-                  className="p-3 rounded bg-blue-500/10 border border-blue-500/20"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400">
-                      Tier {hint.tier}
-                    </Badge>
-                  </div>
+                <div key={idx} className="p-3 rounded bg-blue-500/10 border border-blue-500/20">
+                  <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400 mb-1">
+                    Tier {hint.tier}
+                  </Badge>
                   <div className="text-sm prose prose-sm dark:prose-invert">
                     <MathRenderer content={hint.text} />
                   </div>
@@ -298,15 +329,9 @@ function GuideMeStepCard({
               ))}
             </div>
           )}
-          {revealedHints === 0 && (
-            <div className="text-xs text-muted-foreground italic">
-              Click "Show Hint" to reveal hints progressively
-            </div>
-          )}
         </div>
       )}
       
-      {/* Explanation Section - Amber tinted */}
       {step.explanation && (
         <div className="p-4 border-b bg-amber-500/5">
           <div className="flex items-center justify-between mb-2">
@@ -320,7 +345,7 @@ function GuideMeStepCard({
               className="h-7 text-xs gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
               onClick={() => setShowExplanation(!showExplanation)}
             >
-              <Eye className="h-3 w-3" />
+              {showExplanation ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
               {showExplanation ? 'Hide' : 'Show'}
             </Button>
           </div>
@@ -332,7 +357,6 @@ function GuideMeStepCard({
         </div>
       )}
       
-      {/* Key Takeaway Section - Green tinted */}
       {step.keyTakeaway && (
         <div className="p-4 bg-green-500/5">
           <div className="flex items-center justify-between mb-2">
@@ -346,7 +370,7 @@ function GuideMeStepCard({
               className="h-7 text-xs gap-1 border-green-500/30 text-green-600 hover:bg-green-500/10"
               onClick={() => setShowKeyTakeaway(!showKeyTakeaway)}
             >
-              <Eye className="h-3 w-3" />
+              {showKeyTakeaway ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
               {showKeyTakeaway ? 'Hide' : 'Show'}
             </Button>
           </div>
@@ -361,6 +385,7 @@ function GuideMeStepCard({
   );
 }
 
+// Question Card Component
 function QuestionCard({
   question,
   index,
@@ -382,7 +407,6 @@ function QuestionCard({
   onRemoveImage: () => void;
   isAnalyzing: boolean;
 }) {
-  // Check for guide me steps - handle both old format (array) and new format (object with steps property)
   const getGuideSteps = (guideMeSteps: Json | null): Array<unknown> => {
     if (!guideMeSteps) return [];
     if (Array.isArray(guideMeSteps)) return guideMeSteps;
@@ -403,6 +427,25 @@ function QuestionCard({
       onUploadImage(file);
     }
   };
+
+  // Get guide data for preview
+  const getGuideData = (guideMeSteps: Json | null) => {
+    if (!guideMeSteps) return { steps: [], methodSummary: null };
+    if (Array.isArray(guideMeSteps)) return { steps: guideMeSteps, methodSummary: null };
+    if (typeof guideMeSteps === 'object') {
+      const data = guideMeSteps as { 
+        steps?: unknown[]; 
+        methodSummary?: { bullets?: string[]; proTip?: string };
+      };
+      return { 
+        steps: data.steps || [], 
+        methodSummary: data.methodSummary || null,
+      };
+    }
+    return { steps: [], methodSummary: null };
+  };
+
+  const guideData = getGuideData(question.guide_me_steps);
 
   return (
     <motion.div variants={staggerItem}>
@@ -552,7 +595,7 @@ function QuestionCard({
           {question.solution_steps && question.solution_steps.length > 0 && (
             <details className="pt-2 border-t">
               <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium">
-                View Solution ({question.solution_steps.length} steps)
+                View Solution
               </summary>
               <div className="mt-3 p-4 rounded-lg bg-muted/50 prose prose-sm dark:prose-invert max-w-none">
                 <MathRenderer content={question.solution_steps.join('\n\n')} />
@@ -560,88 +603,61 @@ function QuestionCard({
             </details>
           )}
 
-          {/* Guide Me Steps Preview */}
-          {(() => {
-            // Handle both old format (array) and new format (object with steps property)
-            const getGuideData = (guideMeSteps: Json | null) => {
-              if (!guideMeSteps) return { steps: [], methodSummary: null };
-              if (Array.isArray(guideMeSteps)) return { steps: guideMeSteps, methodSummary: null };
-              if (typeof guideMeSteps === 'object') {
-                const data = guideMeSteps as { 
-                  steps?: unknown[]; 
-                  methodSummary?: { bullets?: string[]; proTip?: string };
-                };
-                return { 
-                  steps: data.steps || [], 
-                  methodSummary: data.methodSummary || null,
-                };
-              }
-              return { steps: [], methodSummary: null };
-            };
-            
-            const guideData = getGuideData(question.guide_me_steps);
-            const hasSteps = guideData.steps.length > 0;
-            const hasSummary = guideData.methodSummary?.bullets?.length;
-            
-            if (!hasSteps && !hasSummary) return null;
-            
-            return (
-              <details className="pt-2 border-t">
-                <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium flex items-center gap-2">
-                  <Wand2 className="h-4 w-4" />
-                  View Guide Me ({guideData.steps.length} steps{hasSummary ? ' + Summary' : ''})
-                </summary>
-                <div className="mt-3 space-y-4">
-                  {/* Steps */}
-                  {(guideData.steps as Array<{
-                    stepNumber?: number;
-                    prompt?: string;
-                    choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
-                    hints?: Array<{ tier: number; text: string }>;
-                    explanation?: string;
-                    keyTakeaway?: string;
-                  }>).map((step, idx) => (
-                    <GuideMeStepCard key={idx} step={step} stepIndex={idx} />
-                  ))}
-                  
-                  {/* Method Summary */}
-                  {guideData.methodSummary?.bullets && guideData.methodSummary.bullets.length > 0 && (
-                    <div className="rounded-lg border bg-primary/5 p-4 space-y-3">
-                      <div className="flex items-center gap-2">
-                        <Globe className="h-4 w-4 text-primary" />
-                        <span className="font-medium text-sm">Method Summary</span>
-                      </div>
-                      <ul className="space-y-2 pl-4">
-                        {guideData.methodSummary.bullets.map((bullet, idx) => (
-                          <li key={idx} className="text-sm list-disc prose prose-sm dark:prose-invert">
-                            <MathRenderer content={bullet} />
-                          </li>
-                        ))}
-                      </ul>
-                      {guideData.methodSummary.proTip && (
-                        <div className="mt-3 p-3 rounded bg-amber-500/10 border border-amber-500/20">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Lightbulb className="h-4 w-4 text-amber-600" />
-                            <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Pro Tip</span>
-                          </div>
-                          <div className="text-sm prose prose-sm dark:prose-invert">
-                            <MathRenderer content={guideData.methodSummary.proTip} />
-                          </div>
-                        </div>
-                      )}
+          {/* Guide Me Preview */}
+          {guideData.steps.length > 0 && (
+            <details className="pt-2 border-t">
+              <summary className="text-sm text-muted-foreground cursor-pointer hover:text-foreground font-medium flex items-center gap-2">
+                <Wand2 className="h-4 w-4" />
+                View Guide Me ({guideData.steps.length} steps)
+              </summary>
+              <div className="mt-3 space-y-4">
+                {(guideData.steps as Array<{
+                  stepNumber?: number;
+                  prompt?: string;
+                  choices?: Array<{ id: string; text: string; isCorrect: boolean }>;
+                  hints?: Array<{ tier: number; text: string }>;
+                  explanation?: string;
+                  keyTakeaway?: string;
+                }>).map((step, idx) => (
+                  <GuideMeStepCard key={idx} step={step} stepIndex={idx} />
+                ))}
+                
+                {guideData.methodSummary?.bullets && guideData.methodSummary.bullets.length > 0 && (
+                  <div className="rounded-lg border bg-primary/5 p-4 space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Globe className="h-4 w-4 text-primary" />
+                      <span className="font-medium text-sm">Method Summary</span>
                     </div>
-                  )}
-                  
-                </div>
-              </details>
-            );
-          })()}
+                    <ul className="space-y-2 pl-4">
+                      {guideData.methodSummary.bullets.map((bullet, idx) => (
+                        <li key={idx} className="text-sm list-disc prose prose-sm dark:prose-invert">
+                          <MathRenderer content={bullet} />
+                        </li>
+                      ))}
+                    </ul>
+                    {guideData.methodSummary.proTip && (
+                      <div className="mt-3 p-3 rounded bg-amber-500/10 border border-amber-500/20">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Lightbulb className="h-4 w-4 text-amber-600" />
+                          <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Pro Tip</span>
+                        </div>
+                        <div className="text-sm prose prose-sm dark:prose-invert">
+                          <MathRenderer content={guideData.methodSummary.proTip} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </details>
+          )}
         </CardContent>
       </Card>
     </motion.div>
   );
 }
 
+// Edit Question Dialog
 function EditQuestionDialog({
   question,
   open,
@@ -682,16 +698,6 @@ function EditQuestionDialog({
     onOpenChange(false);
   };
 
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-  };
-
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -703,8 +709,6 @@ function EditQuestionDialog({
         if (newUrl) {
           setEditedQuestion(prev => ({ ...prev, image_url: newUrl }));
         }
-      } catch (err) {
-        console.error('Upload failed:', err);
       } finally {
         setIsUploading(false);
       }
@@ -720,8 +724,6 @@ function EditQuestionDialog({
         if (newUrl) {
           setEditedQuestion(prev => ({ ...prev, image_url: newUrl }));
         }
-      } catch (err) {
-        console.error('Upload failed:', err);
       } finally {
         setIsUploading(false);
       }
@@ -732,24 +734,22 @@ function EditQuestionDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] z-50 flex flex-col overflow-hidden">
+      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader className="flex-shrink-0">
           <DialogTitle>Edit Question #{question.question_order || 1}</DialogTitle>
         </DialogHeader>
 
         <ScrollArea className="flex-1 overflow-auto pr-4">
           <div className="space-y-4 py-4">
-            {/* Image Upload with Drag & Drop */}
+            {/* Image Upload */}
             <div className="space-y-2">
               <Label>Question Image</Label>
               <div
                 className={`border-2 border-dashed rounded-lg p-4 transition-colors cursor-pointer ${
-                  isDragging 
-                    ? 'border-primary bg-primary/10' 
-                    : 'border-border hover:border-primary/50'
+                  isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
                 }`}
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
                 onDrop={handleDrop}
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -763,8 +763,7 @@ function EditQuestionDialog({
                 {isUploading ? (
                   <div className="flex flex-col items-center gap-2 py-6 text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin" />
-                    <div className="text-sm font-medium">Uploading & processing image...</div>
-                    <div className="text-xs text-muted-foreground">Removing background...</div>
+                    <div className="text-sm font-medium">Uploading...</div>
                   </div>
                 ) : editedQuestion.image_url ? (
                   <div className="space-y-3">
@@ -789,7 +788,7 @@ function EditQuestionDialog({
                       </Button>
                     </div>
                     <div className="text-center text-sm text-muted-foreground">
-                      Drag & drop a new image to replace, or click to select
+                      Click or drag to replace image
                     </div>
                   </div>
                 ) : (
@@ -804,16 +803,13 @@ function EditQuestionDialog({
             
             {/* Prompt */}
             <div className="space-y-2">
-              <Label>Question Prompt (supports LaTeX with $...$ or $$...$$)</Label>
+              <Label>Question Prompt</Label>
               <Textarea
                 value={editedQuestion.prompt || ""}
                 onChange={(e) => setEditedQuestion({ ...editedQuestion, prompt: e.target.value })}
                 rows={4}
                 className="font-mono text-sm"
               />
-              <div className="text-xs text-muted-foreground">
-                Preview:
-              </div>
               <div className="p-3 rounded border bg-muted/30 prose prose-sm dark:prose-invert">
                 <MathRenderer content={editedQuestion.prompt || ""} />
               </div>
@@ -837,12 +833,11 @@ function EditQuestionDialog({
                       setEditedQuestion({ ...editedQuestion, choices: newChoices });
                     }}
                     className="flex-1 font-mono text-sm"
-                    placeholder="Choice text (supports LaTeX)"
                   />
                   <Button
                     variant={choice.isCorrect ? "default" : "outline"}
                     size="sm"
-                    className={`min-w-[90px] ${choice.isCorrect ? "bg-green-500 hover:bg-green-600" : ""}`}
+                    className={choice.isCorrect ? "bg-green-500 hover:bg-green-600" : ""}
                     onClick={() => {
                       const newChoices = editedQuestion.choices?.map((c, i) => ({
                         ...c,
@@ -851,14 +846,7 @@ function EditQuestionDialog({
                       setEditedQuestion({ ...editedQuestion, choices: newChoices });
                     }}
                   >
-                    {choice.isCorrect ? (
-                      <>
-                        <Check className="h-4 w-4 mr-1" />
-                        Correct
-                      </>
-                    ) : (
-                      "Set Correct"
-                    )}
+                    {choice.isCorrect ? <Check className="h-4 w-4" /> : "Set Correct"}
                   </Button>
                 </div>
               ))}
@@ -923,120 +911,10 @@ function EditQuestionDialog({
           </div>
         </ScrollArea>
 
-        <div className="flex justify-end gap-2 pt-4 border-t flex-shrink-0">
-          <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancel
-          </Button>
+        <DialogFooter className="flex-shrink-0 pt-4 border-t">
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={handleSave} className="gap-1">
             <Save className="h-4 w-4" />
-            Save Changes
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// Edit Exam Details Dialog
-function EditExamDetailsDialog({
-  open,
-  onOpenChange,
-  job,
-  onSave,
-  isSaving,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  job: any;
-  onSave: (data: { examYear: number | null; examSemester: string | null; examType: string | null }) => void;
-  isSaving: boolean;
-}) {
-  const [examYear, setExamYear] = useState<number | null>(null);
-  const [examSemester, setExamSemester] = useState<string | null>(null);
-  const [examType, setExamType] = useState<string | null>(null);
-
-  // Initialize values when dialog opens
-  useMemo(() => {
-    if (job && open) {
-      setExamYear((job as any).exam_year || null);
-      setExamSemester((job as any).exam_semester || null);
-      setExamType((job as any).exam_type || null);
-    }
-  }, [job, open]);
-
-  const previewTitle = buildExamTitle(
-    job?.course_packs?.title,
-    examYear,
-    examSemester,
-    examType
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Edit Exam Details</DialogTitle>
-        </DialogHeader>
-        
-        <div className="space-y-4 py-4">
-          {/* Course (read-only for now) */}
-          <div className="space-y-2">
-            <Label>Course</Label>
-            <Input value={job?.course_packs?.title || ""} disabled className="bg-muted" />
-          </div>
-          
-          {/* Year */}
-          <div className="space-y-2">
-            <Label>Year</Label>
-            <Input 
-              type="number" 
-              placeholder="e.g., 2024"
-              value={examYear || ""}
-              onChange={(e) => setExamYear(e.target.value ? parseInt(e.target.value) : null)}
-            />
-          </div>
-          
-          {/* Semester */}
-          <div className="space-y-2">
-            <Label>Semester</Label>
-            <Select value={examSemester || ""} onValueChange={(v) => setExamSemester(v || null)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select semester" />
-              </SelectTrigger>
-              <SelectContent>
-                {SEMESTERS.map((sem) => (
-                  <SelectItem key={sem} value={sem}>{sem}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          {/* Exam Type */}
-          <div className="space-y-2">
-            <Label>Exam Type</Label>
-            <Select value={examType || ""} onValueChange={(v) => setExamType(v || null)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Select exam type" />
-              </SelectTrigger>
-              <SelectContent>
-                {EXAM_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>{formatExamType(type)}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          
-          {/* Preview */}
-          <div className="space-y-2 pt-2 border-t">
-            <Label className="text-muted-foreground">Preview Title</Label>
-            <div className="text-lg font-semibold">{previewTitle}</div>
-          </div>
-        </div>
-        
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => onSave({ examYear, examSemester, examType })} disabled={isSaving}>
-            {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
             Save Changes
           </Button>
         </DialogFooter>
@@ -1045,396 +923,270 @@ function EditExamDetailsDialog({
   );
 }
 
-export default function AdminIngestionReview() {
-  const { jobId } = useParams();
+function QuestionListSkeleton() {
+  return (
+    <div className="space-y-4">
+      {[...Array(3)].map((_, i) => (
+        <Card key={i}>
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="w-12 h-12 rounded-full" />
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-5 w-20" />
+            </div>
+            <Skeleton className="h-20 w-full" />
+            <div className="grid gap-2">
+              {[...Array(4)].map((_, j) => (
+                <Skeleton key={j} className="h-12 w-full" />
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+// Main Component
+export default function AdminQuestionsEditor() {
+  const { courseId, examName } = useParams<{ courseId: string; examName: string }>();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
-
-  const { data: job, isLoading: jobLoading } = useIngestionJob(jobId || "");
-  const { data: questions, isLoading: questionsLoading } = useQuestionsForCoursePack(job?.course_pack_id);
+  const decodedExamName = decodeURIComponent(examName || "");
+  
+  const { data: course } = useCoursePack(courseId!);
+  const { data: questions, isLoading } = useQuestionsForExam(courseId!, decodedExamName);
+  const { data: ingestionJob } = useIngestionJobForExam(courseId!, decodedExamName);
   const { data: allTopics } = useAllTopics();
-
   const updateQuestion = useUpdateQuestion();
   const deleteQuestion = useDeleteQuestion();
   const analyzeQuestion = useAnalyzeQuestion();
   const uploadImage = useUploadQuestionImage();
   const removeImage = useRemoveQuestionImage();
-  const updateExamDetails = useUpdateExamDetails();
-  
-  const [publishingExam, setPublishingExam] = useState(false);
+  const publishExam = usePublishExam();
+
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
-  const [deleteConfirm, setDeleteConfirm] = useState<Question | null>(null);
-  const [analyzingId, setAnalyzingId] = useState<string | null>(null);
+  const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
+  const [analyzingQuestionId, setAnalyzingQuestionId] = useState<string | null>(null);
   const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
   const [analyzeAllProgress, setAnalyzeAllProgress] = useState({ current: 0, total: 0 });
-  const [editExamOpen, setEditExamOpen] = useState(false);
 
-  // Compute exam title from structured fields
-  const examTitle = useMemo(() => {
-    if (!job) return "";
-    return buildExamTitle(
-      job.course_packs?.title,
-      (job as any).exam_year,
-      (job as any).exam_semester,
-      (job as any).exam_type
-    );
-  }, [job]);
-
-  const topics = useMemo(() => {
+  // Build topic map
+  const topicsMap = useMemo(() => {
     const map = new Map<string, string>();
     allTopics?.forEach((t) => map.set(t.id, t.title));
     return map;
   }, [allTopics]);
 
-  const topicsList = useMemo(() => {
-    return allTopics?.filter(t => t.course_pack_id === job?.course_pack_id) || [];
-  }, [allTopics, job]);
-
-  // Group questions by source exam
-  const groupedQuestions = useMemo(() => {
-    if (!questions) return {};
-    return questions.reduce((acc, q) => {
-      const exam = q.source_exam || "Unknown Exam";
-      if (!acc[exam]) acc[exam] = [];
-      acc[exam].push(q);
-      return acc;
-    }, {} as Record<string, Question[]>);
-  }, [questions]);
-
-  const stats = useMemo(() => {
-    if (!questions) return { total: 0, needsAnalysis: 0, ready: 0 };
-    
-    const needsAnalysis = questions.filter(q => {
-      const hasGuide = q.guide_me_steps && 
-        (Array.isArray(q.guide_me_steps) 
-          ? q.guide_me_steps.length > 0 
-          : typeof q.guide_me_steps === 'object' && Object.keys(q.guide_me_steps as object).length > 0);
-      return !q.correct_answer || !hasGuide;
-    }).length;
-    const ready = questions.length - needsAnalysis;
-    
-    return { total: questions.length, needsAnalysis, ready };
-  }, [questions]);
-
-  // Check if exam can be published (all questions analyzed)
-  const canPublish = stats.needsAnalysis === 0 && stats.total > 0;
-  const isPublished = (job as any)?.is_published ?? false;
-
-  const handlePublishToggle = async () => {
-    if (!jobId) return;
-    setPublishingExam(true);
-    try {
-      const newPublishedState = !isPublished;
-      const { error } = await supabase
-        .from("ingestion_jobs")
-        .update({ is_published: newPublishedState } as any)
-        .eq("id", jobId);
-      
-      if (error) throw error;
-      
-      queryClient.invalidateQueries({ queryKey: ["ingestion-job", jobId] });
-      toast.success(newPublishedState ? "Exam published! Questions are now visible to students." : "Exam unpublished.");
-    } catch (error) {
-      toast.error("Failed to update exam status");
-    } finally {
-      setPublishingExam(false);
-    }
-  };
-
-  const handleSaveEdit = async (updates: Partial<Question>) => {
-    if (!editingQuestion) return;
-    try {
-      await updateQuestion.mutateAsync({ id: editingQuestion.id, ...updates });
-      toast.success("Question updated!");
-      setEditingQuestion(null);
-    } catch (error) {
-      toast.error("Failed to update question");
-    }
-  };
-
-  const handleDelete = async () => {
-    if (!deleteConfirm) return;
-    try {
-      await deleteQuestion.mutateAsync(deleteConfirm.id);
-      toast.success("Question deleted");
-      setDeleteConfirm(null);
-    } catch (error) {
-      toast.error("Failed to delete question");
-    }
-  };
-
   const handleAnalyze = async (questionId: string) => {
-    setAnalyzingId(questionId);
+    setAnalyzingQuestionId(questionId);
     try {
       await analyzeQuestion.mutateAsync(questionId);
     } finally {
-      setAnalyzingId(null);
+      setAnalyzingQuestionId(null);
     }
   };
 
   const handleAnalyzeAll = async () => {
-    if (!questions) return;
-    
-    // Get questions that need analysis
-    const questionsToAnalyze = questions.filter(q => {
-      const hasGuide = q.guide_me_steps && 
-        (Array.isArray(q.guide_me_steps) 
-          ? q.guide_me_steps.length > 0 
-          : typeof q.guide_me_steps === 'object' && Object.keys(q.guide_me_steps as object).length > 0);
-      return !q.correct_answer || !hasGuide;
-    });
-    
-    if (questionsToAnalyze.length === 0) {
-      toast.info("All questions are already analyzed!");
+    const needsAnalysis = questions?.filter(q => !q.correct_answer || !q.guide_me_steps) || [];
+    if (needsAnalysis.length === 0) {
+      toast.info("All questions are already analyzed");
       return;
     }
-    
+
     setIsAnalyzingAll(true);
-    setAnalyzeAllProgress({ current: 0, total: questionsToAnalyze.length });
-    
-    let successCount = 0;
-    let failCount = 0;
-    
-    for (let i = 0; i < questionsToAnalyze.length; i++) {
-      const question = questionsToAnalyze[i];
-      setAnalyzingId(question.id);
-      setAnalyzeAllProgress({ current: i + 1, total: questionsToAnalyze.length });
-      
+    setAnalyzeAllProgress({ current: 0, total: needsAnalysis.length });
+
+    for (let i = 0; i < needsAnalysis.length; i++) {
+      setAnalyzeAllProgress({ current: i + 1, total: needsAnalysis.length });
+      setAnalyzingQuestionId(needsAnalysis[i].id);
       try {
-        await analyzeQuestion.mutateAsync(question.id);
-        successCount++;
+        await analyzeQuestion.mutateAsync(needsAnalysis[i].id);
       } catch (error) {
-        console.error(`Failed to analyze question ${question.id}:`, error);
-        failCount++;
+        console.error(`Failed to analyze question ${needsAnalysis[i].id}:`, error);
       }
     }
-    
-    setAnalyzingId(null);
+
+    setAnalyzingQuestionId(null);
     setIsAnalyzingAll(false);
-    setAnalyzeAllProgress({ current: 0, total: 0 });
-    
-    if (failCount === 0) {
-      toast.success(`Successfully analyzed all ${successCount} questions!`);
-    } else {
-      toast.warning(`Analyzed ${successCount} questions, ${failCount} failed.`);
+    toast.success(`Analyzed ${needsAnalysis.length} questions`);
+  };
+
+  const handleSaveEdit = (updates: Partial<Question>) => {
+    if (editingQuestion) {
+      updateQuestion.mutate({ id: editingQuestion.id, ...updates });
     }
   };
 
-  const handleUploadImage = async (questionId: string, file: File): Promise<string | undefined> => {
+  const handleConfirmDelete = () => {
+    if (questionToDelete) {
+      deleteQuestion.mutate(questionToDelete);
+      setQuestionToDelete(null);
+    }
+  };
+
+  const handleUploadImage = async (questionId: string, file: File) => {
     try {
-      const url = await uploadImage.mutateAsync({ questionId, file });
-      toast.success("Image uploaded!");
-      // Also invalidate our local query
-      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
-      return url;
+      await uploadImage.mutateAsync({ questionId, file });
     } catch (error) {
-      toast.error("Failed to upload image");
-      return undefined;
+      console.error("Upload failed:", error);
     }
   };
 
   const handleRemoveImage = async (questionId: string) => {
     try {
       await removeImage.mutateAsync(questionId);
-      toast.success("Image removed!");
-      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
     } catch (error) {
-      toast.error("Failed to remove image");
+      console.error("Remove failed:", error);
     }
   };
 
-  if (jobLoading) {
-    return (
-      <PageTransition>
-        <div className="p-6 space-y-6">
-          <Skeleton className="h-8 w-64" />
-          <Skeleton className="h-24 w-full" />
-          <Skeleton className="h-64 w-full" />
-        </div>
-      </PageTransition>
-    );
-  }
+  const handleTogglePublish = () => {
+    if (ingestionJob) {
+      publishExam.mutate({ 
+        jobId: ingestionJob.id, 
+        isPublished: !ingestionJob.is_published 
+      });
+    }
+  };
 
-  if (!job) {
-    return (
-      <PageTransition>
-        <div className="p-6 text-center">
-          <p className="text-muted-foreground">Job not found</p>
-          <Button asChild className="mt-4">
-            <Link to="/admin/ingestion">Back to Ingestion</Link>
-          </Button>
-        </div>
-      </PageTransition>
-    );
-  }
+  const needsAnalysisCount = questions?.filter((q) => !q.correct_answer || !q.guide_me_steps).length || 0;
+  const analyzedCount = (questions?.length || 0) - needsAnalysisCount;
 
   return (
     <PageTransition>
-      <motion.div
-        variants={staggerContainer}
-        initial="initial"
-        animate="animate"
-        className="p-6 space-y-6 pb-24 md:pb-6"
-      >
+      <div className="min-h-screen">
         {/* Header */}
-        <motion.div variants={staggerItem} className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" className="flex-shrink-0" asChild>
-            <Link to="/admin/ingestion">
-              <ChevronLeft className="h-5 w-5" />
-            </Link>
-          </Button>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 flex-shrink-0" />
-              <h1 className="text-xl font-bold text-foreground truncate">
-                {examTitle || job.file_name}
-              </h1>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="h-7 w-7 flex-shrink-0"
-                onClick={() => setEditExamOpen(true)}
+        <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b">
+          <div className="container max-w-5xl py-4">
+            {/* Breadcrumb */}
+            <div className="flex items-center gap-2 text-sm mb-2">
+              <Link 
+                to="/admin/questions" 
+                className="text-muted-foreground hover:text-foreground transition-colors"
               >
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-              {isPublished && (
-                <Badge className="bg-green-500 gap-1 flex-shrink-0">
-                  <Globe className="h-3 w-3" />
-                  Published
-                </Badge>
-              )}
+                Courses
+              </Link>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <Link 
+                to={`/admin/questions/${courseId}`}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {course?.title || "..."}
+              </Link>
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+              <span className="font-medium truncate">{decodedExamName}</span>
             </div>
-            <p className="text-muted-foreground text-sm">
-              Review and analyze extracted questions
-            </p>
-          </div>
-          
-          {/* Publish Button */}
-          <div className="flex-shrink-0">
-            {isPublished ? (
-              <Button
-                variant="outline"
-                onClick={handlePublishToggle}
-                disabled={publishingExam}
-                className="gap-2"
-              >
-                {publishingExam ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <EyeOff className="h-4 w-4" />
-                )}
-                Unpublish
-              </Button>
-            ) : (
-              <Button
-                onClick={handlePublishToggle}
-                disabled={!canPublish || publishingExam}
-                className="gap-2 bg-green-500 hover:bg-green-600"
-              >
-                {publishingExam ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Globe className="h-4 w-4" />
-                )}
-                Publish Exam
-              </Button>
-            )}
-          </div>
-        </motion.div>
 
-        {/* Stats */}
-        <motion.div variants={staggerItem}>
-          <Card>
-            <CardContent className="p-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-6 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Total: </span>
-                    <span className="font-medium">{stats.total}</span>
-                  </div>
-                  <div>
-                    <span className="text-amber-600">{stats.needsAnalysis} need analysis</span>
-                  </div>
-                  <div>
-                    <span className="text-green-600">{stats.ready} ready</span>
-                  </div>
+            {/* Title and actions */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Button 
+                  variant="ghost" 
+                  size="icon"
+                  onClick={() => navigate(`/admin/questions/${courseId}`)}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </Button>
+                <div>
+                  <h1 className="text-xl font-bold">{decodedExamName}</h1>
+                  <p className="text-sm text-muted-foreground">
+                    {questions?.length || 0} questions
+                    {needsAnalysisCount > 0 && (
+                      <span className="text-amber-600 ml-2">
+                        • {needsAnalysisCount} need analysis
+                      </span>
+                    )}
+                    {analyzedCount > 0 && needsAnalysisCount === 0 && (
+                      <span className="text-green-600 ml-2">
+                        • All analyzed ✓
+                      </span>
+                    )}
+                  </p>
                 </div>
-                
-                {stats.needsAnalysis > 0 && (
-                  <Button
+              </div>
+
+              <div className="flex items-center gap-2">
+                {/* Analyze All button */}
+                {needsAnalysisCount > 0 && (
+                  <Button 
+                    variant="default" 
+                    size="sm"
                     onClick={handleAnalyzeAll}
-                    disabled={isAnalyzingAll || analyzingId !== null}
-                    className="gap-2"
-                    variant={isAnalyzingAll ? "secondary" : "default"}
+                    disabled={isAnalyzingAll}
+                    className="gap-1"
                   >
                     {isAnalyzingAll ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Analyzing {analyzeAllProgress.current}/{analyzeAllProgress.total}...
+                        Analyzing {analyzeAllProgress.current}/{analyzeAllProgress.total}
                       </>
                     ) : (
                       <>
-                        <Wand2 className="h-4 w-4" />
-                        Analyze All ({stats.needsAnalysis})
+                        <Sparkles className="h-4 w-4" />
+                        Analyze All ({needsAnalysisCount})
                       </>
                     )}
                   </Button>
                 )}
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
 
-        {/* Questions */}
-        {questionsLoading ? (
-          <div className="space-y-4">
-            {[1, 2, 3].map((i) => (
-              <Card key={i}>
-                <CardContent className="p-6 space-y-4">
-                  <div className="flex items-center gap-3">
-                    <Skeleton className="w-12 h-12 rounded-full" />
-                    <Skeleton className="h-5 w-32" />
-                  </div>
-                  <Skeleton className="h-20 w-full" />
-                  <div className="grid gap-2">
-                    {[1, 2, 3, 4].map((j) => (
-                      <Skeleton key={j} className="h-14 w-full" />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
+                {/* Publish toggle */}
+                {ingestionJob && (
+                  <Button 
+                    variant={ingestionJob.is_published ? "secondary" : "outline"} 
+                    size="sm"
+                    onClick={handleTogglePublish}
+                    disabled={needsAnalysisCount > 0 || publishExam.isPending}
+                    className="gap-1"
+                  >
+                    {publishExam.isPending ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : ingestionJob.is_published ? (
+                      <>
+                        <Check className="h-4 w-4" />
+                        Published
+                      </>
+                    ) : (
+                      "Publish"
+                    )}
+                  </Button>
+                )}
+              </div>
+            </div>
           </div>
-        ) : questions?.length === 0 ? (
-          <Card>
-            <CardContent className="py-12 text-center">
-              <FileText className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
-              <p className="text-muted-foreground">No questions found for this course pack</p>
-            </CardContent>
-          </Card>
-        ) : (
-          <motion.div 
-            variants={staggerContainer}
-            initial="initial"
-            animate="animate"
-            className="space-y-4"
-          >
-            {questions?.map((question, index) => (
-              <QuestionCard
-                key={question.id}
-                question={question}
-                index={index}
-                topics={topics}
-                onEdit={() => setEditingQuestion(question)}
-                onDelete={() => setDeleteConfirm(question)}
-                onAnalyze={() => handleAnalyze(question.id)}
-                onUploadImage={(file) => handleUploadImage(question.id, file)}
-                onRemoveImage={() => handleRemoveImage(question.id)}
-                isAnalyzing={analyzingId === question.id}
-              />
-            ))}
-          </motion.div>
-        )}
+        </div>
+
+        {/* Questions List */}
+        <div className="container max-w-5xl py-6">
+          {isLoading ? (
+            <QuestionListSkeleton />
+          ) : questions?.length === 0 ? (
+            <Card className="p-8 text-center">
+              <p className="text-muted-foreground">No questions found for this exam.</p>
+            </Card>
+          ) : (
+            <motion.div
+              variants={staggerContainer}
+              initial="initial"
+              animate="animate"
+              className="space-y-6"
+            >
+              {questions?.map((question, index) => (
+                <QuestionCard
+                  key={question.id}
+                  question={question}
+                  index={index}
+                  topics={topicsMap}
+                  onEdit={() => setEditingQuestion(question)}
+                  onDelete={() => setQuestionToDelete(question.id)}
+                  onAnalyze={() => handleAnalyze(question.id)}
+                  onUploadImage={(file) => handleUploadImage(question.id, file)}
+                  onRemoveImage={() => handleRemoveImage(question.id)}
+                  isAnalyzing={analyzingQuestionId === question.id}
+                />
+              ))}
+            </motion.div>
+          )}
+        </div>
 
         {/* Edit Dialog */}
         <EditQuestionDialog
@@ -1442,52 +1194,33 @@ export default function AdminIngestionReview() {
           open={!!editingQuestion}
           onOpenChange={(open) => !open && setEditingQuestion(null)}
           onSave={handleSaveEdit}
-          topics={topicsList}
-          onUploadImage={(file) => editingQuestion && handleUploadImage(editingQuestion.id, file)}
+          topics={allTopics || []}
+          onUploadImage={async (file) => {
+            if (editingQuestion) {
+              const result = await uploadImage.mutateAsync({ questionId: editingQuestion.id, file });
+              return result?.image_url;
+            }
+          }}
           onRemoveImage={async () => {
             if (editingQuestion) {
-              await handleRemoveImage(editingQuestion.id);
-              setEditingQuestion({ ...editingQuestion, image_url: null });
+              await removeImage.mutateAsync(editingQuestion.id);
             }
           }}
-        />
-
-        {/* Edit Exam Details Dialog */}
-        <EditExamDetailsDialog
-          open={editExamOpen}
-          onOpenChange={setEditExamOpen}
-          job={job}
-          onSave={async (data) => {
-            if (!jobId) return;
-            try {
-              await updateExamDetails.mutateAsync({
-                jobId,
-                examYear: data.examYear,
-                examSemester: data.examSemester,
-                examType: data.examType,
-              });
-              toast.success("Exam details updated!");
-              setEditExamOpen(false);
-            } catch (error) {
-              toast.error("Failed to update exam details");
-            }
-          }}
-          isSaving={updateExamDetails.isPending}
         />
 
         {/* Delete Confirmation */}
-        <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialog open={!!questionToDelete} onOpenChange={() => setQuestionToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete Question?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete question #{deleteConfirm?.question_order}. This action cannot be undone.
+                This will permanently delete this question. This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
-                onClick={handleDelete}
+                onClick={handleConfirmDelete}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete
@@ -1495,7 +1228,7 @@ export default function AdminIngestionReview() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
-      </motion.div>
+      </div>
     </PageTransition>
   );
 }
