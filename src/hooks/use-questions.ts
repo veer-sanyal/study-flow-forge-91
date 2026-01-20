@@ -269,6 +269,7 @@ export function useUploadQuestionImage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["questions-for-exam"] });
     },
   });
 }
@@ -287,6 +288,7 @@ export function useRemoveQuestionImage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["questions-for-exam"] });
     },
   });
 }
