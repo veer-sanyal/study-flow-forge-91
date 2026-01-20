@@ -38,9 +38,9 @@ export function ChoiceList({
   };
 
   const stateStyles = {
-    default: "border-border hover:border-primary/50 hover:bg-accent/50 cursor-pointer",
+    default: "border-border hover:border-primary/50 hover:bg-accent cursor-pointer",
     selected: "border-primary bg-primary/10 cursor-pointer",
-    correct: "border-green-500 bg-green-500/10",
+    correct: "border-success bg-success/10",
     incorrect: "border-destructive bg-destructive/10",
     disabled: "border-border opacity-50",
   };
@@ -66,7 +66,7 @@ export function ChoiceList({
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 font-medium text-sm",
                 state === "selected" && "border-primary bg-primary text-primary-foreground",
-                state === "correct" && "border-green-500 bg-green-500 text-white",
+                state === "correct" && "border-success bg-success text-success-foreground",
                 state === "incorrect" && "border-destructive bg-destructive text-destructive-foreground",
                 state === "default" && "border-muted-foreground/30",
                 state === "disabled" && "border-muted-foreground/20"
