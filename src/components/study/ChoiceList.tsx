@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { MathRenderer } from "./MathRenderer";
 import { Check, X } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
+import { useCanHover } from "@/hooks/use-can-hover";
 import { stagger, duration, easing } from "@/lib/motion";
 
 interface Choice {
@@ -27,6 +28,7 @@ export function ChoiceList({
   onSelect,
 }: ChoiceListProps) {
   const prefersReducedMotion = useReducedMotion();
+  const canHover = useCanHover();
 
   const getChoiceState = (id: string) => {
     if (!isSubmitted) {
@@ -38,7 +40,7 @@ export function ChoiceList({
   };
 
   const stateStyles = {
-    default: "border-border hover:border-primary/50 hover:bg-accent cursor-pointer",
+    default: "border-border cursor-pointer",
     selected: "border-primary bg-primary/10 cursor-pointer",
     correct: "border-success bg-success/10",
     incorrect: "border-destructive bg-destructive/10",
@@ -59,7 +61,8 @@ export function ChoiceList({
             disabled={isSubmitted}
             className={cn(
               "w-full flex items-center gap-3 p-4 rounded-lg border-2 text-left transition-colors",
-              stateStyles[state]
+              stateStyles[state],
+              canHover && "hover:border-primary/50 hover:bg-accent"
             )}
           >
             <span
