@@ -39,10 +39,12 @@ export function useCreateIngestionJob() {
       coursePackId,
       file,
       kind = "pdf",
+      answerKeyFile,
     }: {
       coursePackId: string;
       file: File;
       kind?: IngestionKind;
+      answerKeyFile?: File;
     }) => {
       // Determine storage bucket based on kind
       const bucket = kind === "calendar" ? "calendar-images" : "exam-pdfs";
@@ -64,10 +66,34 @@ export function useCreateIngestionJob() {
         throw new Error(`Failed to upload file: ${uploadError.message}`);
       }
 
+      // Upload answer key if provided
+      let answerKeyPath: string | null = null;
+      let answerKeyFileName: string | null = null;
+      
+      if (answerKeyFile) {
+        const sanitizedAnswerKeyName = answerKeyFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
+        answerKeyPath = `${coursePackId}/${timestamp}_answerkey_${sanitizedAnswerKeyName}`;
+        
+        const { error: answerKeyUploadError } = await supabase.storage
+          .from(bucket)
+          .upload(answerKeyPath, answerKeyFile, {
+            cacheControl: "3600",
+            upsert: false,
+          });
+
+        if (answerKeyUploadError) {
+          // Clean up exam file and throw error
+          await supabase.storage.from(bucket).remove([filePath]);
+          throw new Error(`Failed to upload answer key: ${answerKeyUploadError.message}`);
+        }
+        
+        answerKeyFileName = answerKeyFile.name;
+      }
+
       // Get current user
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Create ingestion job record
+      // Create ingestion job record with answer key info
       const { data: job, error: jobError } = await supabase
         .from("ingestion_jobs")
         .insert({
@@ -77,13 +103,19 @@ export function useCreateIngestionJob() {
           status: "pending",
           created_by: user?.id,
           kind,
-        })
+          answer_key_path: answerKeyPath,
+          answer_key_file_name: answerKeyFileName,
+          has_answer_key: !!answerKeyFile,
+        } as any)
         .select()
         .single();
 
       if (jobError) {
-        // Clean up uploaded file if job creation fails
+        // Clean up uploaded files if job creation fails
         await supabase.storage.from(bucket).remove([filePath]);
+        if (answerKeyPath) {
+          await supabase.storage.from(bucket).remove([answerKeyPath]);
+        }
         throw new Error(`Failed to create job: ${jobError.message}`);
       }
 

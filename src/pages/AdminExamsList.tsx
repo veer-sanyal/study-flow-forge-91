@@ -45,7 +45,9 @@ import {
   Save,
   Loader2,
   Plus,
-  Upload
+  Upload,
+  X,
+  Check
 } from "lucide-react";
 import { 
   parseExamName, 
@@ -576,8 +578,12 @@ function AddExamDialog({
   courseId: string;
   onSuccess: (sourceExam: string) => void;
 }) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  const examFileInputRef = useRef<HTMLInputElement>(null);
+  const answerKeyFileInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingExam, setIsDraggingExam] = useState(false);
+  const [isDraggingAnswerKey, setIsDraggingAnswerKey] = useState(false);
+  const [examFile, setExamFile] = useState<File | null>(null);
+  const [answerKeyFile, setAnswerKeyFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState<{
     stage: "idle" | "uploading" | "processing" | "complete" | "error";
     message: string;
@@ -587,25 +593,53 @@ function AddExamDialog({
   const createJob = useCreateIngestionJob();
   const processJob = useProcessJob();
 
-  const handleFile = async (file: File) => {
+  const handleExamFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf")) {
       toast.error("Only PDF files are supported");
+      return;
+    }
+    setExamFile(file);
+  };
+
+  const handleAnswerKeyFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Only PDF files are supported");
+      return;
+    }
+    setAnswerKeyFile(file);
+  };
+
+  const handleUpload = async () => {
+    if (!examFile) {
+      toast.error("Please select an exam PDF");
       return;
     }
 
     try {
       // Stage 1: Upload
-      setUploadProgress({ stage: "uploading", message: "Uploading PDF...", percent: 20 });
-      const job = await createJob.mutateAsync({ coursePackId: courseId, file });
+      setUploadProgress({ 
+        stage: "uploading", 
+        message: answerKeyFile ? "Uploading exam and answer key..." : "Uploading PDF...", 
+        percent: 20 
+      });
+      const job = await createJob.mutateAsync({ 
+        coursePackId: courseId, 
+        file: examFile,
+        answerKeyFile: answerKeyFile || undefined,
+      });
       
       // Stage 2: Processing
-      setUploadProgress({ stage: "processing", message: "Extracting questions with AI...", percent: 50 });
+      setUploadProgress({ 
+        stage: "processing", 
+        message: answerKeyFile ? "Extracting questions and matching answers..." : "Extracting questions with AI...", 
+        percent: 50 
+      });
       const result = await processJob.mutateAsync({ jobId: job.id, kind: "pdf" });
       
       // Stage 3: Complete
       setUploadProgress({ 
         stage: "complete", 
-        message: `Extracted ${result.questionsExtracted} questions!`, 
+        message: `Extracted ${result.questionsExtracted} questions!${answerKeyFile ? " Answer key applied." : ""}`, 
         percent: 100 
       });
 
@@ -624,13 +658,15 @@ function AddExamDialog({
         const type = jobData.data.exam_type === "f" ? "Final" : `Midterm ${jobData.data.exam_type}`;
         parts.push(type);
       }
-      const sourceExam = parts.join(" ") || file.name.replace(".pdf", "");
+      const sourceExam = parts.join(" ") || examFile.name.replace(".pdf", "");
 
       // Wait a moment then navigate
       setTimeout(() => {
         onSuccess(sourceExam);
         onOpenChange(false);
         setUploadProgress({ stage: "idle", message: "", percent: 0 });
+        setExamFile(null);
+        setAnswerKeyFile(null);
       }, 1000);
 
     } catch (error) {
@@ -642,62 +678,157 @@ function AddExamDialog({
     }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
+  const handleExamDrop = (e: React.DragEvent) => {
     e.preventDefault();
-    setIsDragging(false);
+    setIsDraggingExam(false);
     const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
+    if (file) handleExamFile(file);
   };
 
-  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) handleFile(file);
+  const handleAnswerKeyDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDraggingAnswerKey(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleAnswerKeyFile(file);
   };
 
   const isProcessing = uploadProgress.stage === "uploading" || uploadProgress.stage === "processing";
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !isProcessing && onOpenChange(o)}>
-      <DialogContent className="sm:max-w-md">
+    <Dialog open={open} onOpenChange={(o) => {
+      if (!isProcessing) {
+        onOpenChange(o);
+        if (!o) {
+          setExamFile(null);
+          setAnswerKeyFile(null);
+          setUploadProgress({ stage: "idle", message: "", percent: 0 });
+        }
+      }
+    }}>
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>Add Exam</DialogTitle>
           <DialogDescription>
-            Upload a past exam PDF to extract questions
+            Upload a past exam PDF to extract questions. Optionally include an answer key to verify AI-generated answers.
           </DialogDescription>
         </DialogHeader>
         
-        <div className="py-4">
+        <div className="py-4 space-y-4">
           {uploadProgress.stage === "idle" || uploadProgress.stage === "error" ? (
             <>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".pdf"
-                onChange={handleFileInput}
-                className="hidden"
-              />
-              <div
-                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
-                onDragLeave={() => setIsDragging(false)}
-                onDrop={handleDrop}
-                onClick={() => fileInputRef.current?.click()}
-                className={cn(
-                  "flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                  isDragging 
-                    ? "border-primary bg-primary/5" 
-                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
-                )}
-              >
-                <Upload className="h-10 w-10 text-muted-foreground" />
-                <div className="text-center">
-                  <p className="font-medium">Drop PDF here or click to browse</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Supports exam PDFs with multiple choice questions
-                  </p>
+              {/* Exam PDF Upload */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium">Exam PDF *</Label>
+                <input
+                  ref={examFileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleExamFile(file);
+                  }}
+                  className="hidden"
+                />
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDraggingExam(true); }}
+                  onDragLeave={() => setIsDraggingExam(false)}
+                  onDrop={handleExamDrop}
+                  onClick={() => examFileInputRef.current?.click()}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                    isDraggingExam 
+                      ? "border-primary bg-primary/5" 
+                      : examFile
+                        ? "border-primary/50 bg-primary/5"
+                        : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+                  )}
+                >
+                  {examFile ? (
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-6 w-6 text-primary" />
+                      <span className="font-medium text-sm">{examFile.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setExamFile(null);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <Upload className="h-8 w-8 text-muted-foreground" />
+                      <div className="text-center">
+                        <p className="font-medium text-sm">Drop exam PDF here or click to browse</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
+
+              {/* Answer Key Upload (Optional) */}
+              <div className="space-y-2">
+                <Label className="text-sm font-medium flex items-center gap-2">
+                  Answer Key <Badge variant="outline" className="text-xs">Optional</Badge>
+                </Label>
+                <input
+                  ref={answerKeyFileInputRef}
+                  type="file"
+                  accept=".pdf"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleAnswerKeyFile(file);
+                  }}
+                  className="hidden"
+                />
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setIsDraggingAnswerKey(true); }}
+                  onDragLeave={() => setIsDraggingAnswerKey(false)}
+                  onDrop={handleAnswerKeyDrop}
+                  onClick={() => answerKeyFileInputRef.current?.click()}
+                  className={cn(
+                    "flex flex-col items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                    isDraggingAnswerKey 
+                      ? "border-primary bg-primary/5" 
+                      : answerKeyFile
+                        ? "border-green-500/50 bg-green-500/5"
+                        : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+                  )}
+                >
+                  {answerKeyFile ? (
+                    <div className="flex items-center gap-2">
+                      <Check className="h-5 w-5 text-green-600" />
+                      <span className="font-medium text-sm">{answerKeyFile.name}</span>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAnswerKeyFile(null);
+                        }}
+                      >
+                        <X className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Upload className="h-5 w-5" />
+                      <span className="text-sm">Add answer key to verify AI answers</span>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  If provided, extracted questions will be checked against the answer key and mismatches will be flagged.
+                </p>
+              </div>
+
               {uploadProgress.stage === "error" && (
-                <p className="text-destructive text-sm mt-3 text-center">
+                <p className="text-destructive text-sm text-center">
                   {uploadProgress.message}
                 </p>
               )}
@@ -722,13 +853,31 @@ function AddExamDialog({
         </div>
         
         <DialogFooter>
-          <Button 
-            variant="outline" 
-            onClick={() => onOpenChange(false)}
-            disabled={isProcessing}
-          >
-            {uploadProgress.stage === "complete" ? "Done" : "Cancel"}
-          </Button>
+          {uploadProgress.stage === "idle" || uploadProgress.stage === "error" ? (
+            <>
+              <Button 
+                variant="outline" 
+                onClick={() => onOpenChange(false)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleUpload}
+                disabled={!examFile}
+              >
+                <Upload className="h-4 w-4 mr-2" />
+                Upload & Process
+              </Button>
+            </>
+          ) : (
+            <Button 
+              variant="outline" 
+              onClick={() => onOpenChange(false)}
+              disabled={isProcessing}
+            >
+              {uploadProgress.stage === "complete" ? "Done" : "Cancel"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

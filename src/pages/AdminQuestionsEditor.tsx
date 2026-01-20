@@ -91,6 +91,8 @@ interface Question {
   source_exam: string | null;
   midterm_number: number | null;
   question_types?: { id: string; name: string } | null;
+  answer_key_answer?: string | null;
+  answer_mismatch?: boolean;
 }
 
 // Hooks
@@ -477,7 +479,13 @@ function QuestionCard({
                     Has Image
                   </Badge>
                 )}
-                {needsAnalysis && (
+                {question.answer_mismatch && (
+                  <Badge variant="destructive" className="gap-1">
+                    <AlertCircle className="h-3 w-3" />
+                    Answer Mismatch
+                  </Badge>
+                )}
+                {needsAnalysis && !question.answer_mismatch && (
                   <Badge variant="secondary" className="gap-1 bg-amber-500/20 text-amber-700 dark:text-amber-300">
                     <AlertCircle className="h-3 w-3" />
                     Needs Analysis
@@ -576,6 +584,29 @@ function QuestionCard({
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Answer Mismatch Warning */}
+          {question.answer_mismatch && question.answer_key_answer && (
+            <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-destructive" />
+                <span className="font-medium text-destructive">Answer Mismatch</span>
+              </div>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-muted-foreground">AI Answer:</span>
+                  <span className="ml-2 font-medium">{question.correct_answer?.toUpperCase()}</span>
+                </div>
+                <div>
+                  <span className="text-muted-foreground">Answer Key:</span>
+                  <span className="ml-2 font-medium">{question.answer_key_answer.toUpperCase()}</span>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Please review the question and determine the correct answer.
+              </p>
             </div>
           )}
 
