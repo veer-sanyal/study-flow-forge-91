@@ -139,6 +139,14 @@ From the cover page or header, extract these SEPARATE fields:
 - examType: Simple value representing the exam type. Use exactly one of: "1", "2", "3" (for Midterm 1, 2, 3) or "f" (for Final).
   Examples: First midterm exam → "1", Second midterm → "2", Final exam → "f"
 
+QUESTION NUMBER & POINTS REMOVAL (MANDATORY):
+- Strip the question number (e.g., "8.", "1.", "12.") from the beginning of the prompt.
+- Strip any point values (e.g., "(12 points)", "(10 pts)", "(5 points)") from the prompt.
+- The prompt should START with the actual question content, NOT "8. (12 points) If..."
+- Example transformation:
+  PDF shows: "8. (12 points) If $\\mathbf{v}$ and $\\mathbf{w}$ are vectors..."
+  Output prompt: "If $\\mathbf{v}$ and $\\mathbf{w}$ are vectors..."
+
 PROMPT LAYOUT (CRITICAL):
 - Preserve the PDF's visual layout using NEWLINES.
 - Narrative text stays as plain text (do NOT wrap entire sentences in $...$).
@@ -151,7 +159,28 @@ PROMPT LAYOUT (CRITICAL):
   $$
   (blank line)
 
-- Do NOT use \[ \] or \(...\) because the renderer won't parse them.
+- Do NOT use \\[ \\] or \\(...\\) because the renderer won't parse them.
+
+SUB-ITEM FORMATTING (CRITICAL):
+- When a question contains labeled sub-items like (i), (ii), (iii) or (a), (b), (c):
+  - Each sub-item MUST be on its OWN LINE.
+  - Include a blank line before each sub-item for visual separation.
+  - NEVER collapse multiple sub-items onto a single line.
+  
+  Example output:
+  "Which of the following equations is guaranteed to hold?
+  
+  (i) $(\\mathbf{v} \\times \\mathbf{w}) \\cdot \\mathbf{v} = 0$
+  
+  (ii) $(\\mathbf{v} \\times \\mathbf{w}) + (\\mathbf{w} \\times \\mathbf{v}) = \\mathbf{0}$
+  
+  (iii) $(\\mathbf{v} \\times \\mathbf{w}) \\times \\mathbf{w} = \\mathbf{0}$
+  
+  Note: Partial credit is possible for this question."
+
+NOTES AND REMARKS:
+- Keep notes like "Note: Partial credit is possible for this question." as plain text.
+- These should be on their own line at the end of the prompt (before choices).
 
 PUNCTUATION:
 - If punctuation belongs to the sentence, keep it outside math delimiters.
@@ -165,27 +194,30 @@ CHOICE TEXT RULES:
 - Do not use $$...$$ inside choices unless absolutely necessary.
 
 LATEX NORMALIZATION:
-- Fractions: \frac{...}{...}
-- Radicals: \sqrt{...}
-- Inequalities: \le, \ge
-- Integrals: \int_{a}^{b} ... \, dx (include \, before dx)
-- Spacing: \quad only when needed
-- Parentheses grouping: \left( ... \right) for tall expressions
-- Use \pi for pi, and convert unicode minus (−) to "-".
+- Fractions: \\frac{...}{...}
+- Radicals: \\sqrt{...}
+- Inequalities: \\le, \\ge
+- Integrals: \\int_{a}^{b} ... \\, dx (include \\, before dx)
+- Spacing: \\quad only when needed
+- Parentheses grouping: \\left( ... \\right) for tall expressions
+- Use \\pi for pi, and convert unicode minus (−) to "-".
+- Vectors: use \\mathbf{v}, \\mathbf{w}, \\mathbf{i}, \\mathbf{j}, \\mathbf{k}
 
 PDF ARTIFACT REPAIR (REQUIRED):
 Repair these common extraction errors before finalizing LaTeX:
-- "Z" used as an integral sign → convert patterns like "Z b a f dx" into "\int_{a}^{b} f \, dx".
-- "p" used as a sqrt sign → convert "p expression" into "\sqrt{expression}".
+- "Z" used as an integral sign → convert patterns like "Z b a f dx" into "\\int_{a}^{b} f \\, dx".
+- "p" used as a sqrt sign → convert "p expression" into "\\sqrt{expression}".
 - Exponents split across lines (e.g., "x" then "3") → reconstruct as "x^{3}".
-- Fractions split across lines (numerator/denominator on separate lines) → reconstruct using \frac{...}{...}.
+- Fractions split across lines (numerator/denominator on separate lines) → reconstruct using \\frac{...}{...}.
 - Join broken math tokens across line breaks when they clearly form one expression.
-- Vector glyphs like "~ı", "~" → map to \mathbf{i}, \mathbf{j} (and \mathbf{k}).
+- Vector glyphs like "~ı", "~" → map to \\mathbf{i}, \\mathbf{j} (and \\mathbf{k}).
 
 QUALITY CHECKS (DO THESE):
 - After formatting, re-read each prompt and ensure the display-math lines are centered via $$ block form.
 - Ensure every choice obeys the math delimiter rules.
 - Ensure the question order matches the PDF numbering sequence.
+- Verify that question numbers and point values are REMOVED from prompts.
+- Verify that sub-items (i), (ii), (iii) are on SEPARATE lines with blank lines between them.
 - Do NOT solve problems or infer correct answers.
 
 Return your response using the extract_questions function.`;
