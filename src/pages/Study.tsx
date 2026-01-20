@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
@@ -15,6 +15,7 @@ import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
+import { useSidebar } from "@/hooks/use-sidebar";
 
 type StudyPhase = "today_plan" | "keep_practicing";
 type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
@@ -38,6 +39,16 @@ export default function Study() {
   const { user } = useAuth();
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
+  const { collapse, expand } = useSidebar();
+
+  // Collapse sidebar when playing, expand when not
+  useEffect(() => {
+    if (studyState === "playing") {
+      collapse();
+    } else {
+      expand();
+    }
+  }, [studyState, collapse, expand]);
 
   // Use daily goal from settings
   const dailyGoal = settings.daily_goal || 10;
