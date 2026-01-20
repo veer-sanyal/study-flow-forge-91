@@ -104,7 +104,7 @@ export function useCourses() {
 // Fetch distinct exams for a course
 export function useExamsForCourse(courseId: string | null) {
   return useQuery({
-    queryKey: ['exams-for-course', courseId],
+    queryKey: ['study-exams-for-course', courseId],
     queryFn: async () => {
       if (!courseId) return [];
 
