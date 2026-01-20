@@ -147,41 +147,73 @@ serve(async (req) => {
       questionTypeIdMap.set(qt.id, true);
     });
 
-    // Format the question for analysis
-    const choicesText = question.choices?.map((c: any) => `${c.id}) ${c.text}`).join("\n") || "No choices";
-
-    // Check if question has an image and fetch it
-    let imageBase64: string | null = null;
-    let imageMimeType: string | null = null;
-
-    if (question.image_url) {
-      console.log("Question has image, fetching...", question.image_url);
+    // Helper function to fetch image as base64
+    async function fetchImageAsBase64(url: string): Promise<{ data: string; mimeType: string } | null> {
       try {
-        const imageResponse = await fetch(question.image_url);
-        if (imageResponse.ok) {
-          const imageBuffer = await imageResponse.arrayBuffer();
-          const uint8Array = new Uint8Array(imageBuffer);
-
-          // Convert to base64 in chunks to avoid stack overflow
-          let binary = "";
-          const chunkSize = 32768;
-          for (let i = 0; i < uint8Array.length; i += chunkSize) {
-            const chunk = uint8Array.slice(i, i + chunkSize);
-            binary += String.fromCharCode(...chunk);
-          }
-          imageBase64 = btoa(binary);
-
-          // Determine mime type from URL or content-type header
-          const contentType = imageResponse.headers.get("content-type");
-          imageMimeType = contentType || "image/png";
-          console.log("Image fetched successfully, size:", imageBuffer.byteLength);
-        } else {
-          console.warn("Failed to fetch question image:", imageResponse.status);
+        const response = await fetch(url);
+        if (!response.ok) {
+          console.warn("Failed to fetch image:", url, response.status);
+          return null;
         }
-      } catch (imgError) {
-        console.error("Error fetching question image:", imgError);
+        const buffer = await response.arrayBuffer();
+        const uint8Array = new Uint8Array(buffer);
+        
+        // Convert to base64 in chunks to avoid stack overflow
+        let binary = "";
+        const chunkSize = 32768;
+        for (let i = 0; i < uint8Array.length; i += chunkSize) {
+          const chunk = uint8Array.slice(i, i + chunkSize);
+          binary += String.fromCharCode(...chunk);
+        }
+        const data = btoa(binary);
+        const mimeType = response.headers.get("content-type") || "image/png";
+        console.log("Image fetched successfully:", url, "size:", buffer.byteLength);
+        return { data, mimeType };
+      } catch (err) {
+        console.error("Error fetching image:", url, err);
+        return null;
       }
     }
+
+    // Format the question choices for analysis - note which have images
+    const choicesWithImageInfo = question.choices?.map((c: any) => {
+      const hasImage = !!c.imageUrl;
+      return `${c.id}) ${c.text || "(image-only choice)"}${hasImage ? " [HAS IMAGE - see below]" : ""}`;
+    }) || [];
+    const choicesText = choicesWithImageInfo.join("\n") || "No choices";
+
+    // Fetch question image if present
+    let questionImage: { data: string; mimeType: string } | null = null;
+    if (question.image_url) {
+      console.log("Fetching question image...", question.image_url);
+      questionImage = await fetchImageAsBase64(question.image_url);
+    }
+
+    // Fetch choice images if present
+    interface ChoiceImageData {
+      choiceId: string;
+      data: string;
+      mimeType: string;
+    }
+    const choiceImages: ChoiceImageData[] = [];
+    
+    if (question.choices && Array.isArray(question.choices)) {
+      for (const choice of question.choices) {
+        if (choice.imageUrl) {
+          console.log(`Fetching image for choice ${choice.id}...`, choice.imageUrl);
+          const imageData = await fetchImageAsBase64(choice.imageUrl);
+          if (imageData) {
+            choiceImages.push({
+              choiceId: choice.id,
+              data: imageData.data,
+              mimeType: imageData.mimeType,
+            });
+          }
+        }
+      }
+    }
+    
+    console.log(`Found ${choiceImages.length} choice images to include in analysis`);
 
     const analysisPrompt = `You are an expert math tutor generating an analysis + a “Guide Me” learning scaffold for an exam question.
 
@@ -389,25 +421,39 @@ Now generate the analysis and return using analyze_question.`;
 
     console.log("Calling Gemini for analysis...");
 
-    // Build content parts - include image if available
+    // Build content parts - include images if available
     const contentParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
 
-    if (imageBase64 && imageMimeType) {
-      // Add image first for better context
+    // Add question image first if present
+    if (questionImage) {
       contentParts.push({
         inlineData: {
-          mimeType: imageMimeType,
-          data: imageBase64,
+          mimeType: questionImage.mimeType,
+          data: questionImage.data,
         },
       });
       contentParts.push({
-        text:
-          "The above image is the diagram/figure for this question. Use it to understand the visual context.\n\n" +
-          analysisPrompt,
+        text: "The above image is the diagram/figure for this question. Use it to understand the visual context.\n\n",
       });
-    } else {
-      contentParts.push({ text: analysisPrompt });
     }
+
+    // Add choice images with labels
+    if (choiceImages.length > 0) {
+      for (const choiceImg of choiceImages) {
+        contentParts.push({
+          inlineData: {
+            mimeType: choiceImg.mimeType,
+            data: choiceImg.data,
+          },
+        });
+        contentParts.push({
+          text: `The above image is for CHOICE ${choiceImg.choiceId.toUpperCase()}. Consider this when determining the correct answer.\n\n`,
+        });
+      }
+    }
+
+    // Add the main analysis prompt
+    contentParts.push({ text: analysisPrompt });
 
     const geminiResponse = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" +
