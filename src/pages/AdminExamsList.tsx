@@ -480,10 +480,17 @@ function ExamCard({
     navigate(`/admin/questions/${courseId}/${encodedExam}`);
   };
 
+  const [isHovered, setIsHovered] = useState(false);
+
   return (
     <Card 
-      className="group hover:border-primary/50 transition-colors cursor-pointer"
+      className={cn(
+        "transition-colors cursor-pointer",
+        isHovered && "border-primary/50"
+      )}
       onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
     >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -509,7 +516,10 @@ function ExamCard({
           <Button
             variant="ghost"
             size="icon"
-            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            className={cn(
+              "transition-opacity",
+              isHovered ? "opacity-100" : "opacity-0"
+            )}
             onClick={(e) => {
               e.stopPropagation();
               onEdit({
@@ -525,7 +535,10 @@ function ExamCard({
           <Button
             variant="ghost"
             size="icon"
-            className="opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10"
+            className={cn(
+              "transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10",
+              isHovered ? "opacity-100" : "opacity-0"
+            )}
             onClick={(e) => {
               e.stopPropagation();
               onDelete(exam.sourceExam);
