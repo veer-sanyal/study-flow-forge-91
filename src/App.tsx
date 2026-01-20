@@ -7,8 +7,10 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AdminRoute } from "@/components/layout/AdminRoute";
 import { SidebarProvider } from "@/hooks/use-sidebar";
+import { FocusProvider } from "@/contexts/FocusContext";
 import Auth from "@/pages/Auth";
 import Study from "@/pages/Study";
+import StudyFocus from "@/pages/StudyFocus";
 import Progress from "@/pages/Progress";
 import Settings from "@/pages/Settings";
 import AdminCalendar from "@/pages/AdminCalendar";
@@ -25,36 +27,39 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <SidebarProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            {/* Public route */}
-            <Route path="/auth" element={<Auth />} />
-            
-            {/* Protected routes */}
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppLayout />}>
-                <Route path="/" element={<Navigate to="/study" replace />} />
-                <Route path="/study" element={<Study />} />
-                <Route path="/progress" element={<Progress />} />
-                <Route path="/settings" element={<Settings />} />
-                
-                {/* Admin routes */}
-                <Route element={<AdminRoute />}>
-                  <Route path="/admin/calendar" element={<AdminCalendar />} />
-                  <Route path="/admin/ingestion" element={<AdminIngestion />} />
-                  <Route path="/admin/questions" element={<AdminCoursesList />} />
-                  <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
-                  <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
-                  <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
+        <FocusProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              {/* Public route */}
+              <Route path="/auth" element={<Auth />} />
+              
+              {/* Protected routes */}
+              <Route element={<ProtectedRoute />}>
+                <Route element={<AppLayout />}>
+                  <Route path="/" element={<Navigate to="/study" replace />} />
+                  <Route path="/study" element={<Study />} />
+                  <Route path="/study/focus" element={<StudyFocus />} />
+                  <Route path="/progress" element={<Progress />} />
+                  <Route path="/settings" element={<Settings />} />
+                  
+                  {/* Admin routes */}
+                  <Route element={<AdminRoute />}>
+                    <Route path="/admin/calendar" element={<AdminCalendar />} />
+                    <Route path="/admin/ingestion" element={<AdminIngestion />} />
+                    <Route path="/admin/questions" element={<AdminCoursesList />} />
+                    <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
+                    <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
+                    <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
+                  </Route>
                 </Route>
               </Route>
-            </Route>
-            
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
+              
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </FocusProvider>
       </SidebarProvider>
     </TooltipProvider>
   </QueryClientProvider>
