@@ -336,12 +336,13 @@ f) choiceFeedback: feedback for EACH option (<= 1 sentence each)
    - wrong: why it’s tempting but wrong (name the misconception)
    - Keep feedback short and clear.
 
-g) hints: Tier1/Tier2/Tier3 with escalation (not rephrasing)
-   - Tier1: 1 sentence recall (definition/concept)
-   - Tier2: 1 sentence translate to setup
-   - Tier3: EXACTLY one helpful algebra move (ONE display math line) + 1 short sentence
+g) hints: EXACTLY 3 tiers - ALL THREE ARE MANDATORY for every step
+   - Tier1 (tier: 1): 1 sentence recall (definition/concept) - the gentlest nudge
+   - Tier2 (tier: 2): 1 sentence translate to setup - more specific guidance  
+   - Tier3 (tier: 3): EXACTLY one helpful algebra move (ONE display math line) + 1 short sentence
      * Tier3 MUST NOT finish the full problem or reveal the final answer early.
      * Tier3 MUST obey blank lines around $$...$$.
+   - NEVER provide fewer than 3 hints. Each step MUST have exactly 3 hint tiers.
 
 h) explanation: must ONLY justify this step’s microGoal and MUST be:
    - 1 sentence (idea)
@@ -484,7 +485,8 @@ Now generate the analysis and return using analyze_question.`;
                             },
                             choices: {
                               type: "array",
-                              description: "Exactly 4 MC options (a-d) with misconception-based distractors",
+                              description: "At least 3 MC options (a-c minimum, preferably 4 with a-d) with misconception-based distractors",
+                              minItems: 3,
                               items: {
                                 type: "object",
                                 required: ["id", "text", "isCorrect"],
@@ -509,7 +511,9 @@ Now generate the analysis and return using analyze_question.`;
                             hints: {
                               type: "array",
                               description:
-                                "Exactly 3 escalating hints: Tier 1 (definition) → Tier 2 (math setup) → Tier 3 (one algebra step)",
+                                "EXACTLY 3 escalating hints required: Tier 1 (definition/concept) -> Tier 2 (math setup) -> Tier 3 (one algebra step). All 3 tiers are mandatory.",
+                              minItems: 3,
+                              maxItems: 3,
                               items: {
                                 type: "object",
                                 required: ["tier", "text"],

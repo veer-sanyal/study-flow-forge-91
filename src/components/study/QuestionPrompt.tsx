@@ -22,7 +22,7 @@ export function QuestionPrompt({
   imageUrl,
 }: QuestionPromptProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* Meta info */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -53,15 +53,20 @@ export function QuestionPrompt({
         </span>
       </div>
 
-      {/* Question prompt */}
-      <div className="text-lg leading-relaxed">
-        <MathRenderer content={prompt} />
+      {/* Question prompt - more prominent with visual separation */}
+      <div className="p-5 rounded-lg border-2 border-primary/20 bg-card shadow-sm">
+        <div className="text-lg leading-relaxed font-medium">
+          <MathRenderer content={prompt} />
+        </div>
       </div>
 
       {/* Question image */}
       {imageUrl && (
         <QuestionImage src={imageUrl} alt="Question diagram" />
       )}
+
+      {/* Visual separator between question and choices */}
+      <div className="h-px bg-border" />
     </div>
   );
 }

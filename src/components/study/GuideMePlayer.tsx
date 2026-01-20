@@ -153,11 +153,14 @@ export function GuideMePlayer({
       </div>
       
       {/* Prompt / Socratic question */}
-      <Card className="p-4 bg-card/50">
-        <div className="text-base leading-relaxed">
+      <Card className="p-5 bg-card border-2 border-primary/20 shadow-sm">
+        <div className="text-base leading-relaxed font-medium">
           <MathRenderer content={currentStep.prompt || ''} />
         </div>
       </Card>
+      
+      {/* Separator between question and choices */}
+      <div className="h-px bg-border" />
       
       {/* Choices */}
       {currentStep.choices && currentStep.choices.length > 0 && (
@@ -270,12 +273,17 @@ export function GuideMePlayer({
               )}
             </Card>
             
-            {/* Key takeaway */}
+            {/* Key takeaway - improved readability */}
             {currentStep.keyTakeaway && (
-              <Card className="p-3 bg-accent/10 border-accent/20">
-                <div className="text-sm">
-                  <span className="font-medium text-accent-foreground">💡 Key Takeaway: </span>
-                  <MathRenderer content={currentStep.keyTakeaway} />
+              <Card className="p-4 bg-accent/20 border-accent">
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">💡</span>
+                    <span className="font-semibold text-accent-foreground text-sm uppercase tracking-wide">Key Takeaway</span>
+                  </div>
+                  <div className="text-base leading-relaxed text-foreground pl-7">
+                    <MathRenderer content={currentStep.keyTakeaway} />
+                  </div>
                 </div>
               </Card>
             )}
