@@ -1277,28 +1277,28 @@ export default function AdminIngestionReview() {
         className="p-6 space-y-6 pb-24 md:pb-6"
       >
         {/* Header */}
-        <motion.div variants={staggerItem} className="flex items-center gap-4">
-          <Button variant="ghost" size="icon" asChild>
+        <motion.div variants={staggerItem} className="flex items-center gap-3">
+          <Button variant="ghost" size="icon" className="flex-shrink-0" asChild>
             <Link to="/admin/ingestion">
               <ChevronLeft className="h-5 w-5" />
             </Link>
           </Button>
-          <div className="flex-1">
+          <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-                <FileText className="h-6 w-6" />
+              <FileText className="h-5 w-5 flex-shrink-0" />
+              <h1 className="text-xl font-bold text-foreground truncate">
                 {examTitle || job.file_name}
               </h1>
               <Button 
                 variant="ghost" 
                 size="icon" 
-                className="h-8 w-8"
+                className="h-7 w-7 flex-shrink-0"
                 onClick={() => setEditExamOpen(true)}
               >
-                <Pencil className="h-4 w-4" />
+                <Pencil className="h-3.5 w-3.5" />
               </Button>
               {isPublished && (
-                <Badge className="bg-green-500 gap-1">
+                <Badge className="bg-green-500 gap-1 flex-shrink-0">
                   <Globe className="h-3 w-3" />
                   Published
                 </Badge>
