@@ -234,6 +234,8 @@ export type Database = {
       }
       ingestion_jobs: {
         Row: {
+          answer_key_file_name: string | null
+          answer_key_path: string | null
           completed_at: string | null
           course_pack_id: string
           created_at: string
@@ -245,6 +247,7 @@ export type Database = {
           exam_year: number | null
           file_name: string
           file_path: string
+          has_answer_key: boolean | null
           id: string
           is_final: boolean
           is_published: boolean
@@ -257,6 +260,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          answer_key_file_name?: string | null
+          answer_key_path?: string | null
           completed_at?: string | null
           course_pack_id: string
           created_at?: string
@@ -268,6 +273,7 @@ export type Database = {
           exam_year?: number | null
           file_name: string
           file_path: string
+          has_answer_key?: boolean | null
           id?: string
           is_final?: boolean
           is_published?: boolean
@@ -280,6 +286,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          answer_key_file_name?: string | null
+          answer_key_path?: string | null
           completed_at?: string | null
           course_pack_id?: string
           created_at?: string
@@ -291,6 +299,7 @@ export type Database = {
           exam_year?: number | null
           file_name?: string
           file_path?: string
+          has_answer_key?: boolean | null
           id?: string
           is_final?: boolean
           is_published?: boolean
@@ -379,6 +388,8 @@ export type Database = {
       }
       questions: {
         Row: {
+          answer_key_answer: string | null
+          answer_mismatch: boolean | null
           choices: Json | null
           correct_answer: string | null
           corresponds_to_exam: string | null
@@ -401,6 +412,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          answer_key_answer?: string | null
+          answer_mismatch?: boolean | null
           choices?: Json | null
           correct_answer?: string | null
           corresponds_to_exam?: string | null
@@ -423,6 +436,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          answer_key_answer?: string | null
+          answer_mismatch?: boolean | null
           choices?: Json | null
           correct_answer?: string | null
           corresponds_to_exam?: string | null

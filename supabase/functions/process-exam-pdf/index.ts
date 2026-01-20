@@ -410,6 +410,41 @@ Return your response using the extract_questions function.`;
 
     console.log("Inserting new questions (pending analysis)...");
 
+    // Check if there's an answer key to process
+    let answerKeyMap = new Map<number, string>();
+    
+    if (job.has_answer_key && job.answer_key_path) {
+      console.log("Processing answer key...");
+      try {
+        // Call process-answer-key function
+        const answerKeyResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/process-answer-key`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": req.headers.get("authorization") || "",
+            },
+            body: JSON.stringify({ answerKeyPath: job.answer_key_path }),
+          }
+        );
+        
+        if (answerKeyResponse.ok) {
+          const answerKeyData = await answerKeyResponse.json();
+          if (answerKeyData.answers) {
+            for (const entry of answerKeyData.answers) {
+              answerKeyMap.set(entry.questionNumber, entry.answer);
+            }
+            console.log(`Loaded ${answerKeyMap.size} answers from answer key`);
+          }
+        } else {
+          console.warn("Failed to process answer key, continuing without it");
+        }
+      } catch (answerKeyError) {
+        console.warn("Error processing answer key:", answerKeyError);
+      }
+    }
+
     for (const q of extractedData.questions) {
       // Format choices without isCorrect (will be set during analysis)
       const formattedChoices =
@@ -418,6 +453,9 @@ Return your response using the extract_questions function.`;
           text: c.text,
           isCorrect: false, // Will be updated during analysis
         })) || null;
+
+      // Get answer from answer key if available
+      const answerKeyAnswer = answerKeyMap.get(q.questionOrder) || null;
 
       const { error: insertError } = await supabase.from("questions").insert({
         prompt: q.prompt,
@@ -435,6 +473,8 @@ Return your response using the extract_questions function.`;
         course_pack_id: job.course_pack_id,
         midterm_number: docMidtermNumber, // null for finals, will be set during analysis
         question_order: q.questionOrder || null,
+        answer_key_answer: answerKeyAnswer,
+        answer_mismatch: false, // Will be set during analysis
       });
 
       if (insertError) {
