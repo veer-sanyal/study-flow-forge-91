@@ -1,17 +1,16 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-import { Loader2 } from "lucide-react";
+import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
 import { TodayPlanCard } from "@/components/study/TodayPlanCard";
 import { PracticeCard } from "@/components/study/PracticeCard";
-import { FocusPill } from "@/components/study/FocusPill";
-import { FocusDrawer } from "@/components/study/FocusDrawer";
 import { ActiveFocusChips } from "@/components/study/ActiveFocusChips";
 import { CompletionCard } from "@/components/study/CompletionCard";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
-import { useFocus, FocusPreset } from "@/hooks/use-focus";
+import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
 import { useTodayPlanStats, useRecommendedPresets, useWeakAreas, useOverdueReviews } from "@/hooks/use-study-recommendations";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
@@ -24,6 +23,8 @@ type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
 const KEEP_PRACTICING_BATCH = 5;
 
 export default function Study() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [studyState, setStudyState] = useState<StudyState>("home");
   const [studyPhase, setStudyPhase] = useState<StudyPhase>("today_plan");
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -42,24 +43,15 @@ export default function Study() {
   const queryClient = useQueryClient();
   const { collapse, expand } = useSidebar();
 
-  // Focus system
+  // Focus system from context
   const {
     filters,
-    narrowBy,
-    setNarrowBy,
-    isDrawerOpen,
-    setIsDrawerOpen,
     setCourseIds,
-    setExamNames,
-    setMidtermNumber,
     setTopicIds,
-    setQuestionTypeId,
     applyPreset,
     clearFilters,
     hasActiveFilters,
-    activeFilterCount,
-    filterSummary,
-  } = useFocus();
+  } = useFocusContext();
 
   // Recommendations
   const dailyGoal = settings.daily_goal || 10;
@@ -68,6 +60,14 @@ export default function Study() {
   const recommendedPresets = useRecommendedPresets(filters.courseIds);
   const { data: weakAreas } = useWeakAreas(filters.courseIds);
   const { data: overdueReviews } = useOverdueReviews(filters.courseIds);
+
+  // Handle navigation state from StudyFocus page
+  useEffect(() => {
+    if (location.state?.startPractice) {
+      handleStartPractice();
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [location.state]);
 
   // Collapse sidebar when playing, expand when not
   useEffect(() => {
@@ -106,7 +106,6 @@ export default function Study() {
       const currentQuestion = questions[currentIndex];
       const timeSpentMs = Date.now() - questionStartTime.current;
 
-      // Submit attempt to database
       if (!result.skipped) {
         submitAttempt.mutate({
           questionId: currentQuestion.id,
@@ -129,7 +128,6 @@ export default function Study() {
         setCurrentIndex((prev) => prev + 1);
         questionStartTime.current = Date.now();
       } else {
-        // Batch complete
         if (studyPhase === "today_plan") {
           setTodayPlanResults(newResults);
           setStudyState("plan_complete");
@@ -197,15 +195,10 @@ export default function Study() {
     console.log("Similar clicked");
   }, []);
 
-  const handleApplyFocus = useCallback(() => {
-    setIsDrawerOpen(false);
-  }, [setIsDrawerOpen]);
-
   // Build completion suggestions
   const completionSuggestions = useMemo(() => {
     const suggestions: { id: string; label: string; description?: string; icon: 'arrow' | 'target' | 'refresh'; onClick: () => void }[] = [];
 
-    // Next course suggestion
     if (todayStats?.alsoDueCourses && todayStats.alsoDueCourses.length > 0) {
       const next = todayStats.alsoDueCourses[0];
       suggestions.push({
@@ -220,7 +213,6 @@ export default function Study() {
       });
     }
 
-    // Weak topic suggestion
     if (weakAreas?.weakTopics && weakAreas.weakTopics.length > 0) {
       const weak = weakAreas.weakTopics[0];
       suggestions.push({
@@ -235,7 +227,6 @@ export default function Study() {
       });
     }
 
-    // Overdue reviews
     if (overdueReviews && overdueReviews.count > 0) {
       suggestions.push({
         id: 'overdue',
@@ -253,7 +244,6 @@ export default function Study() {
     return (
       <PageTransition className="flex flex-col h-full p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
         <div className="space-y-6">
-          {/* Today's Plan Card */}
           <TodayPlanCard
             stats={todayStats || {
               totalQuestions: dailyGoal,
@@ -267,36 +257,11 @@ export default function Study() {
             onStart={handleStartTodayPlan}
           />
 
-          {/* Practice Card */}
           <PracticeCard
             presets={recommendedPresets}
             onPresetClick={handleStartPractice}
-            onCustomFocus={() => setIsDrawerOpen(true)}
           />
         </div>
-
-        {/* Focus Drawer */}
-        <FocusDrawer
-          open={isDrawerOpen}
-          onOpenChange={setIsDrawerOpen}
-          filters={filters}
-          narrowBy={narrowBy}
-          onNarrowByChange={setNarrowBy}
-          onCourseIdsChange={setCourseIds}
-          onMidtermNumberChange={setMidtermNumber}
-          onExamNamesChange={setExamNames}
-          onTopicIdsChange={setTopicIds}
-          onQuestionTypeIdChange={setQuestionTypeId}
-          onApplyPreset={(preset) => {
-            applyPreset(preset);
-            handleStartPractice();
-          }}
-          onClear={clearFilters}
-          onApply={() => {
-            handleApplyFocus();
-            handleStartPractice();
-          }}
-        />
       </PageTransition>
     );
   }
@@ -305,13 +270,12 @@ export default function Study() {
   if (isLoading && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
-        {hasActiveFilters && (
-          <ActiveFocusChips
-            filters={filters}
-            onClear={clearFilters}
-            onClick={() => setIsDrawerOpen(true)}
-          />
-        )}
+        <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={handleGoHome}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <span className="text-sm text-muted-foreground">Loading...</span>
+        </div>
         <PageTransition className="flex-1 flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </PageTransition>
@@ -323,13 +287,11 @@ export default function Study() {
   if (error && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
-        {hasActiveFilters && (
-          <ActiveFocusChips
-            filters={filters}
-            onClear={clearFilters}
-            onClick={() => setIsDrawerOpen(true)}
-          />
-        )}
+        <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={handleGoHome}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        </div>
         <PageTransition className="flex-1 space-y-4 text-center py-12">
           <p className="text-destructive">Failed to load questions</p>
           <Button variant="outline" onClick={() => window.location.reload()}>
@@ -344,13 +306,11 @@ export default function Study() {
   if ((!questions || questions.length === 0) && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
-        {hasActiveFilters && (
-          <ActiveFocusChips
-            filters={filters}
-            onClear={clearFilters}
-            onClick={() => setIsDrawerOpen(true)}
-          />
-        )}
+        <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={handleGoHome}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        </div>
         <PageTransition className="flex-1 space-y-4 text-center py-12">
           <p className="text-muted-foreground">
             {hasActiveFilters
@@ -378,25 +338,23 @@ export default function Study() {
 
     return (
       <div className="flex flex-col h-full">
-        {/* Active focus chips or focus pill in compact mode */}
-        {hasActiveFilters ? (
-          <ActiveFocusChips
-            filters={filters}
-            onClear={clearFilters}
-            onClick={() => setIsDrawerOpen(true)}
-          />
-        ) : (
-          <div className="px-4 py-2 border-b bg-card/50">
-            <FocusPill
-              filterSummary={filterSummary}
-              hasActiveFilters={hasActiveFilters}
-              activeFilterCount={activeFilterCount}
-              courseIds={filters.courseIds}
-              onOpen={() => setIsDrawerOpen(true)}
+        {/* Header with back button and active filters */}
+        <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={handleGoHome}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          {hasActiveFilters ? (
+            <ActiveFocusChips
+              filters={filters}
               onClear={clearFilters}
+              className="flex-1"
             />
-          </div>
-        )}
+          ) : (
+            <span className="text-sm text-muted-foreground">
+              {studyPhase === "today_plan" ? "Today's Plan" : "Practice"}
+            </span>
+          )}
+        </div>
 
         <PageTransition className="flex-1 space-y-6 p-4">
           <AnimatePresence mode="wait">
@@ -410,23 +368,6 @@ export default function Study() {
             />
           </AnimatePresence>
         </PageTransition>
-
-        {/* Focus Drawer (hidden during play, but accessible) */}
-        <FocusDrawer
-          open={isDrawerOpen}
-          onOpenChange={setIsDrawerOpen}
-          filters={filters}
-          narrowBy={narrowBy}
-          onNarrowByChange={setNarrowBy}
-          onCourseIdsChange={setCourseIds}
-          onMidtermNumberChange={setMidtermNumber}
-          onExamNamesChange={setExamNames}
-          onTopicIdsChange={setTopicIds}
-          onQuestionTypeIdChange={setQuestionTypeId}
-          onApplyPreset={applyPreset}
-          onClear={clearFilters}
-          onApply={handleApplyFocus}
-        />
       </div>
     );
   }
