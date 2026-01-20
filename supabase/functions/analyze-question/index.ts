@@ -280,12 +280,10 @@ Return ONLY a JSON object that matches the analyze_question function schema.
 Do not include any extra commentary.
 
 Include these top-level fields:
-- correctChoiceLetter: one of ["a","b","c","d","e"] (or more if present)
-- correctChoiceText: exact choice text as shown in CHOICES
+- correctAnswer: one of ["a","b","c","d","e"] (or more if present)
 - difficulty: integer 1–5
-- plan: 1 sentence describing the method (no math)
 - detailedSolution: structured sections (see below)
-- guideMeSteps: array of 3–6 steps (see below)
+- guideMeSteps: array of 3–6 steps
 - methodSummary: { bullets: [3 items], proTip?: string }
 - topicIds: array of topic IDs from AVAILABLE TOPICS only
 - questionTypeId: REQUIRED - the ID of the question type from EXISTING QUESTION TYPES (use the exact ID string)
@@ -311,7 +309,7 @@ Write detailedSolution with these sections and constraints:
 - 1–2 lines verifying reasonableness (domain/sign/choice elimination).
 
 **Conclusion**
-- State the correct choice letter AND match to exact choice text.
+- State the correct choice letter clearly.
 
 ========================
 GUIDE ME STEPS (3–6 steps, STRICT)
@@ -440,7 +438,8 @@ Now generate the analysis and return using analyze_question.`;
                       "guideMeSteps",
                       "methodSummary",
                       "topicIds",
-                      "questionType",
+                      "questionTypeId",
+                      "questionTypeName",
                     ],
                     properties: {
                       correctAnswer: {
@@ -554,11 +553,14 @@ Now generate the analysis and return using analyze_question.`;
                       },
                       questionTypeId: {
                         type: "string",
-                        description: "REQUIRED: The exact ID of the question type from EXISTING QUESTION TYPES list. Use null only if no existing type matches.",
+                        nullable: true,
+                        description:
+                          "REQUIRED: The exact ID of the question type from EXISTING QUESTION TYPES list. Use null only if no existing type matches.",
                       },
                       questionTypeName: {
                         type: "string",
-                        description: "REQUIRED: The name of the question type - either the name of the selected existing type, or a new suggested name if questionTypeId is null",
+                        description:
+                          "REQUIRED: The name of the question type - either the name of the selected existing type, or a new suggested name if questionTypeId is null",
                       },
                     },
                   },
