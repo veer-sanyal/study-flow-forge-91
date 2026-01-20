@@ -14,6 +14,9 @@ interface MathRendererProps {
  * Handles cases where AI extraction missed wrapping math expressions
  */
 function ensureMathDelimiters(content: string): string {
+  // Guard against undefined/null content
+  if (!content) return '';
+  
   // If already has delimiters, return as-is
   if (content.includes('$') || content.includes('\\(') || content.includes('\\[')) {
     return content;
