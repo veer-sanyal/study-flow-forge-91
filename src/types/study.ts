@@ -1,4 +1,5 @@
 import { Tables } from '@/integrations/supabase/types';
+import { GuideMe } from './guide';
 
 // Database types
 export type DbQuestion = Tables<'questions'>;
@@ -28,6 +29,7 @@ export interface StudyQuestion {
   solutionSteps: string[] | null;
   questionType: string;
   imageUrl: string | null;
+  guideMeSteps: GuideMe | null;
 }
 
 // Map database question to study question format
@@ -60,6 +62,7 @@ export function mapDbQuestionToStudy(
     solutionSteps: dbQuestion.solution_steps as string[] | null,
     questionType: questionTypeName,
     imageUrl: dbQuestion.image_url,
+    guideMeSteps: dbQuestion.guide_me_steps as unknown as GuideMe | null,
   };
 }
 
