@@ -65,7 +65,7 @@ import { useUpdateExamDetails } from "@/hooks/use-ingestion";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
-import { buildExamTitle, SEMESTERS, EXAM_TYPES } from "@/lib/examUtils";
+import { buildExamTitle, formatExamType, SEMESTERS, EXAM_TYPES } from "@/lib/examUtils";
 
 interface QuestionChoice {
   id: string;
@@ -89,6 +89,7 @@ interface Question {
   image_url: string | null;
   question_type_id: string | null;
   source_exam: string | null;
+  midterm_number: number | null;
   question_types?: { id: string; name: string } | null;
 }
 
@@ -119,7 +120,6 @@ function useQuestionsForCoursePack(coursePackId: string | null) {
         .from("questions")
         .select("*, question_types(id, name)")
         .eq("course_pack_id", coursePackId)
-        .order("source_exam", { ascending: false })
         .order("question_order", { ascending: true });
 
       if (error) throw error;
@@ -418,8 +418,10 @@ function QuestionCard({
                 {question.question_types?.name && (
                   <Badge variant="secondary">{question.question_types.name}</Badge>
                 )}
-                {question.question_types?.name && (
-                  <Badge variant="secondary">{question.question_types.name}</Badge>
+                {question.midterm_number && (
+                  <Badge variant="outline" className="gap-1">
+                    Midterm {question.midterm_number}
+                  </Badge>
                 )}
                 {question.difficulty && (
                   <Badge variant="outline">Difficulty: {question.difficulty}/5</Badge>
@@ -430,22 +432,10 @@ function QuestionCard({
                     Has Image
                   </Badge>
                 )}
-                {hasGuideMe && (
-                  <Badge variant="default" className="gap-1 bg-primary/80">
-                    <Sparkles className="h-3 w-3" />
-                    Guide Me
-                  </Badge>
-                )}
                 {needsAnalysis && (
                   <Badge variant="secondary" className="gap-1 bg-amber-500/20 text-amber-700 dark:text-amber-300">
                     <AlertCircle className="h-3 w-3" />
                     Needs Analysis
-                  </Badge>
-                )}
-                {!needsAnalysis && (
-                  <Badge variant="default" className="gap-1 bg-green-500">
-                    <Check className="h-3 w-3" />
-                    Ready
                   </Badge>
                 )}
               </div>
@@ -1030,7 +1020,7 @@ function EditExamDetailsDialog({
               </SelectTrigger>
               <SelectContent>
                 {EXAM_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                  <SelectItem key={type} value={type}>{formatExamType(type)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
@@ -1423,31 +1413,27 @@ export default function AdminIngestionReview() {
             </CardContent>
           </Card>
         ) : (
-          <div className="space-y-8">
-            {Object.entries(groupedQuestions).map(([examName, examQuestions]) => (
-              <motion.div key={examName} variants={staggerItem} className="space-y-4">
-                <h2 className="text-lg font-semibold text-foreground">
-                  {examName}
-                </h2>
-                <div className="space-y-4">
-                  {examQuestions.map((question, index) => (
-                    <QuestionCard
-                      key={question.id}
-                      question={question}
-                      index={index}
-                      topics={topics}
-                      onEdit={() => setEditingQuestion(question)}
-                      onDelete={() => setDeleteConfirm(question)}
-                      onAnalyze={() => handleAnalyze(question.id)}
-                      onUploadImage={(file) => handleUploadImage(question.id, file)}
-                      onRemoveImage={() => handleRemoveImage(question.id)}
-                      isAnalyzing={analyzingId === question.id}
-                    />
-                  ))}
-                </div>
-              </motion.div>
+          <motion.div 
+            variants={staggerContainer}
+            initial="initial"
+            animate="animate"
+            className="space-y-4"
+          >
+            {questions?.map((question, index) => (
+              <QuestionCard
+                key={question.id}
+                question={question}
+                index={index}
+                topics={topics}
+                onEdit={() => setEditingQuestion(question)}
+                onDelete={() => setDeleteConfirm(question)}
+                onAnalyze={() => handleAnalyze(question.id)}
+                onUploadImage={(file) => handleUploadImage(question.id, file)}
+                onRemoveImage={() => handleRemoveImage(question.id)}
+                isAnalyzing={analyzingId === question.id}
+              />
             ))}
-          </div>
+          </motion.div>
         )}
 
         {/* Edit Dialog */}
