@@ -16,6 +16,7 @@ import AdminIngestion from "@/pages/AdminIngestion";
 import AdminCoursesList from "@/pages/AdminCoursesList";
 import AdminExamsList from "@/pages/AdminExamsList";
 import AdminQuestionsEditor from "@/pages/AdminQuestionsEditor";
+import AdminQuestionDetail from "@/pages/AdminQuestionDetail";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -46,6 +47,7 @@ const App = () => (
                   <Route path="/admin/questions" element={<AdminCoursesList />} />
                   <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
                   <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
+                  <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
                 </Route>
               </Route>
             </Route>
