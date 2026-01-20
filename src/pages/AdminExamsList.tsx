@@ -513,39 +513,36 @@ function ExamCard({
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "transition-opacity",
-              isHovered ? "opacity-100" : "opacity-0"
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              onEdit({
-                sourceExam: exam.sourceExam,
-                examYear: exam.examYear || null,
-                examSemester: exam.examSemester || null,
-                examType: exam.examType || null,
-              });
-            }}
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon"
-            className={cn(
-              "transition-opacity text-destructive hover:text-destructive hover:bg-destructive/10",
-              isHovered ? "opacity-100" : "opacity-0"
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete(exam.sourceExam);
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          {isHovered && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit({
+                    sourceExam: exam.sourceExam,
+                    examYear: exam.examYear || null,
+                    examSemester: exam.examSemester || null,
+                    examType: exam.examType || null,
+                  });
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(exam.sourceExam);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </CardContent>
