@@ -1,30 +1,30 @@
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
+import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
-import { StudyFocusBar } from "@/components/study/StudyFocusBar";
-import {
-  Trophy,
-  ArrowRight,
-  Loader2,
-  Flame
-} from "lucide-react";
+import { TodayPlanCard } from "@/components/study/TodayPlanCard";
+import { PracticeCard } from "@/components/study/PracticeCard";
+import { FocusPill } from "@/components/study/FocusPill";
+import { FocusDrawer } from "@/components/study/FocusDrawer";
+import { ActiveFocusChips } from "@/components/study/ActiveFocusChips";
+import { CompletionCard } from "@/components/study/CompletionCard";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
-import { useStudyFilters } from "@/hooks/use-study-filters";
+import { useFocus, FocusPreset } from "@/hooks/use-focus";
+import { useTodayPlanStats, useRecommendedPresets, useWeakAreas, useOverdueReviews } from "@/hooks/use-study-recommendations";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSidebar } from "@/hooks/use-sidebar";
 
 type StudyPhase = "today_plan" | "keep_practicing";
-type StudyState = "playing" | "plan_complete" | "session_pause";
+type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
 
 const KEEP_PRACTICING_BATCH = 5;
 
 export default function Study() {
-  // Start directly in playing state
-  const [studyState, setStudyState] = useState<StudyState>("playing");
+  const [studyState, setStudyState] = useState<StudyState>("home");
   const [studyPhase, setStudyPhase] = useState<StudyPhase>("today_plan");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [sessionResults, setSessionResults] = useState<{
@@ -41,17 +41,33 @@ export default function Study() {
   const { settings } = useUserSettings();
   const queryClient = useQueryClient();
   const { collapse, expand } = useSidebar();
-  
-  // Study filters
+
+  // Focus system
   const {
     filters,
-    setCourseId,
-    setExamName,
+    narrowBy,
+    setNarrowBy,
+    isDrawerOpen,
+    setIsDrawerOpen,
+    setCourseIds,
+    setExamNames,
+    setMidtermNumber,
     setTopicIds,
     setQuestionTypeId,
+    applyPreset,
     clearFilters,
+    hasActiveFilters,
     activeFilterCount,
-  } = useStudyFilters();
+    filterSummary,
+  } = useFocus();
+
+  // Recommendations
+  const dailyGoal = settings.daily_goal || 10;
+  const dailyPlanMode = settings.daily_plan_mode || 'single_course';
+  const { data: todayStats, isLoading: statsLoading } = useTodayPlanStats(dailyGoal, dailyPlanMode);
+  const recommendedPresets = useRecommendedPresets(filters.courseIds);
+  const { data: weakAreas } = useWeakAreas(filters.courseIds);
+  const { data: overdueReviews } = useOverdueReviews(filters.courseIds);
 
   // Collapse sidebar when playing, expand when not
   useEffect(() => {
@@ -62,43 +78,35 @@ export default function Study() {
     }
   }, [studyState, collapse, expand]);
 
-  // Use daily goal from settings
-  const dailyGoal = settings.daily_goal || 10;
-
-  // Fetch questions based on current phase and filters
-  const questionLimit = studyPhase === "today_plan" ? dailyGoal : KEEP_PRACTICING_BATCH;
-  const { data: questions, isLoading, error, refetch } = useStudyQuestions({ 
-    limit: questionLimit,
+  // Convert focus filters to study query params
+  const studyQueryParams = useMemo(() => ({
+    limit: studyPhase === "today_plan" ? dailyGoal : KEEP_PRACTICING_BATCH,
     paceOffset: settings.pace_offset,
-    courseId: filters.courseId,
-    examName: filters.examName,
+    courseId: filters.courseIds.length === 1 ? filters.courseIds[0] : null,
+    examName: filters.examNames.length === 1 ? filters.examNames[0] : null,
     topicIds: filters.topicIds,
     questionTypeId: filters.questionTypeId,
-  });
+  }), [studyPhase, dailyGoal, settings.pace_offset, filters]);
+
+  // Fetch questions based on current phase and filters
+  const { data: questions, isLoading, error, refetch } = useStudyQuestions(studyQueryParams);
   const submitAttempt = useSubmitAttempt();
 
-  // Refetch when filters change
-  useEffect(() => {
-    setCurrentIndex(0);
-    setSessionResults({ correct: 0, total: 0 });
-    questionStartTime.current = Date.now();
-  }, [filters.courseId, filters.examName, filters.topicIds, filters.questionTypeId]);
-
   const handleQuestionComplete = useCallback(
-    async (result: { 
-      isCorrect: boolean; 
-      confidence: number | null; 
-      hintsUsed: boolean; 
+    async (result: {
+      isCorrect: boolean;
+      confidence: number | null;
+      hintsUsed: boolean;
       guideUsed: boolean;
       skipped: boolean;
       selectedChoiceId: string | null;
     }) => {
       if (!questions) return;
-      
+
       const currentQuestion = questions[currentIndex];
       const timeSpentMs = Date.now() - questionStartTime.current;
 
-      // Submit attempt to database (trigger will update SRS + mastery)
+      // Submit attempt to database
       if (!result.skipped) {
         submitAttempt.mutate({
           questionId: currentQuestion.id,
@@ -123,11 +131,9 @@ export default function Study() {
       } else {
         // Batch complete
         if (studyPhase === "today_plan") {
-          // Save Today Plan results and show completion
           setTodayPlanResults(newResults);
           setStudyState("plan_complete");
         } else {
-          // Keep Practicing: show pause screen to continue or stop
           setStudyState("session_pause");
         }
       }
@@ -135,9 +141,31 @@ export default function Study() {
     [currentIndex, questions, submitAttempt, studyPhase, sessionResults]
   );
 
+  const handleStartTodayPlan = useCallback(async () => {
+    setStudyPhase("today_plan");
+    await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
+    await refetch();
+    setCurrentIndex(0);
+    setSessionResults({ correct: 0, total: 0 });
+    setStudyState("playing");
+    questionStartTime.current = Date.now();
+  }, [queryClient, refetch]);
+
+  const handleStartPractice = useCallback(async (preset?: FocusPreset) => {
+    if (preset) {
+      applyPreset(preset);
+    }
+    setStudyPhase("keep_practicing");
+    await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
+    await refetch();
+    setCurrentIndex(0);
+    setSessionResults({ correct: 0, total: 0 });
+    setStudyState("playing");
+    questionStartTime.current = Date.now();
+  }, [queryClient, refetch, applyPreset]);
+
   const handleKeepPracticing = useCallback(async () => {
     setStudyPhase("keep_practicing");
-    // Invalidate and refetch to get fresh recommendations
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
@@ -147,7 +175,6 @@ export default function Study() {
   }, [queryClient, refetch]);
 
   const handleContinuePracticing = useCallback(async () => {
-    // Invalidate and refetch to get fresh recommendations
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
@@ -156,32 +183,135 @@ export default function Study() {
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
 
+  const handleGoHome = useCallback(() => {
+    setStudyState("home");
+    setStudyPhase("today_plan");
+    setCurrentIndex(0);
+    setSessionResults({ correct: 0, total: 0 });
+    clearFilters();
+    queryClient.invalidateQueries({ queryKey: ['study-questions'] });
+    queryClient.invalidateQueries({ queryKey: ['today-plan-stats'] });
+  }, [queryClient, clearFilters]);
+
   const handleSimilar = useCallback(() => {
     console.log("Similar clicked");
   }, []);
 
-  const handleEndSession = useCallback(() => {
-    setStudyState("playing");
-    setStudyPhase("today_plan");
-    setCurrentIndex(0);
-    setSessionResults({ correct: 0, total: 0 });
-    // Refetch questions to start fresh
-    queryClient.invalidateQueries({ queryKey: ['study-questions'] });
-  }, [queryClient]);
+  const handleApplyFocus = useCallback(() => {
+    setIsDrawerOpen(false);
+  }, [setIsDrawerOpen]);
 
-  // Loading state
-  if (isLoading) {
+  // Build completion suggestions
+  const completionSuggestions = useMemo(() => {
+    const suggestions: { id: string; label: string; description?: string; icon: 'arrow' | 'target' | 'refresh'; onClick: () => void }[] = [];
+
+    // Next course suggestion
+    if (todayStats?.alsoDueCourses && todayStats.alsoDueCourses.length > 0) {
+      const next = todayStats.alsoDueCourses[0];
+      suggestions.push({
+        id: 'next-course',
+        label: `Next: ${next.title}`,
+        description: `${next.count} questions`,
+        icon: 'arrow',
+        onClick: () => {
+          setCourseIds([next.id]);
+          handleKeepPracticing();
+        },
+      });
+    }
+
+    // Weak topic suggestion
+    if (weakAreas?.weakTopics && weakAreas.weakTopics.length > 0) {
+      const weak = weakAreas.weakTopics[0];
+      suggestions.push({
+        id: 'weak-topic',
+        label: `Weak: ${weak.title}`,
+        description: `${Math.round(weak.mastery * 100)}% mastery`,
+        icon: 'target',
+        onClick: () => {
+          setTopicIds([weak.id]);
+          handleKeepPracticing();
+        },
+      });
+    }
+
+    // Overdue reviews
+    if (overdueReviews && overdueReviews.count > 0) {
+      suggestions.push({
+        id: 'overdue',
+        label: `Review: ${overdueReviews.count} overdue`,
+        icon: 'refresh',
+        onClick: handleKeepPracticing,
+      });
+    }
+
+    return suggestions;
+  }, [todayStats, weakAreas, overdueReviews, setCourseIds, setTopicIds, handleKeepPracticing]);
+
+  // HOME state
+  if (studyState === "home") {
+    return (
+      <PageTransition className="flex flex-col h-full p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
+        <div className="space-y-6">
+          {/* Today's Plan Card */}
+          <TodayPlanCard
+            stats={todayStats || {
+              totalQuestions: dailyGoal,
+              completedQuestions: 0,
+              correctCount: 0,
+              estimatedMinutes: Math.round(dailyGoal * 1.5),
+              primaryCourse: null,
+              alsoDueCourses: [],
+            }}
+            isLoading={statsLoading}
+            onStart={handleStartTodayPlan}
+          />
+
+          {/* Practice Card */}
+          <PracticeCard
+            presets={recommendedPresets}
+            onPresetClick={handleStartPractice}
+            onCustomFocus={() => setIsDrawerOpen(true)}
+          />
+        </div>
+
+        {/* Focus Drawer */}
+        <FocusDrawer
+          open={isDrawerOpen}
+          onOpenChange={setIsDrawerOpen}
+          filters={filters}
+          narrowBy={narrowBy}
+          onNarrowByChange={setNarrowBy}
+          onCourseIdsChange={setCourseIds}
+          onMidtermNumberChange={setMidtermNumber}
+          onExamNamesChange={setExamNames}
+          onTopicIdsChange={setTopicIds}
+          onQuestionTypeIdChange={setQuestionTypeId}
+          onApplyPreset={(preset) => {
+            applyPreset(preset);
+            handleStartPractice();
+          }}
+          onClear={clearFilters}
+          onApply={() => {
+            handleApplyFocus();
+            handleStartPractice();
+          }}
+        />
+      </PageTransition>
+    );
+  }
+
+  // Loading state for PLAYING
+  if (isLoading && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
-        <StudyFocusBar
-          filters={filters}
-          onCourseChange={setCourseId}
-          onExamChange={setExamName}
-          onTopicsChange={setTopicIds}
-          onQuestionTypeChange={setQuestionTypeId}
-          onClear={clearFilters}
-          activeFilterCount={activeFilterCount}
-        />
+        {hasActiveFilters && (
+          <ActiveFocusChips
+            filters={filters}
+            onClear={clearFilters}
+            onClick={() => setIsDrawerOpen(true)}
+          />
+        )}
         <PageTransition className="flex-1 flex items-center justify-center py-20">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
         </PageTransition>
@@ -190,18 +320,16 @@ export default function Study() {
   }
 
   // Error state
-  if (error) {
+  if (error && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
-        <StudyFocusBar
-          filters={filters}
-          onCourseChange={setCourseId}
-          onExamChange={setExamName}
-          onTopicsChange={setTopicIds}
-          onQuestionTypeChange={setQuestionTypeId}
-          onClear={clearFilters}
-          activeFilterCount={activeFilterCount}
-        />
+        {hasActiveFilters && (
+          <ActiveFocusChips
+            filters={filters}
+            onClear={clearFilters}
+            onClick={() => setIsDrawerOpen(true)}
+          />
+        )}
         <PageTransition className="flex-1 space-y-4 text-center py-12">
           <p className="text-destructive">Failed to load questions</p>
           <Button variant="outline" onClick={() => window.location.reload()}>
@@ -213,55 +341,63 @@ export default function Study() {
   }
 
   // No questions available
-  if (!questions || questions.length === 0) {
+  if ((!questions || questions.length === 0) && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
-        <StudyFocusBar
-          filters={filters}
-          onCourseChange={setCourseId}
-          onExamChange={setExamName}
-          onTopicsChange={setTopicIds}
-          onQuestionTypeChange={setQuestionTypeId}
-          onClear={clearFilters}
-          activeFilterCount={activeFilterCount}
-        />
+        {hasActiveFilters && (
+          <ActiveFocusChips
+            filters={filters}
+            onClear={clearFilters}
+            onClick={() => setIsDrawerOpen(true)}
+          />
+        )}
         <PageTransition className="flex-1 space-y-4 text-center py-12">
           <p className="text-muted-foreground">
-            {activeFilterCount > 0 
-              ? "No questions match your filters" 
+            {hasActiveFilters
+              ? "No questions match your focus"
               : "No questions available yet"}
           </p>
-          {activeFilterCount > 0 ? (
+          {hasActiveFilters ? (
             <Button variant="outline" onClick={clearFilters}>
-              Clear Filters
+              Clear Focus
             </Button>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              Check back after your instructor uploads content
-            </p>
+            <Button variant="outline" onClick={handleGoHome}>
+              Go Back
+            </Button>
           )}
         </PageTransition>
       </div>
     );
   }
 
-  // Question Player state
-  if (studyState === "playing") {
+  // PLAYING state
+  if (studyState === "playing" && questions && questions.length > 0) {
     const currentQuestion = questions[currentIndex];
-    // Show progress for Today's Plan, just counter for Keep Practicing
     const showTotalProgress = studyPhase === "today_plan";
 
     return (
       <div className="flex flex-col h-full">
-        <StudyFocusBar
-          filters={filters}
-          onCourseChange={setCourseId}
-          onExamChange={setExamName}
-          onTopicsChange={setTopicIds}
-          onQuestionTypeChange={setQuestionTypeId}
-          onClear={clearFilters}
-          activeFilterCount={activeFilterCount}
-        />
+        {/* Active focus chips or focus pill in compact mode */}
+        {hasActiveFilters ? (
+          <ActiveFocusChips
+            filters={filters}
+            onClear={clearFilters}
+            onClick={() => setIsDrawerOpen(true)}
+          />
+        ) : (
+          <div className="px-4 py-2 border-b bg-card/50">
+            <FocusPill
+              filterSummary={filterSummary}
+              hasActiveFilters={hasActiveFilters}
+              activeFilterCount={activeFilterCount}
+              courseIds={filters.courseIds}
+              onOpen={() => setIsDrawerOpen(true)}
+              onClear={clearFilters}
+            />
+          </div>
+        )}
+
         <PageTransition className="flex-1 space-y-6 p-4">
           <AnimatePresence mode="wait">
             <QuestionPlayer
@@ -274,97 +410,66 @@ export default function Study() {
             />
           </AnimatePresence>
         </PageTransition>
+
+        {/* Focus Drawer (hidden during play, but accessible) */}
+        <FocusDrawer
+          open={isDrawerOpen}
+          onOpenChange={setIsDrawerOpen}
+          filters={filters}
+          narrowBy={narrowBy}
+          onNarrowByChange={setNarrowBy}
+          onCourseIdsChange={setCourseIds}
+          onMidtermNumberChange={setMidtermNumber}
+          onExamNamesChange={setExamNames}
+          onTopicIdsChange={setTopicIds}
+          onQuestionTypeIdChange={setQuestionTypeId}
+          onApplyPreset={applyPreset}
+          onClear={clearFilters}
+          onApply={handleApplyFocus}
+        />
       </div>
     );
   }
 
-  // Today's Plan Complete state
+  // PLAN_COMPLETE state
   if (studyState === "plan_complete") {
     return (
-      <div className="flex flex-col h-full">
-        <StudyFocusBar
-          filters={filters}
-          onCourseChange={setCourseId}
-          onExamChange={setExamName}
-          onTopicsChange={setTopicIds}
-          onQuestionTypeChange={setQuestionTypeId}
-          onClear={clearFilters}
-          activeFilterCount={activeFilterCount}
+      <PageTransition className="flex-1">
+        <CompletionCard
+          title="Today's Plan Complete! 🎉"
+          subtitle="Great work on your daily goal"
+          correctCount={todayPlanResults?.correct || 0}
+          totalCount={todayPlanResults?.total || 0}
+          suggestions={completionSuggestions}
+          onDone={handleGoHome}
+          variant="plan_complete"
         />
-        <PageTransition className="flex-1 space-y-8">
-          <div className="flex flex-col items-center justify-center py-12 space-y-6 text-center">
-            <div className="rounded-full bg-green-500/10 p-6">
-              <Trophy className="h-12 w-12 text-green-500" />
-            </div>
-
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight">Today's Plan Complete! 🎉</h1>
-              <p className="text-muted-foreground">
-                You got {todayPlanResults?.correct || 0} out of {todayPlanResults?.total || 0} correct
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 w-full max-w-xs">
-              <Button 
-                size="lg" 
-                className="gap-2" 
-                onClick={handleKeepPracticing}
-              >
-                <Flame className="h-5 w-5" />
-                Keep Practicing
-              </Button>
-              <Button variant="outline" onClick={handleEndSession}>
-                Done for Today
-              </Button>
-            </div>
-          </div>
-        </PageTransition>
-      </div>
+      </PageTransition>
     );
   }
 
-  // Keep Practicing pause state (between batches)
+  // SESSION_PAUSE state
   if (studyState === "session_pause") {
     return (
-      <div className="flex flex-col h-full">
-        <StudyFocusBar
-          filters={filters}
-          onCourseChange={setCourseId}
-          onExamChange={setExamName}
-          onTopicsChange={setTopicIds}
-          onQuestionTypeChange={setQuestionTypeId}
-          onClear={clearFilters}
-          activeFilterCount={activeFilterCount}
+      <PageTransition className="flex-1">
+        <CompletionCard
+          title="Great work!"
+          subtitle="Batch complete"
+          correctCount={sessionResults.correct}
+          totalCount={sessionResults.total}
+          suggestions={[
+            {
+              id: 'continue',
+              label: `Continue (${KEEP_PRACTICING_BATCH} more)`,
+              icon: 'arrow',
+              onClick: handleContinuePracticing,
+            },
+            ...completionSuggestions.slice(0, 2),
+          ]}
+          onDone={handleGoHome}
+          variant="session_pause"
         />
-        <PageTransition className="flex-1 space-y-8">
-          <div className="flex flex-col items-center justify-center py-12 space-y-6 text-center">
-            <div className="rounded-full bg-primary/10 p-6">
-              <Flame className="h-12 w-12 text-primary" />
-            </div>
-
-            <div className="space-y-2">
-              <h1 className="text-2xl font-bold tracking-tight">Great work!</h1>
-              <p className="text-muted-foreground">
-                Batch complete: {sessionResults.correct}/{sessionResults.total} correct
-              </p>
-            </div>
-
-            <div className="flex flex-col gap-3 w-full max-w-xs">
-              <Button 
-                size="lg" 
-                className="gap-2" 
-                onClick={handleContinuePracticing}
-              >
-                <ArrowRight className="h-5 w-5" />
-                Continue ({KEEP_PRACTICING_BATCH} more)
-              </Button>
-              <Button variant="outline" onClick={handleEndSession}>
-                End Session
-              </Button>
-            </div>
-          </div>
-        </PageTransition>
-      </div>
+      </PageTransition>
     );
   }
 
