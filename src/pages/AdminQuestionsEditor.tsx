@@ -676,7 +676,12 @@ function QuestionCard({
                     {choice.isCorrect ? <Check className="h-4 w-4" /> : choice.id.toUpperCase()}
                   </div>
                   <div className="flex-1 pt-1">
-                    <MathRenderer content={choice.text} />
+                    {choice.text && <MathRenderer content={choice.text} />}
+                    {choice.imageUrl && (
+                      <div className="mt-2">
+                        <ChoiceImage src={choice.imageUrl} alt={`Choice ${choice.id}`} />
+                      </div>
+                    )}
                   </div>
                 </div>
               ))}
