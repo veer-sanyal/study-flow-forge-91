@@ -14,6 +14,75 @@ export type Database = {
   }
   public: {
     Tables: {
+      analysis_jobs: {
+        Row: {
+          completed_at: string | null
+          completed_questions: number
+          course_pack_id: string
+          created_at: string
+          created_by: string | null
+          current_question_id: string | null
+          current_question_prompt: string | null
+          error_message: string | null
+          failed_questions: number
+          id: string
+          source_exam: string
+          started_at: string | null
+          status: string
+          total_questions: number
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_questions?: number
+          course_pack_id: string
+          created_at?: string
+          created_by?: string | null
+          current_question_id?: string | null
+          current_question_prompt?: string | null
+          error_message?: string | null
+          failed_questions?: number
+          id?: string
+          source_exam: string
+          started_at?: string | null
+          status?: string
+          total_questions?: number
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          completed_questions?: number
+          course_pack_id?: string
+          created_at?: string
+          created_by?: string | null
+          current_question_id?: string | null
+          current_question_prompt?: string | null
+          error_message?: string | null
+          failed_questions?: number
+          id?: string
+          source_exam?: string
+          started_at?: string | null
+          status?: string
+          total_questions?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "analysis_jobs_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "analysis_jobs_current_question_id_fkey"
+            columns: ["current_question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attempts: {
         Row: {
           answer_given: string | null

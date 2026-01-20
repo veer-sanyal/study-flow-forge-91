@@ -1,191 +1,124 @@
 import { useState, useEffect, useCallback } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
-export interface AnalysisProgress {
-  examName: string;
-  coursePackTitle: string;
-  coursePackId: string;
-  currentQuestionIndex: number;
-  totalQuestions: number;
-  currentQuestionPrompt: string;
-  startedAt: number;
-  status: "analyzing" | "completed" | "cancelled";
-  errorsCount: number;
-  lastAnalyzedQuestion: string | null;
-}
-
-const STORAGE_KEY = "analysis-progress";
-const CHANNEL_NAME = "analysis-progress-channel";
-
-// Helper to get progress from localStorage
-function getStoredProgress(): AnalysisProgress | null {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (!stored) return null;
-    const progress = JSON.parse(stored) as AnalysisProgress;
-    // Clear stale progress (older than 1 hour)
-    if (Date.now() - progress.startedAt > 3600000) {
-      localStorage.removeItem(STORAGE_KEY);
-      return null;
-    }
-    return progress;
-  } catch {
-    return null;
-  }
-}
-
-// Helper to set progress to localStorage
-function setStoredProgress(progress: AnalysisProgress | null) {
-  if (progress) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(progress));
-  } else {
-    localStorage.removeItem(STORAGE_KEY);
-  }
+export interface AnalysisJob {
+  id: string;
+  course_pack_id: string;
+  source_exam: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  total_questions: number;
+  completed_questions: number;
+  failed_questions: number;
+  current_question_id: string | null;
+  current_question_prompt: string | null;
+  error_message: string | null;
+  created_by: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export function useAnalysisProgress() {
-  const [progress, setProgress] = useState<AnalysisProgress | null>(getStoredProgress);
+  const [activeJob, setActiveJob] = useState<AnalysisJob | null>(null);
+  const queryClient = useQueryClient();
 
-  // Listen for cross-tab updates via BroadcastChannel
+  // Fetch active analysis jobs
+  const { data: jobs } = useQuery({
+    queryKey: ["analysis-jobs-active"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("analysis_jobs")
+        .select("*")
+        .in("status", ["pending", "running"])
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      if (error) throw error;
+      return (data as unknown as AnalysisJob[]) || [];
+    },
+    refetchInterval: 2000, // Poll every 2 seconds
+  });
+
+  // Subscribe to realtime updates
   useEffect(() => {
-    const channel = new BroadcastChannel(CHANNEL_NAME);
-    
-    const handleMessage = (event: MessageEvent) => {
-      const data = event.data as { type: string; progress: AnalysisProgress | null };
-      if (data.type === "progress-update") {
-        setProgress(data.progress);
-      }
-    };
-
-    channel.addEventListener("message", handleMessage);
-    
-    // Also listen for storage events (fallback for browsers without BroadcastChannel)
-    const handleStorage = (event: StorageEvent) => {
-      if (event.key === STORAGE_KEY) {
-        setProgress(event.newValue ? JSON.parse(event.newValue) : null);
-      }
-    };
-    
-    window.addEventListener("storage", handleStorage);
+    const channel = supabase
+      .channel("analysis-jobs-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "analysis_jobs" },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["analysis-jobs-active"] });
+        }
+      )
+      .subscribe();
 
     return () => {
-      channel.removeEventListener("message", handleMessage);
-      window.removeEventListener("storage", handleStorage);
-      channel.close();
+      supabase.removeChannel(channel);
     };
-  }, []);
+  }, [queryClient]);
 
-  // Broadcast update to other tabs
-  const broadcastUpdate = useCallback((newProgress: AnalysisProgress | null) => {
-    try {
-      const channel = new BroadcastChannel(CHANNEL_NAME);
-      channel.postMessage({ type: "progress-update", progress: newProgress });
-      channel.close();
-    } catch {
-      // BroadcastChannel not supported, rely on storage event
+  // Update active job when data changes
+  useEffect(() => {
+    if (jobs && jobs.length > 0) {
+      setActiveJob(jobs[0]);
+    } else {
+      setActiveJob(null);
     }
-  }, []);
+  }, [jobs]);
 
-  const startAnalysis = useCallback((params: {
-    examName: string;
-    coursePackTitle: string;
-    coursePackId: string;
-    totalQuestions: number;
-  }) => {
-    const newProgress: AnalysisProgress = {
-      examName: params.examName,
-      coursePackTitle: params.coursePackTitle,
-      coursePackId: params.coursePackId,
-      currentQuestionIndex: 0,
-      totalQuestions: params.totalQuestions,
-      currentQuestionPrompt: "",
-      startedAt: Date.now(),
-      status: "analyzing",
-      errorsCount: 0,
-      lastAnalyzedQuestion: null,
-    };
-    setStoredProgress(newProgress);
-    setProgress(newProgress);
-    broadcastUpdate(newProgress);
-  }, [broadcastUpdate]);
+  // Start batch analysis
+  const startBatchAnalysis = useMutation({
+    mutationFn: async (params: {
+      coursePackId: string;
+      sourceExam: string;
+      questionIds: string[];
+    }) => {
+      const { data, error } = await supabase.functions.invoke("batch-analyze-questions", {
+        body: params,
+      });
 
-  const updateProgress = useCallback((params: {
-    currentQuestionIndex: number;
-    currentQuestionPrompt: string;
-    errorsCount?: number;
-  }) => {
-    setProgress((prev) => {
-      if (!prev) return null;
-      const updated: AnalysisProgress = {
-        ...prev,
-        currentQuestionIndex: params.currentQuestionIndex,
-        currentQuestionPrompt: params.currentQuestionPrompt,
-        lastAnalyzedQuestion: params.currentQuestionPrompt,
-        errorsCount: params.errorsCount ?? prev.errorsCount,
-      };
-      setStoredProgress(updated);
-      broadcastUpdate(updated);
-      return updated;
-    });
-  }, [broadcastUpdate]);
+      if (error) throw new Error(error.message);
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["analysis-jobs-active"] });
+    },
+  });
 
-  const incrementErrors = useCallback(() => {
-    setProgress((prev) => {
-      if (!prev) return null;
-      const updated: AnalysisProgress = {
-        ...prev,
-        errorsCount: prev.errorsCount + 1,
-      };
-      setStoredProgress(updated);
-      broadcastUpdate(updated);
-      return updated;
-    });
-  }, [broadcastUpdate]);
+  // Cancel analysis job
+  const cancelAnalysis = useMutation({
+    mutationFn: async (jobId: string) => {
+      const { error } = await supabase
+        .from("analysis_jobs")
+        .update({ status: "cancelled" } as any)
+        .eq("id", jobId);
 
-  const completeAnalysis = useCallback(() => {
-    setProgress((prev) => {
-      if (!prev) return null;
-      const updated: AnalysisProgress = {
-        ...prev,
-        status: "completed",
-        currentQuestionIndex: prev.totalQuestions,
-      };
-      setStoredProgress(updated);
-      broadcastUpdate(updated);
-      // Auto-clear after 10 seconds
-      setTimeout(() => {
-        clearAnalysis();
-      }, 10000);
-      return updated;
-    });
-  }, [broadcastUpdate]);
-
-  const clearAnalysis = useCallback(() => {
-    setStoredProgress(null);
-    setProgress(null);
-    broadcastUpdate(null);
-  }, [broadcastUpdate]);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["analysis-jobs-active"] });
+    },
+  });
 
   // Calculate derived values
-  const elapsedMs = progress ? Date.now() - progress.startedAt : 0;
-  const avgTimePerQuestion = progress && progress.currentQuestionIndex > 0 
-    ? elapsedMs / progress.currentQuestionIndex 
-    : 0;
-  const remainingQuestions = progress 
-    ? progress.totalQuestions - progress.currentQuestionIndex 
-    : 0;
+  const progress = activeJob;
+  const elapsedMs = progress?.started_at ? Date.now() - new Date(progress.started_at).getTime() : 0;
+  const completedCount = progress?.completed_questions || 0;
+  const avgTimePerQuestion = completedCount > 0 ? elapsedMs / completedCount : 0;
+  const remainingQuestions = progress ? progress.total_questions - completedCount - (progress.failed_questions || 0) : 0;
   const estimatedRemainingMs = avgTimePerQuestion * remainingQuestions;
 
   return {
     progress,
-    startAnalysis,
-    updateProgress,
-    incrementErrors,
-    completeAnalysis,
-    clearAnalysis,
-    // Derived values
+    startBatchAnalysis,
+    cancelAnalysis,
     elapsedMs,
     avgTimePerQuestion,
     estimatedRemainingMs,
     remainingQuestions,
+    isAnalyzing: progress?.status === "running" || progress?.status === "pending",
   };
 }
