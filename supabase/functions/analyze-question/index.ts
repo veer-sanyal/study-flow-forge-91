@@ -553,9 +553,8 @@ Now generate the analysis and return using analyze_question.`;
                       },
                       questionTypeId: {
                         type: "string",
-                        nullable: true,
                         description:
-                          "REQUIRED: The exact ID of the question type from EXISTING QUESTION TYPES list. Use null only if no existing type matches.",
+                          "REQUIRED: The exact ID of the question type from EXISTING QUESTION TYPES list. You MUST select an existing type.",
                       },
                       questionTypeName: {
                         type: "string",
