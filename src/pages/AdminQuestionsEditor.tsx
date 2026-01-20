@@ -709,7 +709,7 @@ function QuestionCard({
           {/* Topics */}
           <div className="flex flex-wrap items-center gap-2 pt-3 border-t">
             <span className="text-sm text-muted-foreground">Topics:</span>
-            {question.topic_ids.length > 0 ? (
+            {question.topic_ids && question.topic_ids.length > 0 ? (
               question.topic_ids.map((topicId) => (
                 <Badge key={topicId} variant="outline" className="text-xs">
                   {topics.get(topicId) || topicId}
