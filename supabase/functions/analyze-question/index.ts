@@ -426,7 +426,7 @@ Now generate the analysis and return using analyze_question.`;
                       "detailedSolution",
                       "guideMeSteps",
                       "methodSummary",
-                      "topicSuggestions",
+                      "topicIds",
                       "questionType",
                     ],
                     properties: {
