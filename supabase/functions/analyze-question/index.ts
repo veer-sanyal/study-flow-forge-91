@@ -49,7 +49,8 @@ interface AnalysisResult {
   guideMeSteps: GuideStep[];
   methodSummary: MethodSummary;
   topicIds: string[]; // Direct topic IDs - no suggestions
-  questionType: string;
+  questionTypeId: string | null; // ID of existing question type
+  questionTypeName: string; // Name of question type (for new types or confirmation)
 }
 
 serve(async (req) => {
@@ -123,19 +124,28 @@ serve(async (req) => {
 
     const topicsList = existingTopics?.map((t) => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics defined yet";
 
-    // Get existing question types
+// Get existing question types - REQUIRED for mapping
     const { data: existingQuestionTypes } = await supabase
       .from("question_types")
       .select("id, name, aliases")
       .eq("course_pack_id", question.course_pack_id);
 
+    // Build question types list with IDs for Gemini to select from
     const questionTypesList =
-      existingQuestionTypes
-        ?.map((qt) => {
-          const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
-          return `- ${qt.name}${aliases} (ID: ${qt.id})`;
-        })
-        .join("\n") || "No question types defined yet";
+      existingQuestionTypes && existingQuestionTypes.length > 0
+        ? existingQuestionTypes
+            .map((qt) => {
+              const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
+              return `- ID: "${qt.id}" - ${qt.name}${aliases}`;
+            })
+            .join("\n")
+        : "No question types defined yet - you must select the best matching type or create a new one";
+
+    // Build map for quick lookup
+    const questionTypeIdMap = new Map<string, boolean>();
+    existingQuestionTypes?.forEach((qt) => {
+      questionTypeIdMap.set(qt.id, true);
+    });
 
     // Format the question for analysis
     const choicesText = question.choices?.map((c: any) => `${c.id}) ${c.text}`).join("\n") || "No choices";
@@ -188,8 +198,11 @@ ${choicesText}
 AVAILABLE TOPICS (map to these IDs only):
 ${topicsList}
 
-EXISTING QUESTION TYPES (use one of these if possible):
+EXISTING QUESTION TYPES (MUST SELECT ONE BY ID):
 ${questionTypesList}
+
+CRITICAL: You MUST select a question type ID from the list above. Use the "ID" value exactly.
+If no existing type is a good match, you may suggest a new type name, but always try to match an existing type first.
 
 ========================
 GROUNDING + GUARDRAILS
@@ -275,9 +288,8 @@ Include these top-level fields:
 - guideMeSteps: array of 3–6 steps (see below)
 - methodSummary: { bullets: [3 items], proTip?: string }
 - topicIds: array of topic IDs from AVAILABLE TOPICS only
-- topicSuggestions: array of strings (ONLY if topicIds is empty)
-- questionType: one of EXISTING QUESTION TYPES if possible, else "Other"
-- questionTypeSuggestion: string (ONLY if questionType is "Other")
+- questionTypeId: REQUIRED - the ID of the question type from EXISTING QUESTION TYPES (use the exact ID string)
+- questionTypeName: REQUIRED - the name of the selected question type (or a new suggested name if no existing type matches)
 
 ========================
 DETAILED SOLUTION REQUIREMENTS
@@ -370,8 +382,9 @@ TOPIC + TYPE MAPPING (CRITICAL - FORCE BEST MATCH)
 - ALWAYS select the best-matching topic(s) even if not a perfect match. Never leave topicIds empty.
 - If multiple topics are relevant, include all of them.
 - DO NOT suggest new topics - only use existing topic IDs.
-- questionType must match EXISTING QUESTION TYPES if possible.
-- If none match, questionType="Other".
+- questionTypeId MUST be one of the IDs from EXISTING QUESTION TYPES if any exist.
+- If no existing type matches well, set questionTypeId to null and provide questionTypeName with a suggested new type name.
+- PREFER existing question types - only suggest new types when truly necessary.
 
 Now generate the analysis and return using analyze_question.`;
 
@@ -539,9 +552,13 @@ Now generate the analysis and return using analyze_question.`;
                         items: { type: "string" },
                         description: "Topic IDs from AVAILABLE TOPICS list. MUST include at least one - always select best match.",
                       },
-                      questionType: {
+                      questionTypeId: {
                         type: "string",
-                        description: "Question type/category from EXISTING QUESTION TYPES or 'Other'",
+                        description: "REQUIRED: The exact ID of the question type from EXISTING QUESTION TYPES list. Use null only if no existing type matches.",
+                      },
+                      questionTypeName: {
+                        type: "string",
+                        description: "REQUIRED: The name of the question type - either the name of the selected existing type, or a new suggested name if questionTypeId is null",
                       },
                     },
                   },
@@ -640,18 +657,25 @@ Now generate the analysis and return using analyze_question.`;
       }
     }
 
-    // Handle question type
+    // Handle question type - prioritize the ID from Gemini, fallback to creating new type
     let questionTypeId: string | null = null;
-    if (analysis.questionType && analysis.questionType !== "Other") {
-      const matchedTypeId = questionTypeMap.get(analysis.questionType.toLowerCase());
+    
+    // Check if Gemini returned a valid existing question type ID
+    if (analysis.questionTypeId && questionTypeIdMap.has(analysis.questionTypeId)) {
+      questionTypeId = analysis.questionTypeId;
+      console.log(`Using existing question type ID: ${questionTypeId}`);
+    } else if (analysis.questionTypeName) {
+      // Try to match by name as fallback
+      const matchedTypeId = questionTypeMap.get(analysis.questionTypeName.toLowerCase());
       if (matchedTypeId) {
         questionTypeId = matchedTypeId;
+        console.log(`Matched question type by name: ${analysis.questionTypeName}`);
       } else {
         // Create new question type
         const { data: newType, error: typeError } = await supabase
           .from("question_types")
           .insert({
-            name: analysis.questionType,
+            name: analysis.questionTypeName,
             course_pack_id: question.course_pack_id,
             status: "active",
           })
@@ -660,7 +684,7 @@ Now generate the analysis and return using analyze_question.`;
 
         if (!typeError && newType) {
           questionTypeId = newType.id;
-          console.log(`Created new question type: ${analysis.questionType}`);
+          console.log(`Created new question type: ${analysis.questionTypeName}`);
         }
       }
     }
