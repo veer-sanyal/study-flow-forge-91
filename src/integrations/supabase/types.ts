@@ -178,6 +178,7 @@ export type Database = {
           file_path: string
           id: string
           is_final: boolean
+          is_published: boolean
           kind: string
           progress_pct: number | null
           questions_extracted: number | null
@@ -200,6 +201,7 @@ export type Database = {
           file_path: string
           id?: string
           is_final?: boolean
+          is_published?: boolean
           kind?: string
           progress_pct?: number | null
           questions_extracted?: number | null
@@ -222,6 +224,7 @@ export type Database = {
           file_path?: string
           id?: string
           is_final?: boolean
+          is_published?: boolean
           kind?: string
           progress_pct?: number | null
           questions_extracted?: number | null
