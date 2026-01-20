@@ -63,6 +63,7 @@ import { QuestionImage } from "@/components/study/QuestionImage";
 import { useAllTopics, useUploadQuestionImage, useRemoveQuestionImage } from "@/hooks/use-questions";
 import { usePublishExam } from "@/hooks/use-ingestion";
 import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
+import { parseExamName } from "@/lib/examUtils";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
@@ -169,6 +170,56 @@ function useIngestionJobForExam(courseId: string, sourceExam: string) {
       return matchingJob || null;
     },
     enabled: !!courseId && !!sourceExam,
+  });
+}
+
+// Create ingestion job for legacy exams (exams created without PDF ingestion)
+function useCreateLegacyIngestionJob() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async ({ 
+      coursePackId, 
+      sourceExam 
+    }: { 
+      coursePackId: string; 
+      sourceExam: string;
+    }) => {
+      // Parse the exam name to extract metadata
+      const parsed = parseExamName(sourceExam);
+      
+      // Map exam type to storage format
+      let examType: string | null = null;
+      if (parsed.examType === "Midterm" && parsed.midtermNumber) {
+        examType = parsed.midtermNumber.toString();
+      } else if (parsed.examType === "Final") {
+        examType = "f";
+      }
+      
+      const { data, error } = await supabase
+        .from("ingestion_jobs")
+        .insert({
+          course_pack_id: coursePackId,
+          file_name: `${sourceExam} (legacy)`,
+          file_path: "legacy",
+          kind: "pdf",
+          status: "completed",
+          is_published: true,
+          exam_year: parsed.year,
+          exam_semester: parsed.semester,
+          exam_type: examType,
+          is_final: parsed.examType === "Final",
+        })
+        .select()
+        .single();
+        
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ingestion-job-for-exam"] });
+      queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+    },
   });
 }
 
@@ -1038,6 +1089,7 @@ export default function AdminQuestionsEditor() {
   const uploadImage = useUploadQuestionImage();
   const removeImage = useRemoveQuestionImage();
   const publishExam = usePublishExam();
+  const createLegacyJob = useCreateLegacyIngestionJob();
   const { startBatchAnalysis, isAnalyzing: isBatchAnalyzing } = useAnalysisProgress();
 
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -1131,12 +1183,25 @@ export default function AdminQuestionsEditor() {
     }
   };
 
-  const handleTogglePublish = () => {
+  const handleTogglePublish = async () => {
     if (ingestionJob) {
+      // Existing ingestion job - toggle its publish state
       publishExam.mutate({ 
         jobId: ingestionJob.id, 
         isPublished: !ingestionJob.is_published 
       });
+    } else if (courseId && decodedExamName) {
+      // No ingestion job exists - create one for this legacy exam and publish it
+      try {
+        await createLegacyJob.mutateAsync({
+          coursePackId: courseId,
+          sourceExam: decodedExamName
+        });
+        toast.success("Exam published successfully");
+      } catch (error) {
+        console.error("Failed to publish:", error);
+        toast.error("Failed to publish exam");
+      }
     }
   };
 
@@ -1240,27 +1305,25 @@ export default function AdminQuestionsEditor() {
                   </Button>
                 )}
 
-                {/* Publish toggle */}
-                {ingestionJob && (
-                  <Button 
-                    variant={ingestionJob.is_published ? "secondary" : "outline"} 
-                    size="sm"
-                    onClick={handleTogglePublish}
-                    disabled={needsAnalysisCount > 0 || publishExam.isPending}
-                    className="gap-1"
-                  >
-                    {publishExam.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : ingestionJob.is_published ? (
-                      <>
-                        <Check className="h-4 w-4" />
-                        Published
-                      </>
-                    ) : (
-                      "Publish"
-                    )}
-                  </Button>
-                )}
+                {/* Publish toggle - always show, create ingestion job if needed */}
+                <Button 
+                  variant={ingestionJob?.is_published ? "secondary" : "outline"} 
+                  size="sm"
+                  onClick={handleTogglePublish}
+                  disabled={needsAnalysisCount > 0 || publishExam.isPending || createLegacyJob.isPending}
+                  className="gap-1"
+                >
+                  {(publishExam.isPending || createLegacyJob.isPending) ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : ingestionJob?.is_published ? (
+                    <>
+                      <Check className="h-4 w-4" />
+                      Published
+                    </>
+                  ) : (
+                    "Publish"
+                  )}
+                </Button>
               </div>
             </div>
           </div>
