@@ -13,6 +13,40 @@ export interface ParsedExamInfo {
  */
 export type ExamPeriod = "midterm_1" | "midterm_2" | "midterm_3" | "final";
 
+/**
+ * Available semesters for exam metadata
+ */
+export const SEMESTERS = ["Spring", "Summer", "Fall", "Winter"] as const;
+export type Semester = typeof SEMESTERS[number];
+
+/**
+ * Available exam types for exam metadata
+ */
+export const EXAM_TYPES = ["Midterm 1", "Midterm 2", "Midterm 3", "Final"] as const;
+export type ExamType = typeof EXAM_TYPES[number];
+
+/**
+ * Build an exam title from structured exam details
+ */
+export function buildExamTitle(
+  courseName: string | null | undefined,
+  year: number | null | undefined,
+  semester: string | null | undefined,
+  examType: string | null | undefined
+): string {
+  const parts: string[] = [];
+  if (courseName) parts.push(courseName);
+  if (semester && year) {
+    parts.push(`${semester} ${year}`);
+  } else if (year) {
+    parts.push(year.toString());
+  } else if (semester) {
+    parts.push(semester);
+  }
+  if (examType) parts.push(examType);
+  return parts.length > 0 ? parts.join(" - ") : "Untitled Exam";
+}
+
 export interface SemesterGroup {
   semester: "Spring" | "Summer" | "Fall" | "Winter";
   exams: ExamInfo[];

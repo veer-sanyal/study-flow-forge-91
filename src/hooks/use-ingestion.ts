@@ -185,6 +185,119 @@ export function usePublishCourse() {
   });
 }
 
+export interface UpdateExamDetailsParams {
+  jobId: string;
+  examYear?: number | null;
+  examSemester?: string | null;
+  examType?: string | null;
+  coursePackId?: string;
+}
+
+export function useUpdateExamDetails() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ jobId, examYear, examSemester, examType, coursePackId }: UpdateExamDetailsParams) => {
+      // Determine is_final from exam type
+      const isFinal = examType === "Final";
+      
+      // Update job details
+      const { error: jobError } = await supabase
+        .from("ingestion_jobs")
+        .update({
+          exam_year: examYear,
+          exam_semester: examSemester,
+          exam_type: examType,
+          is_final: isFinal,
+          ...(coursePackId && { course_pack_id: coursePackId }),
+        } as any)
+        .eq("id", jobId);
+
+      if (jobError) throw jobError;
+
+      // Build new source_exam string for questions
+      // First, get the course name
+      let courseName = "";
+      if (coursePackId) {
+        const { data: course } = await supabase
+          .from("course_packs")
+          .select("title")
+          .eq("id", coursePackId)
+          .single();
+        courseName = course?.title || "";
+      } else {
+        // Get from current job
+        const { data: job } = await supabase
+          .from("ingestion_jobs")
+          .select("course_packs(title)")
+          .eq("id", jobId)
+          .single();
+        courseName = (job as any)?.course_packs?.title || "";
+      }
+
+      // Build the source_exam string
+      const parts: string[] = [];
+      if (examSemester && examYear) {
+        parts.push(`${examSemester} ${examYear}`);
+      }
+      if (examType) {
+        parts.push(examType);
+      }
+      const newSourceExam = parts.join(" ") || "Unknown Exam";
+
+      // Get current job's course_pack_id to find related questions
+      const { data: currentJob } = await supabase
+        .from("ingestion_jobs")
+        .select("course_pack_id")
+        .eq("id", jobId)
+        .single();
+
+      if (currentJob) {
+        // Extract midterm number from exam type for non-finals
+        let midtermNumber: number | null = null;
+        if (!isFinal && examType) {
+          const match = examType.match(/Midterm\s*(\d)/i);
+          if (match) {
+            midtermNumber = parseInt(match[1], 10);
+          }
+        }
+
+        // Update all questions that belong to this job's source exam
+        // We need to get the old source_exam first
+        const { data: jobData } = await supabase
+          .from("ingestion_jobs")
+          .select("*")
+          .eq("id", jobId)
+          .single();
+
+        // Find questions by course_pack_id that were created from this job
+        // Since we don't have direct job reference, update by matching timestamps or use source_exam
+        // For now, we'll update questions with the same course_pack_id that match the old pattern
+        // This is a simplified approach - in production you might want a direct job_id reference on questions
+
+        // Update midterm_number for non-final exams
+        if (!isFinal && midtermNumber !== null) {
+          await supabase
+            .from("questions")
+            .update({ 
+              source_exam: newSourceExam,
+              midterm_number: midtermNumber 
+            })
+            .eq("course_pack_id", currentJob.course_pack_id)
+            .eq("source_exam", (jobData as any)?.source_exam || "");
+        }
+      }
+
+      return { success: true };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["ingestion-job"] });
+      queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["questions-for-review"] });
+    },
+  });
+}
+
 export function useIngestionJob(jobId: string) {
   return useQuery({
     queryKey: ["ingestion-job", jobId],
