@@ -194,6 +194,7 @@ export function usePublishExam() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
       queryClient.invalidateQueries({ queryKey: ["ingestion-job"] });
+      queryClient.invalidateQueries({ queryKey: ["ingestion-job-for-exam"] });
     },
   });
 }
