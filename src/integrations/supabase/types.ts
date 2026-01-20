@@ -642,6 +642,7 @@ export type Database = {
         Row: {
           created_at: string
           daily_goal: number
+          daily_plan_mode: string
           id: string
           notifications_enabled: boolean
           pace_offset: number
@@ -653,6 +654,7 @@ export type Database = {
         Insert: {
           created_at?: string
           daily_goal?: number
+          daily_plan_mode?: string
           id?: string
           notifications_enabled?: boolean
           pace_offset?: number
@@ -664,6 +666,7 @@ export type Database = {
         Update: {
           created_at?: string
           daily_goal?: number
+          daily_plan_mode?: string
           id?: string
           notifications_enabled?: boolean
           pace_offset?: number
