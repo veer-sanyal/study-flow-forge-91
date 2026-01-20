@@ -1,6 +1,7 @@
 import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { MathRenderer } from "./MathRenderer";
+import { ChoiceImage } from "./ChoiceImage";
 import { Check, X } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useCanHover } from "@/hooks/use-can-hover";
@@ -10,6 +11,7 @@ interface Choice {
   id: string;
   text: string;
   isCorrect?: boolean;
+  imageUrl?: string;
 }
 
 interface ChoiceListProps {
@@ -84,7 +86,11 @@ export function ChoiceList({
               )}
             </span>
             <span className="flex-1">
-              <MathRenderer content={choice.text} />
+              {choice.imageUrl ? (
+                <ChoiceImage src={choice.imageUrl} alt={`Choice ${choice.id}`} />
+              ) : (
+                <MathRenderer content={choice.text} />
+              )}
             </span>
           </button>
         );

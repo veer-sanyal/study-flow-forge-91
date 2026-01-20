@@ -61,17 +61,20 @@ import { toast } from "sonner";
 import { MathRenderer } from "@/components/study/MathRenderer";
 import { QuestionImage } from "@/components/study/QuestionImage";
 import { useAllTopics, useUploadQuestionImage, useRemoveQuestionImage } from "@/hooks/use-questions";
+import { useUploadChoiceImage } from "@/hooks/use-choice-image";
 import { usePublishExam } from "@/hooks/use-ingestion";
 import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
 import { parseExamName } from "@/lib/examUtils";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
+import { ChoiceImage } from "@/components/study/ChoiceImage";
 
 interface QuestionChoice {
   id: string;
   text: string;
   isCorrect: boolean;
+  imageUrl?: string;
 }
 
 interface Question {
@@ -792,6 +795,7 @@ function EditQuestionDialog({
   topics,
   onUploadImage,
   onRemoveImage,
+  onUploadChoiceImage,
 }: {
   question: Question | null;
   open: boolean;
@@ -800,11 +804,14 @@ function EditQuestionDialog({
   topics: { id: string; title: string }[];
   onUploadImage: (file: File) => Promise<string | undefined>;
   onRemoveImage: () => Promise<void>;
+  onUploadChoiceImage: (choiceId: string, file: File) => Promise<string>;
 }) {
   const [editedQuestion, setEditedQuestion] = useState<Partial<Question>>({});
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadingChoiceId, setUploadingChoiceId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const choiceFileInputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
 
   useMemo(() => {
     if (question) {
@@ -945,35 +952,108 @@ function EditQuestionDialog({
             <div className="space-y-2">
               <Label>Choices</Label>
               {editedQuestion.choices?.map((choice, idx) => (
-                <div key={choice.id} className="flex items-center gap-2">
-                  <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${
-                    choice.isCorrect ? 'bg-green-500 text-white' : 'bg-muted'
-                  }`}>
-                    {choice.id.toUpperCase()}
+                <div key={choice.id} className="space-y-2 p-3 rounded-lg border bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${
+                      choice.isCorrect ? 'bg-success text-success-foreground' : 'bg-muted'
+                    }`}>
+                      {choice.id.toUpperCase()}
+                    </div>
+                    <Input
+                      value={choice.text}
+                      onChange={(e) => {
+                        const newChoices = [...(editedQuestion.choices || [])];
+                        newChoices[idx] = { ...newChoices[idx], text: e.target.value };
+                        setEditedQuestion({ ...editedQuestion, choices: newChoices });
+                      }}
+                      placeholder="Choice text (or leave empty if using image)"
+                      className="flex-1 font-mono text-sm"
+                    />
+                    <Button
+                      variant={choice.isCorrect ? "default" : "outline"}
+                      size="sm"
+                      className={choice.isCorrect ? "bg-success hover:bg-success/90" : ""}
+                      onClick={() => {
+                        const newChoices = editedQuestion.choices?.map((c, i) => ({
+                          ...c,
+                          isCorrect: i === idx,
+                        }));
+                        setEditedQuestion({ ...editedQuestion, choices: newChoices });
+                      }}
+                    >
+                      {choice.isCorrect ? <Check className="h-4 w-4" /> : "Set Correct"}
+                    </Button>
                   </div>
-                  <Input
-                    value={choice.text}
-                    onChange={(e) => {
-                      const newChoices = [...(editedQuestion.choices || [])];
-                      newChoices[idx] = { ...newChoices[idx], text: e.target.value };
-                      setEditedQuestion({ ...editedQuestion, choices: newChoices });
-                    }}
-                    className="flex-1 font-mono text-sm"
-                  />
-                  <Button
-                    variant={choice.isCorrect ? "default" : "outline"}
-                    size="sm"
-                    className={choice.isCorrect ? "bg-green-500 hover:bg-green-600" : ""}
-                    onClick={() => {
-                      const newChoices = editedQuestion.choices?.map((c, i) => ({
-                        ...c,
-                        isCorrect: i === idx,
-                      }));
-                      setEditedQuestion({ ...editedQuestion, choices: newChoices });
-                    }}
-                  >
-                    {choice.isCorrect ? <Check className="h-4 w-4" /> : "Set Correct"}
-                  </Button>
+                  
+                  {/* Choice Image Section */}
+                  <div className="ml-10 flex items-center gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      ref={(el) => {
+                        if (el) choiceFileInputRefs.current.set(choice.id, el);
+                      }}
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          setUploadingChoiceId(choice.id);
+                          try {
+                            const imageUrl = await onUploadChoiceImage(choice.id, file);
+                            const newChoices = [...(editedQuestion.choices || [])];
+                            newChoices[idx] = { ...newChoices[idx], imageUrl };
+                            setEditedQuestion({ ...editedQuestion, choices: newChoices });
+                            toast.success("Choice image uploaded");
+                          } catch (err) {
+                            toast.error("Failed to upload image");
+                          } finally {
+                            setUploadingChoiceId(null);
+                          }
+                        }
+                      }}
+                    />
+                    
+                    {choice.imageUrl ? (
+                      <div className="flex items-center gap-2">
+                        <div className="border rounded p-1 bg-background">
+                          <ChoiceImage src={choice.imageUrl} className="max-h-12" />
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 text-xs text-destructive hover:text-destructive"
+                          onClick={() => {
+                            const newChoices = [...(editedQuestion.choices || [])];
+                            newChoices[idx] = { ...newChoices[idx], imageUrl: undefined };
+                            setEditedQuestion({ ...editedQuestion, choices: newChoices });
+                          }}
+                        >
+                          <X className="h-3 w-3 mr-1" />
+                          Remove
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs gap-1"
+                        disabled={uploadingChoiceId === choice.id}
+                        onClick={() => choiceFileInputRefs.current.get(choice.id)?.click()}
+                      >
+                        {uploadingChoiceId === choice.id ? (
+                          <>
+                            <Loader2 className="h-3 w-3 animate-spin" />
+                            Uploading...
+                          </>
+                        ) : (
+                          <>
+                            <ImageIcon className="h-3 w-3" />
+                            Add Image
+                          </>
+                        )}
+                      </Button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -1088,6 +1168,7 @@ export default function AdminQuestionsEditor() {
   const analyzeQuestion = useAnalyzeQuestion();
   const uploadImage = useUploadQuestionImage();
   const removeImage = useRemoveQuestionImage();
+  const uploadChoiceImage = useUploadChoiceImage();
   const publishExam = usePublishExam();
   const createLegacyJob = useCreateLegacyIngestionJob();
   const { startBatchAnalysis, isAnalyzing: isBatchAnalyzing } = useAnalysisProgress();
@@ -1380,6 +1461,10 @@ export default function AdminQuestionsEditor() {
             if (editingQuestion) {
               await removeImage.mutateAsync(editingQuestion.id);
             }
+          }}
+          onUploadChoiceImage={async (choiceId, file) => {
+            const processedUrl = await uploadChoiceImage.mutateAsync({ choiceId, file });
+            return processedUrl;
           }}
         />
 

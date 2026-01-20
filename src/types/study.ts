@@ -13,6 +13,7 @@ export interface QuestionChoice {
   id: string;
   text: string;
   isCorrect: boolean;
+  imageUrl?: string;
 }
 
 // Enriched question for the player (with topic info joined)
