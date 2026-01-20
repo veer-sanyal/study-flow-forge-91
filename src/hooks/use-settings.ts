@@ -10,6 +10,7 @@ export interface UserSettings {
   notifications_enabled: boolean;
   reduced_motion: boolean;
   theme: string;
+  daily_plan_mode: 'single_course' | 'mixed';
   created_at: string;
   updated_at: string;
 }
@@ -20,6 +21,7 @@ const DEFAULT_SETTINGS: Omit<UserSettings, 'id' | 'user_id' | 'created_at' | 'up
   notifications_enabled: true,
   reduced_motion: false,
   theme: 'system',
+  daily_plan_mode: 'single_course',
 };
 
 export function useUserSettings() {
