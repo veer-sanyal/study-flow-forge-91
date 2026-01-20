@@ -1308,8 +1308,9 @@ export default function AdminQuestionsEditor() {
           topics={allTopics || []}
           onUploadImage={async (file) => {
             if (editingQuestion) {
-              const result = await uploadImage.mutateAsync({ questionId: editingQuestion.id, file });
-              return result?.image_url;
+              // The mutation returns the URL string directly, not an object
+              const processedUrl = await uploadImage.mutateAsync({ questionId: editingQuestion.id, file });
+              return processedUrl;
             }
           }}
           onRemoveImage={async () => {
