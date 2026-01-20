@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
+import { formatExamType } from "@/lib/examUtils";
 
 type IngestionJob = Tables<"ingestion_jobs">;
 
@@ -198,8 +199,8 @@ export function useUpdateExamDetails() {
 
   return useMutation({
     mutationFn: async ({ jobId, examYear, examSemester, examType, coursePackId }: UpdateExamDetailsParams) => {
-      // Determine is_final from exam type
-      const isFinal = examType === "Final";
+      // Determine is_final from simple exam type (f = final)
+      const isFinal = examType === "f";
       
       // Update job details
       const { error: jobError } = await supabase
@@ -215,37 +216,18 @@ export function useUpdateExamDetails() {
 
       if (jobError) throw jobError;
 
-      // Build new source_exam string for questions
-      // First, get the course name
-      let courseName = "";
-      if (coursePackId) {
-        const { data: course } = await supabase
-          .from("course_packs")
-          .select("title")
-          .eq("id", coursePackId)
-          .single();
-        courseName = course?.title || "";
-      } else {
-        // Get from current job
-        const { data: job } = await supabase
-          .from("ingestion_jobs")
-          .select("course_packs(title)")
-          .eq("id", jobId)
-          .single();
-        courseName = (job as any)?.course_packs?.title || "";
-      }
-
-      // Build the source_exam string
+      // Build new source_exam string for questions using display format
       const parts: string[] = [];
       if (examSemester && examYear) {
         parts.push(`${examSemester} ${examYear}`);
       }
-      if (examType) {
-        parts.push(examType);
+      const formattedType = formatExamType(examType);
+      if (formattedType) {
+        parts.push(formattedType);
       }
       const newSourceExam = parts.join(" ") || "Unknown Exam";
 
-      // Get current job's course_pack_id to find related questions
+      // Get current job's course_pack_id and old source_exam to find related questions
       const { data: currentJob } = await supabase
         .from("ingestion_jobs")
         .select("course_pack_id")
@@ -253,38 +235,38 @@ export function useUpdateExamDetails() {
         .single();
 
       if (currentJob) {
-        // Extract midterm number from exam type for non-finals
+        // Extract midterm number from simple exam type for non-finals
         let midtermNumber: number | null = null;
         if (!isFinal && examType) {
-          const match = examType.match(/Midterm\s*(\d)/i);
-          if (match) {
-            midtermNumber = parseInt(match[1], 10);
+          const numVal = parseInt(examType, 10);
+          if (!isNaN(numVal) && numVal >= 1 && numVal <= 3) {
+            midtermNumber = numVal;
           }
         }
 
-        // Update all questions that belong to this job's source exam
-        // We need to get the old source_exam first
-        const { data: jobData } = await supabase
-          .from("ingestion_jobs")
-          .select("*")
-          .eq("id", jobId)
-          .single();
+        // Get all questions for this course pack and update their source_exam
+        // We update all questions since there's no direct job_id on questions
+        // In a real app you might track which questions came from which job
+        const { data: questions } = await supabase
+          .from("questions")
+          .select("id")
+          .eq("course_pack_id", currentJob.course_pack_id);
 
-        // Find questions by course_pack_id that were created from this job
-        // Since we don't have direct job reference, update by matching timestamps or use source_exam
-        // For now, we'll update questions with the same course_pack_id that match the old pattern
-        // This is a simplified approach - in production you might want a direct job_id reference on questions
-
-        // Update midterm_number for non-final exams
-        if (!isFinal && midtermNumber !== null) {
+        if (questions && questions.length > 0) {
+          // Update source_exam and midterm_number for all questions in this course pack
+          const updateData: { source_exam: string; midterm_number?: number | null } = { 
+            source_exam: newSourceExam 
+          };
+          
+          // For non-final exams, also update midterm_number
+          if (!isFinal && midtermNumber !== null) {
+            updateData.midterm_number = midtermNumber;
+          }
+          
           await supabase
             .from("questions")
-            .update({ 
-              source_exam: newSourceExam,
-              midterm_number: midtermNumber 
-            })
-            .eq("course_pack_id", currentJob.course_pack_id)
-            .eq("source_exam", (jobData as any)?.source_exam || "");
+            .update(updateData)
+            .eq("course_pack_id", currentJob.course_pack_id);
         }
       }
 

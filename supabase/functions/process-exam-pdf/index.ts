@@ -12,6 +12,14 @@ interface ExtractedQuestion {
   questionOrder: number;
 }
 
+// Convert simple exam type to display format for source_exam string
+function formatExamTypeDisplay(examType: string | undefined): string {
+  if (!examType) return "";
+  if (examType === "f") return "Final";
+  if (examType === "1" || examType === "2" || examType === "3") return `Midterm ${examType}`;
+  return examType;
+}
+
 interface ProcessingResult {
   questionsExtracted: number;
   message: string;
@@ -128,8 +136,8 @@ EXAM METADATA EXTRACTION (CRITICAL):
 From the cover page or header, extract these SEPARATE fields:
 - examYear: The year (integer, e.g., 2024)
 - examSemester: The semester/term (exactly one of: "Spring", "Summer", "Fall", "Winter")
-- examType: The exam type (exactly one of: "Midterm 1", "Midterm 2", "Midterm 3", "Final")
-- isFinal: boolean (true if examType is "Final", false otherwise)
+- examType: Simple value representing the exam type. Use exactly one of: "1", "2", "3" (for Midterm 1, 2, 3) or "f" (for Final).
+  Examples: First midterm exam → "1", Second midterm → "2", Final exam → "f"
 
 PROMPT LAYOUT (CRITICAL):
 - Preserve the PDF's visual layout using NEWLINES.
@@ -224,11 +232,7 @@ Return your response using the extract_questions function.`;
                       },
                       examType: {
                         type: "string",
-                        description: "The exam type (exactly one of: 'Midterm 1', 'Midterm 2', 'Midterm 3', 'Final')",
-                      },
-                      isFinal: {
-                        type: "boolean",
-                        description: "True if examType is 'Final', false otherwise",
+                        description: "Simple exam type value. Use exactly: '1' (Midterm 1), '2' (Midterm 2), '3' (Midterm 3), or 'f' (Final)",
                       },
                       questions: {
                         type: "array",
@@ -315,11 +319,9 @@ Return your response using the extract_questions function.`;
     let extractedData: { 
       examYear?: number; 
       examSemester?: string; 
-      examType?: string; 
-      isFinal?: boolean; 
+      examType?: string; // "1", "2", "3", or "f"
       questions: ExtractedQuestion[] 
     } = {
-      isFinal: false,
       questions: [],
     };
 
@@ -331,7 +333,6 @@ Return your response using the extract_questions function.`;
           examYear?: number;
           examSemester?: string;
           examType?: string;
-          isFinal?: boolean;
           questions: ExtractedQuestion[];
         };
       } else {
@@ -341,15 +342,17 @@ Return your response using the extract_questions function.`;
       console.error("Failed to parse Gemini response:", parseError);
     }
 
-    const isFinalExam = extractedData.isFinal === true || extractedData.examType === "Final";
+    // Determine if final based on simple exam type
+    const isFinalExam = extractedData.examType === "f";
     
-    // Build source_exam string from structured data
+    // Build source_exam string from structured data using display format
     const sourceExamParts: string[] = [];
     if (extractedData.examSemester && extractedData.examYear) {
       sourceExamParts.push(`${extractedData.examSemester} ${extractedData.examYear}`);
     }
-    if (extractedData.examType) {
-      sourceExamParts.push(extractedData.examType);
+    const formattedType = formatExamTypeDisplay(extractedData.examType);
+    if (formattedType) {
+      sourceExamParts.push(formattedType);
     }
     const sourceExam = sourceExamParts.join(" ") || job.file_name;
     
@@ -382,13 +385,13 @@ Return your response using the extract_questions function.`;
     // Step B3: Delete existing questions for this source_exam, then insert new ones
     console.log("Step B3: Deleting existing questions for this exam...");
 
-    // For non-final exams, extract midterm number from exam type
-    // For finals, midterm_number will be set per-question during analysis based on topic coverage
+    // For non-final exams, extract midterm number from simple exam type (1, 2, 3)
+    // For finals (f), midterm_number will be set per-question during analysis based on topic coverage
     let docMidtermNumber: number | null = null;
     if (!isFinalExam && extractedData.examType) {
-      const match = extractedData.examType.match(/Midterm\s*(\d)/i);
-      if (match) {
-        docMidtermNumber = parseInt(match[1], 10);
+      const numVal = parseInt(extractedData.examType, 10);
+      if (!isNaN(numVal) && numVal >= 1 && numVal <= 3) {
+        docMidtermNumber = numVal;
       }
     }
 

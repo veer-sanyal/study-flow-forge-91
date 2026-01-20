@@ -20,10 +20,24 @@ export const SEMESTERS = ["Spring", "Summer", "Fall", "Winter"] as const;
 export type Semester = typeof SEMESTERS[number];
 
 /**
- * Available exam types for exam metadata
+ * Available exam types for exam metadata (stored as simple values)
+ * 1, 2, 3 = Midterm 1, 2, 3; f = Final
  */
-export const EXAM_TYPES = ["Midterm 1", "Midterm 2", "Midterm 3", "Final"] as const;
+export const EXAM_TYPES = ["1", "2", "3", "f"] as const;
 export type ExamType = typeof EXAM_TYPES[number];
+
+/**
+ * Convert simple exam type value to display format
+ * "1" -> "Midterm 1", "f" -> "Final", etc.
+ */
+export function formatExamType(examType: string | null | undefined): string {
+  if (!examType) return "";
+  if (examType === "f" || examType.toLowerCase() === "final") return "Final";
+  if (examType === "1" || examType === "2" || examType === "3") return `Midterm ${examType}`;
+  // Legacy format support
+  if (examType.startsWith("Midterm")) return examType;
+  return examType;
+}
 
 /**
  * Build an exam title from structured exam details
@@ -43,7 +57,8 @@ export function buildExamTitle(
   } else if (semester) {
     parts.push(semester);
   }
-  if (examType) parts.push(examType);
+  const formattedType = formatExamType(examType);
+  if (formattedType) parts.push(formattedType);
   return parts.length > 0 ? parts.join(" - ") : "Untitled Exam";
 }
 
