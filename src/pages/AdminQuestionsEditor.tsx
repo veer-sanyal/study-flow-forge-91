@@ -1009,48 +1009,23 @@ export default function AdminQuestionsEditor() {
   };
 
   const runBatchAnalysis = async (questionsToAnalyze: Question[]) => {
+    if (!courseId || !decodedExamName) return;
+    
     setIsAnalyzingAll(true);
     setAnalyzeAllProgress({ current: 0, total: questionsToAnalyze.length });
-    
-    // Start progress tracking for cross-tab visibility
-    startAnalysis({
-      examName: decodedExamName,
-      coursePackTitle: course?.title || "Unknown Course",
-      coursePackId: courseId!,
-      totalQuestions: questionsToAnalyze.length,
-    });
 
-    let errorsCount = 0;
-
-    for (let i = 0; i < questionsToAnalyze.length; i++) {
-      const question = questionsToAnalyze[i];
-      setAnalyzeAllProgress({ current: i + 1, total: questionsToAnalyze.length });
-      setAnalyzingQuestionId(question.id);
-      
-      // Update progress for cross-tab visibility
-      updateProgress({
-        currentQuestionIndex: i + 1,
-        currentQuestionPrompt: question.prompt.slice(0, 100),
-        errorsCount,
+    try {
+      await startBatchAnalysis.mutateAsync({
+        coursePackId: courseId,
+        sourceExam: decodedExamName,
+        questionIds: questionsToAnalyze.map(q => q.id),
       });
-
-      try {
-        await analyzeQuestion.mutateAsync(question.id);
-      } catch (error) {
-        console.error(`Failed to analyze question ${question.id}:`, error);
-        errorsCount++;
-        incrementErrors();
-      }
-    }
-
-    setAnalyzingQuestionId(null);
-    setIsAnalyzingAll(false);
-    completeAnalysis();
-    
-    if (errorsCount > 0) {
-      toast.warning(`Analyzed ${questionsToAnalyze.length - errorsCount} questions, ${errorsCount} failed`);
-    } else {
-      toast.success(`Analyzed ${questionsToAnalyze.length} questions`);
+      
+      toast.success(`Started batch analysis of ${questionsToAnalyze.length} questions. Progress will continue even if you close this page.`);
+    } catch (error) {
+      toast.error(`Failed to start batch analysis: ${error instanceof Error ? error.message : "Unknown error"}`);
+    } finally {
+      setIsAnalyzingAll(false);
     }
   };
 
