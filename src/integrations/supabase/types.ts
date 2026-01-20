@@ -171,6 +171,9 @@ export type Database = {
           created_by: string | null
           current_step: string | null
           error_message: string | null
+          exam_semester: string | null
+          exam_type: string | null
+          exam_year: number | null
           file_name: string
           file_path: string
           id: string
@@ -190,6 +193,9 @@ export type Database = {
           created_by?: string | null
           current_step?: string | null
           error_message?: string | null
+          exam_semester?: string | null
+          exam_type?: string | null
+          exam_year?: number | null
           file_name: string
           file_path: string
           id?: string
@@ -209,6 +215,9 @@ export type Database = {
           created_by?: string | null
           current_step?: string | null
           error_message?: string | null
+          exam_semester?: string | null
+          exam_type?: string | null
+          exam_year?: number | null
           file_name?: string
           file_path?: string
           id?: string

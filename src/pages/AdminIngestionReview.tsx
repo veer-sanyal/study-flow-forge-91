@@ -32,6 +32,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogFooter,
 } from "@/components/ui/dialog";
 import { 
   ChevronLeft,
@@ -52,16 +53,19 @@ import {
   MessageSquare,
   BookOpen,
   Globe,
-  EyeOff
+  EyeOff,
+  Pencil
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { MathRenderer } from "@/components/study/MathRenderer";
 import { QuestionImage } from "@/components/study/QuestionImage";
 import { useAllTopics, useUploadQuestionImage, useRemoveQuestionImage } from "@/hooks/use-questions";
+import { useUpdateExamDetails } from "@/hooks/use-ingestion";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
+import { buildExamTitle, SEMESTERS, EXAM_TYPES } from "@/lib/examUtils";
 
 interface QuestionChoice {
   id: string;
@@ -411,10 +415,8 @@ function QuestionCard({
                 {question.question_order || index + 1}
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {question.source_exam && (
-                  <Badge variant="outline" className="text-xs">
-                    {question.source_exam}
-                  </Badge>
+                {question.question_types?.name && (
+                  <Badge variant="secondary">{question.question_types.name}</Badge>
                 )}
                 {question.question_types?.name && (
                   <Badge variant="secondary">{question.question_types.name}</Badge>
@@ -945,6 +947,114 @@ function EditQuestionDialog({
   );
 }
 
+// Edit Exam Details Dialog
+function EditExamDetailsDialog({
+  open,
+  onOpenChange,
+  job,
+  onSave,
+  isSaving,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  job: any;
+  onSave: (data: { examYear: number | null; examSemester: string | null; examType: string | null }) => void;
+  isSaving: boolean;
+}) {
+  const [examYear, setExamYear] = useState<number | null>(null);
+  const [examSemester, setExamSemester] = useState<string | null>(null);
+  const [examType, setExamType] = useState<string | null>(null);
+
+  // Initialize values when dialog opens
+  useMemo(() => {
+    if (job && open) {
+      setExamYear((job as any).exam_year || null);
+      setExamSemester((job as any).exam_semester || null);
+      setExamType((job as any).exam_type || null);
+    }
+  }, [job, open]);
+
+  const previewTitle = buildExamTitle(
+    job?.course_packs?.title,
+    examYear,
+    examSemester,
+    examType
+  );
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Edit Exam Details</DialogTitle>
+        </DialogHeader>
+        
+        <div className="space-y-4 py-4">
+          {/* Course (read-only for now) */}
+          <div className="space-y-2">
+            <Label>Course</Label>
+            <Input value={job?.course_packs?.title || ""} disabled className="bg-muted" />
+          </div>
+          
+          {/* Year */}
+          <div className="space-y-2">
+            <Label>Year</Label>
+            <Input 
+              type="number" 
+              placeholder="e.g., 2024"
+              value={examYear || ""}
+              onChange={(e) => setExamYear(e.target.value ? parseInt(e.target.value) : null)}
+            />
+          </div>
+          
+          {/* Semester */}
+          <div className="space-y-2">
+            <Label>Semester</Label>
+            <Select value={examSemester || ""} onValueChange={(v) => setExamSemester(v || null)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select semester" />
+              </SelectTrigger>
+              <SelectContent>
+                {SEMESTERS.map((sem) => (
+                  <SelectItem key={sem} value={sem}>{sem}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Exam Type */}
+          <div className="space-y-2">
+            <Label>Exam Type</Label>
+            <Select value={examType || ""} onValueChange={(v) => setExamType(v || null)}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select exam type" />
+              </SelectTrigger>
+              <SelectContent>
+                {EXAM_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>{type}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          
+          {/* Preview */}
+          <div className="space-y-2 pt-2 border-t">
+            <Label className="text-muted-foreground">Preview Title</Label>
+            <div className="text-lg font-semibold">{previewTitle}</div>
+          </div>
+        </div>
+        
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => onSave({ examYear, examSemester, examType })} disabled={isSaving}>
+            {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+            Save Changes
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminIngestionReview() {
   const { jobId } = useParams();
   const navigate = useNavigate();
@@ -959,6 +1069,7 @@ export default function AdminIngestionReview() {
   const analyzeQuestion = useAnalyzeQuestion();
   const uploadImage = useUploadQuestionImage();
   const removeImage = useRemoveQuestionImage();
+  const updateExamDetails = useUpdateExamDetails();
   
   const [publishingExam, setPublishingExam] = useState(false);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
@@ -966,6 +1077,18 @@ export default function AdminIngestionReview() {
   const [analyzingId, setAnalyzingId] = useState<string | null>(null);
   const [isAnalyzingAll, setIsAnalyzingAll] = useState(false);
   const [analyzeAllProgress, setAnalyzeAllProgress] = useState({ current: 0, total: 0 });
+  const [editExamOpen, setEditExamOpen] = useState(false);
+
+  // Compute exam title from structured fields
+  const examTitle = useMemo(() => {
+    if (!job) return "";
+    return buildExamTitle(
+      job.course_packs?.title,
+      (job as any).exam_year,
+      (job as any).exam_semester,
+      (job as any).exam_type
+    );
+  }, [job]);
 
   const topics = useMemo(() => {
     const map = new Map<string, string>();
@@ -1171,18 +1294,28 @@ export default function AdminIngestionReview() {
             </Link>
           </Button>
           <div className="flex-1">
-            <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <FileText className="h-6 w-6" />
-              {job.file_name}
+            <div className="flex items-center gap-2">
+              <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
+                <FileText className="h-6 w-6" />
+                {examTitle || job.file_name}
+              </h1>
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="h-8 w-8"
+                onClick={() => setEditExamOpen(true)}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
               {isPublished && (
                 <Badge className="bg-green-500 gap-1">
                   <Globe className="h-3 w-3" />
                   Published
                 </Badge>
               )}
-            </h1>
+            </div>
             <p className="text-muted-foreground text-sm">
-              {job.course_packs?.title} • Review and analyze extracted questions
+              Review and analyze extracted questions
             </p>
           </div>
           
@@ -1206,7 +1339,7 @@ export default function AdminIngestionReview() {
               <Button
                 onClick={handlePublishToggle}
                 disabled={!canPublish || publishingExam}
-                className="gap-2 bg-green-600 hover:bg-green-700"
+                className="gap-2 bg-green-500 hover:bg-green-600"
               >
                 {publishingExam ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -1293,10 +1426,7 @@ export default function AdminIngestionReview() {
           <div className="space-y-8">
             {Object.entries(groupedQuestions).map(([examName, examQuestions]) => (
               <motion.div key={examName} variants={staggerItem} className="space-y-4">
-                <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
-                  <Badge variant="outline" className="text-sm font-normal">
-                    {examQuestions.length} questions
-                  </Badge>
+                <h2 className="text-lg font-semibold text-foreground">
                   {examName}
                 </h2>
                 <div className="space-y-4">
@@ -1334,6 +1464,29 @@ export default function AdminIngestionReview() {
               setEditingQuestion({ ...editingQuestion, image_url: null });
             }
           }}
+        />
+
+        {/* Edit Exam Details Dialog */}
+        <EditExamDetailsDialog
+          open={editExamOpen}
+          onOpenChange={setEditExamOpen}
+          job={job}
+          onSave={async (data) => {
+            if (!jobId) return;
+            try {
+              await updateExamDetails.mutateAsync({
+                jobId,
+                examYear: data.examYear,
+                examSemester: data.examSemester,
+                examType: data.examType,
+              });
+              toast.success("Exam details updated!");
+              setEditExamOpen(false);
+            } catch (error) {
+              toast.error("Failed to update exam details");
+            }
+          }}
+          isSaving={updateExamDetails.isPending}
         />
 
         {/* Delete Confirmation */}

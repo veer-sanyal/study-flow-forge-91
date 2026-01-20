@@ -122,11 +122,14 @@ Extract ALL questions with precise LaTeX formatting that renders correctly in a 
 
 OUTPUT REQUIREMENTS:
 - Return JSON via extract_questions only (no extra commentary).
-- Each question has: questionOrder (1..N), sourceExamName, prompt, choices[{label, text}], (optional) questionNumberFromPDF.
+- Each question has: questionOrder (1..N), prompt, choices[{label, text}], (optional) questionNumberFromPDF.
 
-SOURCE EXAM NAME:
-- Extract from the cover/header if present (e.g., course + year (eg 2024) + term (Spring or fall) + exam (midterm 1, 2, or 3 or final). Use the first page header.
-- IMPORTANT: Identify if this is a "Final" exam (set isFinal=true) or a "Midterm" exam (set isFinal=false and extract midtermNumber 1, 2, or 3).
+EXAM METADATA EXTRACTION (CRITICAL):
+From the cover page or header, extract these SEPARATE fields:
+- examYear: The year (integer, e.g., 2024)
+- examSemester: The semester/term (exactly one of: "Spring", "Summer", "Fall", "Winter")
+- examType: The exam type (exactly one of: "Midterm 1", "Midterm 2", "Midterm 3", "Final")
+- isFinal: boolean (true if examType is "Final", false otherwise)
 
 PROMPT LAYOUT (CRITICAL):
 - Preserve the PDF's visual layout using NEWLINES.
@@ -207,21 +210,25 @@ Return your response using the extract_questions function.`;
               functionDeclarations: [
                 {
                   name: "extract_questions",
-                  description: "Extract questions from an exam PDF with proper LaTeX math delimiters",
+                  description: "Extract questions from an exam PDF with proper LaTeX math delimiters and structured exam metadata",
                   parameters: {
                     type: "object",
                     properties: {
-                      sourceExam: {
+                      examYear: {
+                        type: "number",
+                        description: "The year of the exam (e.g., 2024)",
+                      },
+                      examSemester: {
                         type: "string",
-                        description: "Name of the exam (e.g., 'Fall 2023 Midterm 1' or 'Spring 2024 Final')",
+                        description: "The semester (exactly one of: 'Spring', 'Summer', 'Fall', 'Winter')",
+                      },
+                      examType: {
+                        type: "string",
+                        description: "The exam type (exactly one of: 'Midterm 1', 'Midterm 2', 'Midterm 3', 'Final')",
                       },
                       isFinal: {
                         type: "boolean",
-                        description: "True if this is a Final exam, false if it's a Midterm",
-                      },
-                      midtermNumber: {
-                        type: "number",
-                        description: "The midterm number (1, 2, or 3) if this is a Midterm exam. Leave null for Finals.",
+                        description: "True if examType is 'Final', false otherwise",
                       },
                       questions: {
                         type: "array",
@@ -305,8 +312,13 @@ Return your response using the extract_questions function.`;
     await supabase.from("ingestion_jobs").update({ current_step: "B2", progress_pct: 60 }).eq("id", jobId);
 
     // Parse the tool call response
-    let extractedData: { sourceExam: string; isFinal?: boolean; midtermNumber?: number; questions: ExtractedQuestion[] } = {
-      sourceExam: job.file_name,
+    let extractedData: { 
+      examYear?: number; 
+      examSemester?: string; 
+      examType?: string; 
+      isFinal?: boolean; 
+      questions: ExtractedQuestion[] 
+    } = {
       isFinal: false,
       questions: [],
     };
@@ -316,9 +328,10 @@ Return your response using the extract_questions function.`;
       const functionCall = geminiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
       if (functionCall?.name === "extract_questions" && functionCall?.args) {
         extractedData = functionCall.args as {
-          sourceExam: string;
+          examYear?: number;
+          examSemester?: string;
+          examType?: string;
           isFinal?: boolean;
-          midtermNumber?: number;
           questions: ExtractedQuestion[];
         };
       } else {
@@ -328,8 +341,19 @@ Return your response using the extract_questions function.`;
       console.error("Failed to parse Gemini response:", parseError);
     }
 
-    const isFinalExam = extractedData.isFinal === true;
-    console.log(`Extracted ${extractedData.questions.length} questions from ${extractedData.sourceExam} (isFinal: ${isFinalExam})`);
+    const isFinalExam = extractedData.isFinal === true || extractedData.examType === "Final";
+    
+    // Build source_exam string from structured data
+    const sourceExamParts: string[] = [];
+    if (extractedData.examSemester && extractedData.examYear) {
+      sourceExamParts.push(`${extractedData.examSemester} ${extractedData.examYear}`);
+    }
+    if (extractedData.examType) {
+      sourceExamParts.push(extractedData.examType);
+    }
+    const sourceExam = sourceExamParts.join(" ") || job.file_name;
+    
+    console.log(`Extracted ${extractedData.questions.length} questions - Year: ${extractedData.examYear}, Semester: ${extractedData.examSemester}, Type: ${extractedData.examType}, isFinal: ${isFinalExam}`);
 
     if (extractedData.questions.length === 0) {
       await supabase
@@ -358,21 +382,27 @@ Return your response using the extract_questions function.`;
     // Step B3: Delete existing questions for this source_exam, then insert new ones
     console.log("Step B3: Deleting existing questions for this exam...");
 
-    // For non-final exams, use the midterm number from the PDF
+    // For non-final exams, extract midterm number from exam type
     // For finals, midterm_number will be set per-question during analysis based on topic coverage
-    const docMidtermNumber = isFinalExam ? null : (extractedData.midtermNumber || null);
+    let docMidtermNumber: number | null = null;
+    if (!isFinalExam && extractedData.examType) {
+      const match = extractedData.examType.match(/Midterm\s*(\d)/i);
+      if (match) {
+        docMidtermNumber = parseInt(match[1], 10);
+      }
+    }
 
     // Delete any existing questions with the same source_exam and course_pack_id to avoid duplicates
     const { error: deleteError } = await supabase
       .from("questions")
       .delete()
       .eq("course_pack_id", job.course_pack_id)
-      .eq("source_exam", extractedData.sourceExam);
+      .eq("source_exam", sourceExam);
 
     if (deleteError) {
       console.error("Failed to delete existing questions:", deleteError);
     } else {
-      console.log(`Deleted existing questions for exam: ${extractedData.sourceExam}`);
+      console.log(`Deleted existing questions for exam: ${sourceExam}`);
     }
 
     console.log("Inserting new questions (pending analysis)...");
@@ -395,7 +425,7 @@ Return your response using the extract_questions function.`;
         hint: null, // Will be set during analysis
         difficulty: null, // Will be set during analysis
         topic_ids: [], // Will be set during analysis
-        source_exam: extractedData.sourceExam,
+        source_exam: sourceExam,
         needs_review: true, // Needs analysis
         unmapped_topic_suggestions: null,
         question_type_id: null, // Will be set during analysis
@@ -409,7 +439,7 @@ Return your response using the extract_questions function.`;
       }
     }
 
-    // Update job with is_final flag and complete status
+    // Update job with structured exam details and complete status
     await supabase
       .from("ingestion_jobs")
       .update({
@@ -418,6 +448,9 @@ Return your response using the extract_questions function.`;
         progress_pct: 100,
         questions_extracted: extractedData.questions.length,
         questions_mapped: 0,
+        exam_year: extractedData.examYear || null,
+        exam_semester: extractedData.examSemester || null,
+        exam_type: extractedData.examType || null,
         questions_pending_review: extractedData.questions.length, // All need analysis
         completed_at: new Date().toISOString(),
         is_final: isFinalExam,
