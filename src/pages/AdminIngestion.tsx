@@ -1,7 +1,6 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { 
-  Upload, 
   FileText, 
   Loader2, 
   CheckCircle2, 
@@ -10,7 +9,7 @@ import {
   Play,
   Trash2,
   RefreshCw,
-  AlertCircle
+  Server
 } from "lucide-react";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,13 +17,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -36,67 +28,29 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { useCoursePacks } from "@/hooks/use-admin";
 import { 
   useIngestionJobs, 
-  useCreateIngestionJob, 
   useProcessJob, 
   useDeleteJob 
 } from "@/hooks/use-ingestion";
-import { JobQuestionReview } from "@/components/admin/JobQuestionReview";
 import { staggerContainer, staggerItem } from "@/lib/motion";
-import { cn } from "@/lib/utils";
 import { formatDistanceToNow } from "date-fns";
+import { useNavigate } from "react-router-dom";
 
 export default function AdminIngestion() {
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const navigate = useNavigate();
   
   // State
-  const [selectedPackId, setSelectedPackId] = useState<string>("");
   const [deleteJob, setDeleteJob] = useState<any | null>(null);
   const [processingJobId, setProcessingJobId] = useState<string | null>(null);
-  const [expandedJobId, setExpandedJobId] = useState<string | null>(null);
   
   // Data
-  const { data: coursePacks, isLoading: packsLoading } = useCoursePacks();
   const { data: jobs, isLoading: jobsLoading, refetch: refetchJobs } = useIngestionJobs();
   
   // Mutations
-  const createJob = useCreateIngestionJob();
   const processJob = useProcessJob();
   const deleteJobMutation = useDeleteJob();
-
-  const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    if (!selectedPackId) {
-      toast({ title: "Please select a course pack first", variant: "destructive" });
-      return;
-    }
-
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      toast({ title: "Only PDF files are supported", variant: "destructive" });
-      return;
-    }
-
-    try {
-      const job = await createJob.mutateAsync({ coursePackId: selectedPackId, file });
-      toast({ title: "PDF uploaded successfully", description: "Click 'Process' to extract questions" });
-      
-      // Clear file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
-    } catch (error) {
-      toast({ 
-        title: "Upload failed", 
-        description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive" 
-      });
-    }
-  };
 
   const handleProcess = async (jobId: string) => {
     setProcessingJobId(jobId);
@@ -104,7 +58,7 @@ export default function AdminIngestion() {
       const result = await processJob.mutateAsync({ jobId, kind: "pdf" });
       toast({ 
         title: "Processing complete", 
-        description: `Extracted ${result.questionsExtracted} questions, ${result.questionsMapped} mapped, ${result.questionsPendingReview} need review` 
+        description: `Extracted ${result.questionsExtracted} questions` 
       });
     } catch (error) {
       toast({ 
@@ -144,16 +98,21 @@ export default function AdminIngestion() {
     }
   };
 
-  if (packsLoading) {
-    return (
-      <PageTransition>
-        <div className="p-6 space-y-6">
-          <Skeleton className="h-8 w-48" />
-          <Skeleton className="h-32 w-full" />
-        </div>
-      </PageTransition>
-    );
-  }
+  const handleViewExam = (job: any) => {
+    if (!job.course_pack_id || !job.exam_year || !job.exam_semester) return;
+    
+    // Build the source_exam string to navigate to the questions page
+    const parts: string[] = [];
+    if (job.exam_semester && job.exam_year) {
+      parts.push(`${job.exam_semester} ${job.exam_year}`);
+    }
+    if (job.exam_type) {
+      const type = job.exam_type === "f" ? "Final" : `Midterm ${job.exam_type}`;
+      parts.push(type);
+    }
+    const sourceExam = encodeURIComponent(parts.join(" ") || job.file_name);
+    navigate(`/admin/questions/${job.course_pack_id}/${sourceExam}`);
+  };
 
   return (
     <PageTransition>
@@ -167,11 +126,11 @@ export default function AdminIngestion() {
         <motion.div variants={staggerItem} className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
-              <Upload className="h-6 w-6" />
-              Exam PDF Ingestion
+              <Server className="h-6 w-6" />
+              Advanced Queue Monitor
             </h1>
             <p className="text-muted-foreground text-sm mt-1">
-              Upload past exam PDFs to extract and import questions
+              Track background processing jobs and their status
             </p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetchJobs()}>
@@ -180,81 +139,13 @@ export default function AdminIngestion() {
           </Button>
         </motion.div>
 
-        {/* Upload Section */}
-        <motion.div variants={staggerItem}>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Upload New PDF</CardTitle>
-              <CardDescription>
-                Select a course pack and upload an exam PDF to extract questions
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-col sm:flex-row gap-4">
-                <Select value={selectedPackId} onValueChange={setSelectedPackId}>
-                  <SelectTrigger className="w-full sm:w-64">
-                    <SelectValue placeholder="Select course pack" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {coursePacks?.map((pack) => (
-                      <SelectItem key={pack.id} value={pack.id}>
-                        {pack.title}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-
-                <div className="flex-1">
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                    id="pdf-upload"
-                  />
-                  <label
-                    htmlFor="pdf-upload"
-                    className={cn(
-                      "flex items-center justify-center gap-2 px-4 py-2 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                      selectedPackId 
-                        ? "border-primary/50 hover:border-primary hover:bg-primary/5" 
-                        : "border-muted cursor-not-allowed opacity-50",
-                      createJob.isPending && "pointer-events-none"
-                    )}
-                  >
-                    {createJob.isPending ? (
-                      <>
-                        <Loader2 className="h-5 w-5 animate-spin" />
-                        <span>Uploading...</span>
-                      </>
-                    ) : (
-                      <>
-                        <FileText className="h-5 w-5" />
-                        <span>Choose PDF file</span>
-                      </>
-                    )}
-                  </label>
-                </div>
-              </div>
-
-              {!coursePacks?.length && (
-                <div className="text-sm text-muted-foreground flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4" />
-                  Create a course pack first in the Calendar section
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </motion.div>
-
         {/* Jobs List */}
         <motion.div variants={staggerItem}>
           <Card>
             <CardHeader>
               <CardTitle className="text-lg">Processing Jobs</CardTitle>
               <CardDescription>
-                View and manage PDF processing jobs
+                Monitor PDF extraction and calendar processing jobs
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -267,8 +158,8 @@ export default function AdminIngestion() {
               ) : !jobs?.length ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <FileText className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No ingestion jobs yet</p>
-                  <p className="text-sm">Upload a PDF to get started</p>
+                  <p>No processing jobs</p>
+                  <p className="text-sm">Upload PDFs from the course questions page</p>
                 </div>
               ) : (
                 <div className="space-y-3">
@@ -308,7 +199,7 @@ export default function AdminIngestion() {
                               <span className="text-blue-600">
                                 {job.questions_mapped} mapped
                               </span>
-                              {job.questions_pending_review > 0 && (
+                              {(job.questions_pending_review ?? 0) > 0 && (
                                 <span className="text-amber-600">
                                   {job.questions_pending_review} need review
                                 </span>
@@ -324,6 +215,16 @@ export default function AdminIngestion() {
                         </div>
 
                         <div className="flex items-center gap-2 shrink-0">
+                          {job.status === "completed" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleViewExam(job)}
+                            >
+                              View Questions
+                            </Button>
+                          )}
+                          
                           {job.status === "pending" && (
                             <Button
                               size="sm"
@@ -360,19 +261,6 @@ export default function AdminIngestion() {
                           </Button>
                         </div>
                       </div>
-
-                      {/* Question Review Panel for completed jobs */}
-                      {job.status === "completed" && job.questions_extracted > 0 && (
-                        <JobQuestionReview
-                          jobId={job.id}
-                          coursePackId={job.course_pack_id}
-                          questionsExtracted={job.questions_extracted}
-                          isExpanded={expandedJobId === job.id}
-                          onToggle={() => setExpandedJobId(
-                            expandedJobId === job.id ? null : job.id
-                          )}
-                        />
-                      )}
                     </div>
                   ))}
                 </div>

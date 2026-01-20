@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +25,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -41,7 +43,9 @@ import {
   Calendar,
   Pencil,
   Save,
-  Loader2
+  Loader2,
+  Plus,
+  Upload
 } from "lucide-react";
 import { 
   parseExamName, 
@@ -54,8 +58,10 @@ import {
   ExamInfo,
   YearGroup 
 } from "@/lib/examUtils";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
+import { useCreateIngestionJob, useProcessJob } from "@/hooks/use-ingestion";
+import { cn } from "@/lib/utils";
 
 function useCoursePack(courseId: string) {
   return useQuery({
@@ -558,9 +564,181 @@ function ExamListSkeleton() {
   );
 }
 
+// Add Exam Upload Dialog
+function AddExamDialog({
+  open,
+  onOpenChange,
+  courseId,
+  onSuccess,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  courseId: string;
+  onSuccess: (sourceExam: string) => void;
+}) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{
+    stage: "idle" | "uploading" | "processing" | "complete" | "error";
+    message: string;
+    percent: number;
+  }>({ stage: "idle", message: "", percent: 0 });
+
+  const createJob = useCreateIngestionJob();
+  const processJob = useProcessJob();
+
+  const handleFile = async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf")) {
+      toast.error("Only PDF files are supported");
+      return;
+    }
+
+    try {
+      // Stage 1: Upload
+      setUploadProgress({ stage: "uploading", message: "Uploading PDF...", percent: 20 });
+      const job = await createJob.mutateAsync({ coursePackId: courseId, file });
+      
+      // Stage 2: Processing
+      setUploadProgress({ stage: "processing", message: "Extracting questions with AI...", percent: 50 });
+      const result = await processJob.mutateAsync({ jobId: job.id, kind: "pdf" });
+      
+      // Stage 3: Complete
+      setUploadProgress({ 
+        stage: "complete", 
+        message: `Extracted ${result.questionsExtracted} questions!`, 
+        percent: 100 
+      });
+
+      // Build source exam string for navigation
+      const jobData = await supabase
+        .from("ingestion_jobs")
+        .select("exam_year, exam_semester, exam_type")
+        .eq("id", job.id)
+        .single();
+
+      const parts: string[] = [];
+      if (jobData.data?.exam_semester && jobData.data?.exam_year) {
+        parts.push(`${jobData.data.exam_semester} ${jobData.data.exam_year}`);
+      }
+      if (jobData.data?.exam_type) {
+        const type = jobData.data.exam_type === "f" ? "Final" : `Midterm ${jobData.data.exam_type}`;
+        parts.push(type);
+      }
+      const sourceExam = parts.join(" ") || file.name.replace(".pdf", "");
+
+      // Wait a moment then navigate
+      setTimeout(() => {
+        onSuccess(sourceExam);
+        onOpenChange(false);
+        setUploadProgress({ stage: "idle", message: "", percent: 0 });
+      }, 1000);
+
+    } catch (error) {
+      setUploadProgress({ 
+        stage: "error", 
+        message: error instanceof Error ? error.message : "Upload failed", 
+        percent: 0 
+      });
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  };
+
+  const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handleFile(file);
+  };
+
+  const isProcessing = uploadProgress.stage === "uploading" || uploadProgress.stage === "processing";
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !isProcessing && onOpenChange(o)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add Exam</DialogTitle>
+          <DialogDescription>
+            Upload a past exam PDF to extract questions
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="py-4">
+          {uploadProgress.stage === "idle" || uploadProgress.stage === "error" ? (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".pdf"
+                onChange={handleFileInput}
+                className="hidden"
+              />
+              <div
+                onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                onDragLeave={() => setIsDragging(false)}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-3 p-8 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
+                  isDragging 
+                    ? "border-primary bg-primary/5" 
+                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
+                )}
+              >
+                <Upload className="h-10 w-10 text-muted-foreground" />
+                <div className="text-center">
+                  <p className="font-medium">Drop PDF here or click to browse</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Supports exam PDFs with multiple choice questions
+                  </p>
+                </div>
+              </div>
+              {uploadProgress.stage === "error" && (
+                <p className="text-destructive text-sm mt-3 text-center">
+                  {uploadProgress.message}
+                </p>
+              )}
+            </>
+          ) : (
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                {uploadProgress.stage === "complete" ? (
+                  <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-green-600" />
+                  </div>
+                ) : (
+                  <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                )}
+                <div className="flex-1">
+                  <p className="font-medium">{uploadProgress.message}</p>
+                  <Progress value={uploadProgress.percent} className="mt-2 h-2" />
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        
+        <DialogFooter>
+          <Button 
+            variant="outline" 
+            onClick={() => onOpenChange(false)}
+            disabled={isProcessing}
+          >
+            {uploadProgress.stage === "complete" ? "Done" : "Cancel"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function AdminExamsList() {
   const { courseId } = useParams<{ courseId: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: course, isLoading: courseLoading } = useCoursePack(courseId!);
   const { data: yearGroups, isLoading: examsLoading } = useExamsForCourse(courseId!);
   const deleteExam = useDeleteExamQuestions();
@@ -569,6 +747,7 @@ export default function AdminExamsList() {
 
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
+  const [addExamOpen, setAddExamOpen] = useState(false);
   const [examToEdit, setExamToEdit] = useState<{
     sourceExam: string;
     examYear: number | null;
@@ -603,6 +782,13 @@ export default function AdminExamsList() {
         onSuccess: () => setExamToEdit(null),
       });
     }
+  };
+
+  const handleExamAdded = (sourceExam: string) => {
+    // Refresh the exams list
+    queryClient.invalidateQueries({ queryKey: ["exams-for-course", courseId] });
+    // Navigate to the new exam's questions page
+    navigate(`/admin/questions/${courseId}/${encodeURIComponent(sourceExam)}`);
   };
 
   const isLoading = courseLoading || examsLoading;
@@ -648,6 +834,10 @@ export default function AdminExamsList() {
               Select an exam to view and edit questions
             </p>
           </div>
+          <Button onClick={() => setAddExamOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Exam
+          </Button>
         </div>
 
         {/* Exam List - Hierarchy: Year → Semester → Exam */}
@@ -718,6 +908,14 @@ export default function AdminExamsList() {
           exam={examToEdit}
           onSave={handleSaveExam}
           isSaving={updateExamDetails.isPending}
+        />
+
+        {/* Add Exam Dialog */}
+        <AddExamDialog
+          open={addExamOpen}
+          onOpenChange={setAddExamOpen}
+          courseId={courseId!}
+          onSuccess={handleExamAdded}
         />
 
         {/* Delete Confirmation Dialog */}
