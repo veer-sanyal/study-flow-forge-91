@@ -965,7 +965,7 @@ export default function AdminQuestionsEditor() {
   const uploadImage = useUploadQuestionImage();
   const removeImage = useRemoveQuestionImage();
   const publishExam = usePublishExam();
-  const { startAnalysis, updateProgress, incrementErrors, completeAnalysis } = useAnalysisProgress();
+  const { startBatchAnalysis, isAnalyzing: isBatchAnalyzing } = useAnalysisProgress();
 
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);

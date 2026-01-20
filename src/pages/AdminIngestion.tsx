@@ -67,14 +67,14 @@ function AnalysisProgressCard() {
     avgTimePerQuestion, 
     estimatedRemainingMs, 
     remainingQuestions,
-    clearAnalysis,
+    cancelAnalysis,
   } = useAnalysisProgress();
   
   const [now, setNow] = useState(Date.now());
 
   // Update elapsed time every second
   useEffect(() => {
-    if (!progress || progress.status !== "analyzing") return;
+    if (!progress || progress.status !== "running") return;
     
     const interval = setInterval(() => {
       setNow(Date.now());
@@ -85,16 +85,23 @@ function AnalysisProgressCard() {
 
   if (!progress) return null;
 
-  const progressPercent = progress.totalQuestions > 0 
-    ? (progress.currentQuestionIndex / progress.totalQuestions) * 100 
+  const progressPercent = progress.total_questions > 0 
+    ? ((progress.completed_questions + progress.failed_questions) / progress.total_questions) * 100 
     : 0;
 
   const isCompleted = progress.status === "completed";
-  const currentElapsed = progress.startedAt ? now - progress.startedAt : elapsedMs;
+  const isFailed = progress.status === "failed";
+  const currentElapsed = progress.started_at ? now - new Date(progress.started_at).getTime() : elapsedMs;
 
   const handleViewExam = () => {
-    const encodedExam = encodeURIComponent(progress.examName);
-    navigate(`/admin/questions/${progress.coursePackId}/${encodedExam}`);
+    const encodedExam = encodeURIComponent(progress.source_exam);
+    navigate(`/admin/questions/${progress.course_pack_id}/${encodedExam}`);
+  };
+
+  const handleDismiss = () => {
+    if (progress?.id) {
+      cancelAnalysis.mutate(progress.id);
+    }
   };
 
   return (
@@ -104,15 +111,17 @@ function AnalysisProgressCard() {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -10 }}
     >
-      <Card className={`border-2 ${isCompleted ? 'border-green-500/50 bg-green-500/5' : 'border-primary/50 bg-primary/5'}`}>
+      <Card className={`border-2 ${isCompleted ? 'border-green-500/50 bg-green-500/5' : isFailed ? 'border-destructive/50 bg-destructive/5' : 'border-primary/50 bg-primary/5'}`}>
         <CardContent className="p-5">
           <div className="space-y-4">
             {/* Header */}
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
-                <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-500/20' : 'bg-primary/20'}`}>
+                <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-500/20' : isFailed ? 'bg-destructive/20' : 'bg-primary/20'}`}>
                   {isCompleted ? (
                     <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : isFailed ? (
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
                   ) : (
                     <Wand2 className="h-5 w-5 text-primary animate-pulse" />
                   )}
@@ -120,14 +129,14 @@ function AnalysisProgressCard() {
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="font-semibold text-base">
-                      {isCompleted ? "Analysis Complete" : "Analyzing Questions"}
+                      {isCompleted ? "Analysis Complete" : isFailed ? "Analysis Failed" : "Analyzing Questions"}
                     </h3>
-                    <Badge variant={isCompleted ? "default" : "secondary"} className={isCompleted ? "bg-green-500" : ""}>
-                      {isCompleted ? "Done" : "In Progress"}
+                    <Badge variant={isCompleted ? "default" : isFailed ? "destructive" : "secondary"} className={isCompleted ? "bg-green-500" : ""}>
+                      {isCompleted ? "Done" : isFailed ? "Failed" : "In Progress"}
                     </Badge>
                   </div>
                   <p className="text-sm text-muted-foreground">
-                    {progress.examName} • {progress.coursePackTitle}
+                    {progress.source_exam}
                   </p>
                 </div>
               </div>
@@ -142,11 +151,11 @@ function AnalysisProgressCard() {
                   <ExternalLink className="h-3.5 w-3.5" />
                   View Exam
                 </Button>
-                {isCompleted && (
+                {(isCompleted || isFailed) && (
                   <Button 
                     size="sm" 
                     variant="ghost"
-                    onClick={clearAnalysis}
+                    onClick={handleDismiss}
                   >
                     Dismiss
                   </Button>
@@ -158,7 +167,7 @@ function AnalysisProgressCard() {
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
                 <span className="font-medium">
-                  {progress.currentQuestionIndex} / {progress.totalQuestions} questions
+                  {progress.completed_questions + progress.failed_questions} / {progress.total_questions} questions
                 </span>
                 <span className="text-muted-foreground">
                   {Math.round(progressPercent)}%
@@ -168,14 +177,14 @@ function AnalysisProgressCard() {
             </div>
 
             {/* Current Question Preview (only when analyzing) */}
-            {!isCompleted && progress.currentQuestionPrompt && (
+            {!isCompleted && !isFailed && progress.current_question_prompt && (
               <div className="p-3 rounded-lg bg-muted/50 border">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Currently analyzing
                 </div>
                 <p className="text-sm line-clamp-2">
-                  {progress.currentQuestionPrompt}...
+                  {progress.current_question_prompt}...
                 </p>
               </div>
             )}
@@ -214,7 +223,7 @@ function AnalysisProgressCard() {
                 <div>
                   <p className="text-xs text-muted-foreground">Est. Remaining</p>
                   <p className="font-medium text-sm">
-                    {!isCompleted && estimatedRemainingMs > 0 
+                    {!isCompleted && !isFailed && estimatedRemainingMs > 0 
                       ? `~${formatDuration(estimatedRemainingMs)}` 
                       : "—"
                     }
@@ -224,11 +233,11 @@ function AnalysisProgressCard() {
             </div>
 
             {/* Errors Warning */}
-            {progress.errorsCount > 0 && (
+            {progress.failed_questions > 0 && (
               <div className="flex items-center gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400">
                 <AlertTriangle className="h-4 w-4 flex-shrink-0" />
                 <span className="text-sm">
-                  {progress.errorsCount} question{progress.errorsCount > 1 ? 's' : ''} failed to analyze
+                  {progress.failed_questions} question{progress.failed_questions > 1 ? 's' : ''} failed to analyze
                 </span>
               </div>
             )}
