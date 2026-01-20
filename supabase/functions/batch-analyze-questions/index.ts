@@ -453,6 +453,44 @@ async function processBatchInBackground(
   // Wait for all remaining in-flight requests
   await Promise.all(inFlight);
 
+  // POST-ANALYSIS PASS: Compare AI answers with answer key
+  console.log(`Running post-analysis answer key comparison for job ${jobId}...`);
+  
+  let mismatchCount = 0;
+  try {
+    // Get all questions that were just analyzed and have an answer key
+    const { data: questionsWithKey } = await supabase
+      .from("questions")
+      .select("id, correct_answer, answer_key_answer")
+      .in("id", questionIds)
+      .not("answer_key_answer", "is", null);
+
+    if (questionsWithKey && questionsWithKey.length > 0) {
+      for (const q of questionsWithKey as any[]) {
+        const aiAnswer = q.correct_answer?.toUpperCase().trim();
+        const keyAnswer = q.answer_key_answer?.toUpperCase().trim();
+        const hasMismatch = aiAnswer && keyAnswer && aiAnswer !== keyAnswer;
+
+        if (hasMismatch) {
+          mismatchCount++;
+          console.log(`Answer mismatch for question ${q.id}: AI=${aiAnswer}, Key=${keyAnswer}`);
+        }
+
+        // Update the question with mismatch status
+        await supabase
+          .from("questions")
+          .update({
+            answer_mismatch: hasMismatch,
+            needs_review: hasMismatch || false, // Set needs_review if mismatch (will merge with existing logic)
+          } as any)
+          .eq("id", q.id);
+      }
+      console.log(`Post-analysis: ${mismatchCount} answer mismatches found out of ${questionsWithKey.length} questions with answer keys`);
+    }
+  } catch (mismatchError) {
+    console.error("Error during answer key comparison:", mismatchError);
+  }
+
   // Mark job as completed
   const finalStatus = failedCount === questionIds.length ? "failed" : "completed";
   await supabase
@@ -462,11 +500,11 @@ async function processBatchInBackground(
       completed_at: new Date().toISOString(),
       current_question_id: null,
       current_question_prompt: null,
-      error_message: failedCount > 0 ? `${failedCount} questions failed` : null,
+      error_message: failedCount > 0 ? `${failedCount} questions failed` : (mismatchCount > 0 ? `${mismatchCount} answer mismatches` : null),
     } as any)
     .eq("id", jobId);
 
-  console.log(`Batch analysis job ${jobId} completed: ${completedCount} succeeded, ${failedCount} failed`);
+  console.log(`Batch analysis job ${jobId} completed: ${completedCount} succeeded, ${failedCount} failed, ${mismatchCount} mismatches`);
 }
 
 serve(async (req) => {
