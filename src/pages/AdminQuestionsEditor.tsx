@@ -54,6 +54,7 @@ import {
   BookOpen,
   Eye,
   EyeOff,
+  RefreshCw,
 } from "lucide-react";
 import { useState, useMemo, useRef } from "react";
 import { toast } from "sonner";
@@ -61,6 +62,7 @@ import { MathRenderer } from "@/components/study/MathRenderer";
 import { QuestionImage } from "@/components/study/QuestionImage";
 import { useAllTopics, useUploadQuestionImage, useRemoveQuestionImage } from "@/hooks/use-questions";
 import { usePublishExam } from "@/hooks/use-ingestion";
+import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
 import type { Json } from "@/integrations/supabase/types";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/lib/motion";
@@ -963,6 +965,7 @@ export default function AdminQuestionsEditor() {
   const uploadImage = useUploadQuestionImage();
   const removeImage = useRemoveQuestionImage();
   const publishExam = usePublishExam();
+  const { startAnalysis, updateProgress, incrementErrors, completeAnalysis } = useAnalysisProgress();
 
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [questionToDelete, setQuestionToDelete] = useState<string | null>(null);
@@ -993,22 +996,62 @@ export default function AdminQuestionsEditor() {
       return;
     }
 
-    setIsAnalyzingAll(true);
-    setAnalyzeAllProgress({ current: 0, total: needsAnalysis.length });
+    await runBatchAnalysis(needsAnalysis);
+  };
 
-    for (let i = 0; i < needsAnalysis.length; i++) {
-      setAnalyzeAllProgress({ current: i + 1, total: needsAnalysis.length });
-      setAnalyzingQuestionId(needsAnalysis[i].id);
+  const handleReanalyzeAll = async () => {
+    if (!questions || questions.length === 0) {
+      toast.info("No questions to re-analyze");
+      return;
+    }
+
+    await runBatchAnalysis(questions);
+  };
+
+  const runBatchAnalysis = async (questionsToAnalyze: Question[]) => {
+    setIsAnalyzingAll(true);
+    setAnalyzeAllProgress({ current: 0, total: questionsToAnalyze.length });
+    
+    // Start progress tracking for cross-tab visibility
+    startAnalysis({
+      examName: decodedExamName,
+      coursePackTitle: course?.title || "Unknown Course",
+      coursePackId: courseId!,
+      totalQuestions: questionsToAnalyze.length,
+    });
+
+    let errorsCount = 0;
+
+    for (let i = 0; i < questionsToAnalyze.length; i++) {
+      const question = questionsToAnalyze[i];
+      setAnalyzeAllProgress({ current: i + 1, total: questionsToAnalyze.length });
+      setAnalyzingQuestionId(question.id);
+      
+      // Update progress for cross-tab visibility
+      updateProgress({
+        currentQuestionIndex: i + 1,
+        currentQuestionPrompt: question.prompt.slice(0, 100),
+        errorsCount,
+      });
+
       try {
-        await analyzeQuestion.mutateAsync(needsAnalysis[i].id);
+        await analyzeQuestion.mutateAsync(question.id);
       } catch (error) {
-        console.error(`Failed to analyze question ${needsAnalysis[i].id}:`, error);
+        console.error(`Failed to analyze question ${question.id}:`, error);
+        errorsCount++;
+        incrementErrors();
       }
     }
 
     setAnalyzingQuestionId(null);
     setIsAnalyzingAll(false);
-    toast.success(`Analyzed ${needsAnalysis.length} questions`);
+    completeAnalysis();
+    
+    if (errorsCount > 0) {
+      toast.warning(`Analyzed ${questionsToAnalyze.length - errorsCount} questions, ${errorsCount} failed`);
+    } else {
+      toast.success(`Analyzed ${questionsToAnalyze.length} questions`);
+    }
   };
 
   const handleSaveEdit = (updates: Partial<Question>) => {
@@ -1106,8 +1149,8 @@ export default function AdminQuestionsEditor() {
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Analyze All button */}
-                {needsAnalysisCount > 0 && (
+                {/* Analyze All / Re-analyze All button */}
+                {needsAnalysisCount > 0 ? (
                   <Button 
                     variant="default" 
                     size="sm"
@@ -1124,6 +1167,26 @@ export default function AdminQuestionsEditor() {
                       <>
                         <Sparkles className="h-4 w-4" />
                         Analyze All ({needsAnalysisCount})
+                      </>
+                    )}
+                  </Button>
+                ) : questions && questions.length > 0 && (
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleReanalyzeAll}
+                    disabled={isAnalyzingAll}
+                    className="gap-1"
+                  >
+                    {isAnalyzingAll ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        Re-analyzing {analyzeAllProgress.current}/{analyzeAllProgress.total}
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4" />
+                        Re-analyze All
                       </>
                     )}
                   </Button>

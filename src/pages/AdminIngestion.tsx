@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { 
   FileText, 
@@ -9,7 +9,12 @@ import {
   Play,
   Trash2,
   RefreshCw,
-  Server
+  Server,
+  Wand2,
+  ExternalLink,
+  AlertTriangle,
+  Timer,
+  Zap,
 } from "lucide-react";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,9 +38,206 @@ import {
   useProcessJob, 
   useDeleteJob 
 } from "@/hooks/use-ingestion";
+import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
+
+// Helper to format time in human readable format
+function formatDuration(ms: number): string {
+  if (ms < 1000) return "0s";
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes < 60) {
+    return remainingSeconds > 0 ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return `${hours}h ${remainingMinutes}m`;
+}
+
+// Analysis Progress Card Component
+function AnalysisProgressCard() {
+  const navigate = useNavigate();
+  const { 
+    progress, 
+    elapsedMs, 
+    avgTimePerQuestion, 
+    estimatedRemainingMs, 
+    remainingQuestions,
+    clearAnalysis,
+  } = useAnalysisProgress();
+  
+  const [now, setNow] = useState(Date.now());
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!progress || progress.status !== "analyzing") return;
+    
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [progress]);
+
+  if (!progress) return null;
+
+  const progressPercent = progress.totalQuestions > 0 
+    ? (progress.currentQuestionIndex / progress.totalQuestions) * 100 
+    : 0;
+
+  const isCompleted = progress.status === "completed";
+  const currentElapsed = progress.startedAt ? now - progress.startedAt : elapsedMs;
+
+  const handleViewExam = () => {
+    const encodedExam = encodeURIComponent(progress.examName);
+    navigate(`/admin/questions/${progress.coursePackId}/${encodedExam}`);
+  };
+
+  return (
+    <motion.div
+      variants={staggerItem}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+    >
+      <Card className={`border-2 ${isCompleted ? 'border-green-500/50 bg-green-500/5' : 'border-primary/50 bg-primary/5'}`}>
+        <CardContent className="p-5">
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-500/20' : 'bg-primary/20'}`}>
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : (
+                    <Wand2 className="h-5 w-5 text-primary animate-pulse" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-base">
+                      {isCompleted ? "Analysis Complete" : "Analyzing Questions"}
+                    </h3>
+                    <Badge variant={isCompleted ? "default" : "secondary"} className={isCompleted ? "bg-green-500" : ""}>
+                      {isCompleted ? "Done" : "In Progress"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {progress.examName} • {progress.coursePackTitle}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={handleViewExam}
+                  className="gap-1"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  View Exam
+                </Button>
+                {isCompleted && (
+                  <Button 
+                    size="sm" 
+                    variant="ghost"
+                    onClick={clearAnalysis}
+                  >
+                    Dismiss
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  {progress.currentQuestionIndex} / {progress.totalQuestions} questions
+                </span>
+                <span className="text-muted-foreground">
+                  {Math.round(progressPercent)}%
+                </span>
+              </div>
+              <Progress value={progressPercent} className="h-2" />
+            </div>
+
+            {/* Current Question Preview (only when analyzing) */}
+            {!isCompleted && progress.currentQuestionPrompt && (
+              <div className="p-3 rounded-lg bg-muted/50 border">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Currently analyzing
+                </div>
+                <p className="text-sm line-clamp-2">
+                  {progress.currentQuestionPrompt}...
+                </p>
+              </div>
+            )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Elapsed Time */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Timer className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Elapsed</p>
+                  <p className="font-medium text-sm">{formatDuration(currentElapsed)}</p>
+                </div>
+              </div>
+
+              {/* Average Time */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Zap className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Avg/Question</p>
+                  <p className="font-medium text-sm">
+                    {avgTimePerQuestion > 0 ? formatDuration(avgTimePerQuestion) : "—"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Estimated Remaining */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Clock className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Est. Remaining</p>
+                  <p className="font-medium text-sm">
+                    {!isCompleted && estimatedRemainingMs > 0 
+                      ? `~${formatDuration(estimatedRemainingMs)}` 
+                      : "—"
+                    }
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Errors Warning */}
+            {progress.errorsCount > 0 && (
+              <div className="flex items-center gap-2 p-2 rounded bg-amber-500/10 border border-amber-500/30 text-amber-700 dark:text-amber-400">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm">
+                  {progress.errorsCount} question{progress.errorsCount > 1 ? 's' : ''} failed to analyze
+                </span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 export default function AdminIngestion() {
   const { toast } = useToast();
@@ -47,6 +249,7 @@ export default function AdminIngestion() {
   
   // Data
   const { data: jobs, isLoading: jobsLoading, refetch: refetchJobs } = useIngestionJobs();
+  const { progress: analysisProgress } = useAnalysisProgress();
   
   // Mutations
   const processJob = useProcessJob();
@@ -138,6 +341,9 @@ export default function AdminIngestion() {
             Refresh
           </Button>
         </motion.div>
+
+        {/* Analysis Progress Card */}
+        {analysisProgress && <AnalysisProgressCard />}
 
         {/* Jobs List */}
         <motion.div variants={staggerItem}>
