@@ -1,9 +1,10 @@
-import { BookOpen, BarChart3, Settings, GraduationCap, Moon, Sun, Calendar, Shield, Upload, FileQuestion } from "lucide-react";
+import { BookOpen, BarChart3, Settings, GraduationCap, Moon, Sun, Calendar, Shield, Upload, FileQuestion, PanelLeftClose } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "@/hooks/use-theme";
 import { useIsAdmin } from "@/hooks/use-admin";
+import { useSidebar } from "@/hooks/use-sidebar";
 import { Separator } from "@/components/ui/separator";
 
 const navItems = [
@@ -22,15 +23,30 @@ export function DesktopNav() {
   const location = useLocation();
   const { theme, setTheme } = useTheme();
   const { data: isAdmin } = useIsAdmin();
+  const { isCollapsed, toggle } = useSidebar();
+
+  if (isCollapsed) {
+    return null;
+  }
 
   return (
-    <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r border-border bg-sidebar">
+    <aside className="hidden md:flex fixed left-0 top-0 h-full w-64 flex-col border-r border-border bg-sidebar z-40">
       {/* Logo / Brand */}
-      <div className="flex items-center gap-3 px-6 py-5 border-b border-sidebar-border">
-        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
-          <GraduationCap className="h-5 w-5 text-primary-foreground" />
+      <div className="flex items-center justify-between px-6 py-5 border-b border-sidebar-border">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
+            <GraduationCap className="h-5 w-5 text-primary-foreground" />
+          </div>
+          <span className="font-semibold text-lg text-sidebar-foreground">Study Hub</span>
         </div>
-        <span className="font-semibold text-lg text-sidebar-foreground">Study Hub</span>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggle}
+          className="h-8 w-8 text-sidebar-foreground/70 hover:text-sidebar-foreground"
+        >
+          <PanelLeftClose className="h-4 w-4" />
+        </Button>
       </div>
 
       {/* Navigation Links */}

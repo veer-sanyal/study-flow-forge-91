@@ -11,6 +11,7 @@ interface PlayerControlsProps {
   isSubmitted: boolean;
   hasSelection: boolean;
   solutionRevealed: boolean;
+  hasGuide?: boolean;
   onSubmit: () => void;
   onGuideMe: () => void;
   onExplain: () => void;
@@ -22,6 +23,7 @@ export function PlayerControls({
   isSubmitted,
   hasSelection,
   solutionRevealed,
+  hasGuide = true,
   onSubmit,
   onGuideMe,
   onExplain,
@@ -45,15 +47,17 @@ export function PlayerControls({
 
       {/* Secondary controls - always visible */}
       <div className="grid grid-cols-4 gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-col h-auto py-3 gap-1"
-          onClick={onGuideMe}
-        >
-          <Compass className="h-4 w-4" />
-          <span className="text-xs">Guide</span>
-        </Button>
+        {hasGuide && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="flex-col h-auto py-3 gap-1"
+            onClick={onGuideMe}
+          >
+            <Compass className="h-4 w-4" />
+            <span className="text-xs">Guide</span>
+          </Button>
+        )}
 
         <Button
           variant={solutionRevealed ? "secondary" : "outline"}
