@@ -688,31 +688,61 @@ export type Database = {
         }
         Returns: number
       }
-      get_recommended_questions: {
-        Args: {
-          p_current_week?: number
-          p_limit?: number
-          p_pace_offset?: number
-          p_target_difficulty?: number
-          p_user_id: string
-        }
-        Returns: {
-          choices: Json
-          correct_answer: string
-          difficulty: number
-          difficulty_match: number
-          due_urgency: number
-          hint: string
-          knowledge_gap: number
-          prompt: string
-          question_id: string
-          question_type_id: string
-          score: number
-          solution_steps: Json
-          source_exam: string
-          topic_ids: string[]
-        }[]
-      }
+      get_recommended_questions:
+        | {
+            Args: {
+              p_current_week?: number
+              p_limit?: number
+              p_pace_offset?: number
+              p_target_difficulty?: number
+              p_user_id: string
+            }
+            Returns: {
+              choices: Json
+              correct_answer: string
+              difficulty: number
+              difficulty_match: number
+              due_urgency: number
+              hint: string
+              knowledge_gap: number
+              prompt: string
+              question_id: string
+              question_type_id: string
+              score: number
+              solution_steps: Json
+              source_exam: string
+              topic_ids: string[]
+            }[]
+          }
+        | {
+            Args: {
+              p_course_id?: string
+              p_current_week?: number
+              p_exam_name?: string
+              p_limit?: number
+              p_pace_offset?: number
+              p_question_type_id?: string
+              p_target_difficulty?: number
+              p_topic_ids?: string[]
+              p_user_id: string
+            }
+            Returns: {
+              choices: Json
+              correct_answer: string
+              difficulty: number
+              difficulty_match: number
+              due_urgency: number
+              hint: string
+              knowledge_gap: number
+              prompt: string
+              question_id: string
+              question_type_id: string
+              score: number
+              solution_steps: Json
+              source_exam: string
+              topic_ids: string[]
+            }[]
+          }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

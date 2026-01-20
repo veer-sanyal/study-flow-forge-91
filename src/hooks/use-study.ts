@@ -13,6 +13,11 @@ interface RecommendationParams {
   currentWeek?: number;
   paceOffset?: number;
   targetDifficulty?: number;
+  // Filter parameters
+  courseId?: string | null;
+  examName?: string | null;
+  topicIds?: string[];
+  questionTypeId?: string | null;
 }
 
 export function useStudyQuestions(params: RecommendationParams = {}) {
@@ -21,15 +26,19 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
     limit = 10, 
     currentWeek = 1, 
     paceOffset = 1, 
-    targetDifficulty = 3 
+    targetDifficulty = 3,
+    courseId = null,
+    examName = null,
+    topicIds = [],
+    questionTypeId = null,
   } = params;
 
   return useQuery({
-    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty],
+    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty, courseId, examName, topicIds, questionTypeId],
     queryFn: async (): Promise<StudyQuestion[]> => {
       if (!user) throw new Error('User not authenticated');
 
-      // Call the recommendation algorithm function
+      // Call the recommendation algorithm function with filter parameters
       const { data: recommended, error: recError } = await supabase
         .rpc('get_recommended_questions', {
           p_user_id: user.id,
@@ -37,6 +46,10 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           p_current_week: currentWeek,
           p_pace_offset: paceOffset,
           p_target_difficulty: targetDifficulty,
+          p_course_id: courseId || undefined,
+          p_exam_name: examName || undefined,
+          p_topic_ids: topicIds.length > 0 ? topicIds : undefined,
+          p_question_type_id: questionTypeId || undefined,
         });
 
       if (recError) {
