@@ -1431,7 +1431,7 @@ export default function AdminQuestionsEditor() {
                   question={question}
                   index={index}
                   topics={topicsMap}
-                  onEdit={() => setEditingQuestion(question)}
+                  onEdit={() => navigate(`/admin/questions/${courseId}/${examName}/${question.id}`)}
                   onDelete={() => setQuestionToDelete(question.id)}
                   onAnalyze={() => handleAnalyze(question.id)}
                   onUploadImage={(file) => handleUploadImage(question.id, file)}
