@@ -1,7 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { 
   Compass, 
-  Lightbulb, 
   BookOpen, 
   Shuffle, 
   SkipForward,
@@ -11,11 +10,9 @@ import {
 interface PlayerControlsProps {
   isSubmitted: boolean;
   hasSelection: boolean;
-  hintRevealed: boolean;
   solutionRevealed: boolean;
   onSubmit: () => void;
   onGuideMe: () => void;
-  onHint: () => void;
   onExplain: () => void;
   onSimilar: () => void;
   onSkip: () => void;
@@ -24,11 +21,9 @@ interface PlayerControlsProps {
 export function PlayerControls({
   isSubmitted,
   hasSelection,
-  hintRevealed,
   solutionRevealed,
   onSubmit,
   onGuideMe,
-  onHint,
   onExplain,
   onSimilar,
   onSkip,
@@ -49,7 +44,7 @@ export function PlayerControls({
       )}
 
       {/* Secondary controls - always visible */}
-      <div className="grid grid-cols-5 gap-2">
+      <div className="grid grid-cols-4 gap-2">
         <Button
           variant="outline"
           size="sm"
@@ -58,16 +53,6 @@ export function PlayerControls({
         >
           <Compass className="h-4 w-4" />
           <span className="text-xs">Guide</span>
-        </Button>
-
-        <Button
-          variant={hintRevealed ? "secondary" : "outline"}
-          size="sm"
-          className="flex-col h-auto py-3 gap-1"
-          onClick={onHint}
-        >
-          <Lightbulb className="h-4 w-4" />
-          <span className="text-xs">Hint</span>
         </Button>
 
         <Button

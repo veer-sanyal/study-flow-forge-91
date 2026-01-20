@@ -68,25 +68,42 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
       const topicMap = new Map<string, DbTopic>();
       topics?.forEach(topic => topicMap.set(topic.id, topic));
 
-      // Map recommended questions to StudyQuestion format
-      return (recommended || []).map((q: any) => ({
-        id: q.question_id,
-        prompt: q.prompt,
-        choices: q.choices as any,
-        correctChoiceId: q.choices?.find((c: any) => c.isCorrect)?.id || null,
-        hint: q.hint,
-        difficulty: q.difficulty || 3,
-        topicIds: q.topic_ids || [],
-        topicNames: (q.topic_ids || []).map((id: string) => topicMap.get(id)?.title || 'Unknown Topic'),
-        sourceExam: q.source_exam,
-        solutionSteps: q.solution_steps as string[] | null,
-        questionType: 'multiple_choice', // Default for now
-        imageUrl: null, // Recommended questions don't include image_url yet
-        // Include scoring metadata for debugging
-        _score: q.score,
-        _dueUrgency: q.due_urgency,
-        _knowledgeGap: q.knowledge_gap,
+      // Fetch full question data to include guide_me_steps
+      const questionIds = (recommended || []).map((q: any) => q.question_id);
+      const { data: fullQuestions } = await supabase
+        .from('questions')
+        .select('id, guide_me_steps, image_url')
+        .in('id', questionIds);
+      
+      const questionExtras = new Map<string, { guide_me_steps: any; image_url: string | null }>();
+      fullQuestions?.forEach(q => questionExtras.set(q.id, { 
+        guide_me_steps: q.guide_me_steps, 
+        image_url: q.image_url 
       }));
+
+      // Map recommended questions to StudyQuestion format
+      return (recommended || []).map((q: any) => {
+        const extras = questionExtras.get(q.question_id);
+        return {
+          id: q.question_id,
+          prompt: q.prompt,
+          choices: q.choices as any,
+          correctChoiceId: q.choices?.find((c: any) => c.isCorrect)?.id || null,
+          hint: q.hint,
+          difficulty: q.difficulty || 3,
+          topicIds: q.topic_ids || [],
+          topicNames: (q.topic_ids || []).map((id: string) => topicMap.get(id)?.title || 'Unknown Topic'),
+          sourceExam: q.source_exam,
+          solutionSteps: q.solution_steps as string[] | null,
+          questionType: 'multiple_choice', // Default for now
+          imageUrl: extras?.image_url || null,
+          guideMeSteps: extras?.guide_me_steps || null,
+          // Include scoring metadata for debugging
+          _score: q.score,
+          _dueUrgency: q.due_urgency,
+          _knowledgeGap: q.knowledge_gap,
+        };
+      });
     },
     enabled: !!user,
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes (shorter since recommendations change)
