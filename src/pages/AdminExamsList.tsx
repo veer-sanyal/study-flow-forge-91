@@ -63,6 +63,7 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useCreateIngestionJob, useProcessJob } from "@/hooks/use-ingestion";
+import { useCanHover } from "@/hooks/use-can-hover";
 import { cn } from "@/lib/utils";
 
 function useCoursePack(courseId: string) {
@@ -481,6 +482,8 @@ function ExamCard({
   };
 
   const [isHovered, setIsHovered] = useState(false);
+  const canHover = useCanHover();
+  const showActions = !canHover || isHovered;
 
   return (
     <Card 
@@ -513,7 +516,7 @@ function ExamCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {isHovered && (
+          {showActions && (
             <>
               <Button
                 variant="ghost"
