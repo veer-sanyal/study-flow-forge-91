@@ -1,17 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ArrowLeft, ChevronRight, Star, Calendar, Target, RefreshCw, Check, BookOpen } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Star, Calendar, Target, RefreshCw, Check, BookOpen, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { PageTransition } from '@/components/motion/PageTransition';
 import { useFocusContext, FocusPreset, NarrowByOption } from '@/contexts/FocusContext';
@@ -23,7 +18,7 @@ import {
   useQuestionTypesForCourses,
 } from '@/hooks/use-focus';
 import { useRecommendedPresets } from '@/hooks/use-study-recommendations';
-import { fadeSlideUp, duration } from '@/lib/motion';
+import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { getCourseCardColor } from '@/lib/examUtils';
 
 export default function StudyFocus() {
@@ -49,14 +44,35 @@ export default function StudyFocus() {
   const { data: questionTypes = [] } = useQuestionTypesForCourses(filters.courseIds);
   const recommendedPresets = useRecommendedPresets(filters.courseIds);
 
-  const [expandedTopicGroups, setExpandedTopicGroups] = useState<number[]>([]);
-
   const hasCoursesSelected = filters.courseIds.length > 0;
 
   // Get upcoming midterms (future exams only)
   const upcomingMidterms = upcomingExams.filter(
     e => e.midtermNumber && e.daysUntil !== null && e.daysUntil >= 0
   );
+
+  // Find recommended topic (from first preset that has topic filters)
+  const recommendedTopic = useMemo(() => {
+    const weakAreaPreset = recommendedPresets.find(p => p.filters.topicIds && p.filters.topicIds.length > 0);
+    if (weakAreaPreset && weakAreaPreset.filters.topicIds) {
+      const topicId = weakAreaPreset.filters.topicIds[0];
+      for (const group of topicGroups) {
+        const topic = group.topics.find(t => t.id === topicId);
+        if (topic) return { ...topic, reason: 'Needs work' };
+      }
+    }
+    return null;
+  }, [recommendedPresets, topicGroups]);
+
+  // Find recommended question type (from presets)
+  const recommendedType = useMemo(() => {
+    const typePreset = recommendedPresets.find(p => p.filters.questionTypeId);
+    if (typePreset && typePreset.filters.questionTypeId) {
+      const type = questionTypes.find(t => t.id === typePreset.filters.questionTypeId);
+      if (type) return { ...type, reason: 'Needs work' };
+    }
+    return null;
+  }, [recommendedPresets, questionTypes]);
 
   const handleCourseToggle = (courseId: string) => {
     if (filters.courseIds.includes(courseId)) {
@@ -77,6 +93,10 @@ export default function StudyFocus() {
   const handleSelectAllTopicsInGroup = (topicIds: string[]) => {
     const newIds = [...new Set([...filters.topicIds, ...topicIds])];
     setTopicIds(newIds);
+  };
+
+  const handleDeselectAllTopicsInGroup = (topicIds: string[]) => {
+    setTopicIds(filters.topicIds.filter(id => !topicIds.includes(id)));
   };
 
   const handleExamToggle = (examName: string) => {
@@ -129,7 +149,7 @@ export default function StudyFocus() {
 
       {/* Content */}
       <ScrollArea className="flex-1">
-        <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-8">
+        <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-8 pb-32">
           {/* Recommended Presets */}
           {recommendedPresets.length > 0 && (
             <section className="space-y-4">
@@ -145,14 +165,14 @@ export default function StudyFocus() {
                     className="w-full justify-between h-auto py-4 text-left"
                     onClick={() => handlePresetClick(preset)}
                   >
-                    <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="p-2 rounded-lg bg-primary/10 text-primary shrink-0">
                         {presetIcon(preset.icon)}
                       </div>
-                      <div>
-                        <span className="font-medium block">{preset.label}</span>
+                      <div className="min-w-0">
+                        <span className="font-medium block truncate max-w-[180px]">{preset.label}</span>
                         {preset.description && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate max-w-[180px]">
                             {preset.description}
                           </p>
                         )}
@@ -216,14 +236,14 @@ export default function StudyFocus() {
           <AnimatePresence>
             {hasCoursesSelected && upcomingMidterms.length > 0 && (
               <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: duration.fast }}
-                className="space-y-4"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: duration.normal, ease: easing.easeOut }}
+                className="space-y-4 overflow-hidden"
               >
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
-                  <Calendar className="h-4 w-4 text-orange-500" />
+                  <Calendar className="h-4 w-4 text-primary" />
                   Upcoming Exams
                 </h2>
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -270,11 +290,11 @@ export default function StudyFocus() {
           <AnimatePresence>
             {hasCoursesSelected && (
               <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: duration.fast, delay: 0.05 }}
-                className="space-y-4"
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.05 }}
+                className="space-y-4 overflow-hidden"
               >
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Filter by (optional)
@@ -313,65 +333,93 @@ export default function StudyFocus() {
             {narrowBy === 'topics' && hasCoursesSelected && (
               <motion.section
                 key="topics"
-                {...fadeSlideUp}
-                transition={{ duration: duration.fast }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: duration.normal, ease: easing.easeOut }}
                 className="space-y-4"
               >
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                  Select Topics
-                </h2>
-                <div className="space-y-3">
-                  {topicGroups.map((group) => (
-                    <Collapsible
-                      key={group.midtermNumber ?? 'final'}
-                      open={expandedTopicGroups.includes(group.midtermNumber ?? 0)}
-                      onOpenChange={(open) => {
-                        const key = group.midtermNumber ?? 0;
-                        setExpandedTopicGroups(open 
-                          ? [...expandedTopicGroups, key]
-                          : expandedTopicGroups.filter(k => k !== key)
-                        );
-                      }}
-                      className="border rounded-lg"
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                    Select Topics
+                  </h2>
+                  {filters.topicIds.length > 0 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 text-xs gap-1"
+                      onClick={() => setTopicIds([])}
                     >
-                      <CollapsibleTrigger className="flex items-center justify-between w-full p-4 hover:bg-accent/50 rounded-t-lg">
-                        <span className="text-sm font-medium">{group.label}</span>
-                        <div className="flex items-center gap-2">
+                      <X className="h-3 w-3" />
+                      Deselect all ({filters.topicIds.length})
+                    </Button>
+                  )}
+                </div>
+
+                {/* Recommended Topic */}
+                {recommendedTopic && (
+                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Star className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Recommended</span>
+                      </div>
+                      <Badge variant="secondary" className="text-xs">{recommendedTopic.reason}</Badge>
+                    </div>
+                    <label className="flex items-center gap-3 mt-2 cursor-pointer">
+                      <Checkbox
+                        checked={filters.topicIds.includes(recommendedTopic.id)}
+                        onCheckedChange={() => handleTopicToggle(recommendedTopic.id)}
+                      />
+                      <span className="text-sm truncate">{recommendedTopic.title}</span>
+                    </label>
+                  </div>
+                )}
+
+                {/* Flattened topic groups - no collapsibles */}
+                <div className="space-y-6">
+                  {topicGroups.map((group) => {
+                    const groupTopicIds = group.topics.map(t => t.id);
+                    const selectedInGroup = groupTopicIds.filter(id => filters.topicIds.includes(id)).length;
+                    const allSelected = selectedInGroup === groupTopicIds.length && groupTopicIds.length > 0;
+                    
+                    return (
+                      <div key={group.midtermNumber ?? 'final'} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-medium text-foreground">{group.label}</h3>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-7 text-xs"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectAllTopicsInGroup(group.topics.map(t => t.id));
-                            }}
+                            onClick={() => 
+                              allSelected 
+                                ? handleDeselectAllTopicsInGroup(groupTopicIds)
+                                : handleSelectAllTopicsInGroup(groupTopicIds)
+                            }
                           >
-                            Select all
+                            {allSelected ? 'Deselect all' : 'Select all'}
                           </Button>
-                          <ChevronRight className={cn(
-                            'h-4 w-4 transition-transform',
-                            expandedTopicGroups.includes(group.midtermNumber ?? 0) && 'rotate-90'
-                          )} />
                         </div>
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="border-t">
-                        <div className="p-2 grid gap-1 sm:grid-cols-2">
+                        <div className="grid gap-1 sm:grid-cols-2">
                           {group.topics.map((topic) => (
                             <label
                               key={topic.id}
-                              className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
+                              className={cn(
+                                "flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer",
+                                filters.topicIds.includes(topic.id) && "bg-primary/5"
+                              )}
                             >
                               <Checkbox
                                 checked={filters.topicIds.includes(topic.id)}
                                 onCheckedChange={() => handleTopicToggle(topic.id)}
                               />
-                              <span className="text-sm">{topic.title}</span>
+                              <span className="text-sm truncate">{topic.title}</span>
                             </label>
                           ))}
                         </div>
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
+                      </div>
+                    );
+                  })}
                 </div>
               </motion.section>
             )}
@@ -379,13 +427,37 @@ export default function StudyFocus() {
             {narrowBy === 'types' && hasCoursesSelected && (
               <motion.section
                 key="types"
-                {...fadeSlideUp}
-                transition={{ duration: duration.fast }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: duration.normal, ease: easing.easeOut }}
                 className="space-y-4"
               >
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Question Types
                 </h2>
+
+                {/* Recommended Type */}
+                {recommendedType && (
+                  <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Star className="h-4 w-4 text-primary" />
+                        <span className="text-sm font-medium">Recommended</span>
+                      </div>
+                      <Badge variant="secondary" className="text-xs">{recommendedType.reason}</Badge>
+                    </div>
+                    <label className="flex items-center gap-3 mt-2 cursor-pointer">
+                      <RadioGroupItem 
+                        value={recommendedType.id} 
+                        checked={filters.questionTypeId === recommendedType.id}
+                        onClick={() => setQuestionTypeId(recommendedType.id)}
+                      />
+                      <span className="text-sm truncate">{recommendedType.name}</span>
+                    </label>
+                  </div>
+                )}
+
                 <RadioGroup
                   value={filters.questionTypeId || ''}
                   onValueChange={(v) => setQuestionTypeId(v || null)}
@@ -402,7 +474,7 @@ export default function StudyFocus() {
                       )}
                     >
                       <RadioGroupItem value={type.id} />
-                      <span className="text-sm">{type.name}</span>
+                      <span className="text-sm truncate">{type.name}</span>
                     </label>
                   ))}
                 </RadioGroup>
@@ -412,14 +484,16 @@ export default function StudyFocus() {
             {narrowBy === 'exam' && hasCoursesSelected && (
               <motion.section
                 key="exam"
-                {...fadeSlideUp}
-                transition={{ duration: duration.fast }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: duration.normal, ease: easing.easeOut }}
                 className="space-y-4"
               >
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Past Exams
                 </h2>
-                <div className="space-y-4">
+                <div className="space-y-6">
                   {pastExams.map((group) => (
                     <div key={group.examType} className="space-y-2">
                       <h3 className="text-sm font-medium text-foreground">
@@ -429,7 +503,12 @@ export default function StudyFocus() {
                         {group.exams.map((exam) => (
                           <label
                             key={exam.name}
-                            className="flex items-center gap-3 p-3 rounded-lg border hover:bg-accent/50 cursor-pointer transition-colors"
+                            className={cn(
+                              "flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
+                              filters.examNames.includes(exam.name)
+                                ? "border-primary bg-primary/5"
+                                : "hover:bg-accent/50"
+                            )}
                           >
                             <Checkbox
                               checked={filters.examNames.includes(exam.name)}
@@ -448,24 +527,29 @@ export default function StudyFocus() {
         </div>
       </ScrollArea>
 
-      {/* Footer */}
-      <footer className="border-t bg-card px-4 py-4 flex gap-3">
+      {/* Footer with animation */}
+      <motion.footer
+        layout
+        transition={{ duration: duration.normal, ease: easing.easeOut }}
+        className="border-t bg-card px-4 py-4 flex gap-3"
+      >
+        {hasActiveFilters && (
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={handleClear}
+          >
+            Clear all
+          </Button>
+        )}
         <Button
-          variant="outline"
-          onClick={handleClear}
           className="flex-1"
-          disabled={!hasActiveFilters}
-        >
-          Clear All
-        </Button>
-        <Button
           onClick={handleStartPractice}
-          className="flex-1"
-          disabled={!hasCoursesSelected}
         >
           Start Practice
+          <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
-      </footer>
+      </motion.footer>
     </PageTransition>
   );
 }
