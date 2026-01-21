@@ -659,11 +659,11 @@ function AddExamDialog({
     }
 
     try {
-      // Stage 1: Upload
+      // Stage 1: Upload files
       setUploadProgress({ 
         stage: "uploading", 
         message: answerKeyFile ? "Uploading exam and answer key..." : "Uploading PDF...", 
-        percent: 20 
+        percent: 30 
       });
       const job = await createJob.mutateAsync({ 
         coursePackId: courseId, 
@@ -671,46 +671,35 @@ function AddExamDialog({
         answerKeyFile: answerKeyFile || undefined,
       });
       
-      // Stage 2: Processing
+      // Stage 2: Start async processing (returns immediately)
       setUploadProgress({ 
         stage: "processing", 
-        message: answerKeyFile ? "Extracting questions and matching answers..." : "Extracting questions with AI...", 
-        percent: 50 
+        message: "Starting background extraction...", 
+        percent: 60 
       });
-      const result = await processJob.mutateAsync({ jobId: job.id, kind: "pdf" });
       
-      // Stage 3: Complete
+      await supabase.functions.invoke("process-exam-pdf", {
+        body: { jobId: job.id, async: true }
+      });
+      
+      // Stage 3: Complete - close dialog immediately
       setUploadProgress({ 
         stage: "complete", 
-        message: `Extracted ${result.questionsExtracted} questions!${answerKeyFile ? " Answer key applied." : ""}`, 
+        message: "Exam added to processing queue!", 
         percent: 100 
       });
 
-      // Build source exam string for navigation
-      const jobData = await supabase
-        .from("ingestion_jobs")
-        .select("exam_year, exam_semester, exam_type")
-        .eq("id", job.id)
-        .single();
+      toast.success("Exam added to processing queue!", {
+        description: "You can track progress in the Queue Monitor or continue working."
+      });
 
-      const parts: string[] = [];
-      if (jobData.data?.exam_semester && jobData.data?.exam_year) {
-        parts.push(`${jobData.data.exam_semester} ${jobData.data.exam_year}`);
-      }
-      if (jobData.data?.exam_type) {
-        const type = jobData.data.exam_type === "f" ? "Final" : `Midterm ${jobData.data.exam_type}`;
-        parts.push(type);
-      }
-      const sourceExam = parts.join(" ") || examFile.name.replace(".pdf", "");
-
-      // Wait a moment then navigate
+      // Close dialog immediately - don't wait for processing
       setTimeout(() => {
-        onSuccess(sourceExam);
         onOpenChange(false);
         setUploadProgress({ stage: "idle", message: "", percent: 0 });
         setExamFile(null);
         setAnswerKeyFile(null);
-      }, 1000);
+      }, 500);
 
     } catch (error) {
       setUploadProgress({ 
