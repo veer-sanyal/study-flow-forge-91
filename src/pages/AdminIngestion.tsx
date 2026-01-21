@@ -43,6 +43,7 @@ import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
+import { MathRenderer } from "@/components/study/MathRenderer";
 
 // Ingestion Progress Card Component
 function IngestionProgressCard() {
@@ -331,9 +332,9 @@ function AnalysisProgressCard() {
                   <Loader2 className="h-3 w-3 animate-spin" />
                   Currently analyzing
                 </div>
-                <p className="text-sm line-clamp-2">
-                  {progress.current_question_prompt}...
-                </p>
+                <div className="text-sm line-clamp-2">
+                  <MathRenderer content={progress.current_question_prompt} />
+                </div>
               </div>
             )}
 

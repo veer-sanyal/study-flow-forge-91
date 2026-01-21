@@ -32,6 +32,7 @@ async function analyzeQuestionWithRetry(
   geminiApiKey: string,
   maxRetries: number,
   retryDelayMs: number,
+  answerKeyHint?: string // Optional: provide the correct answer from answer key for re-analysis
 ): Promise<{ success: boolean; error?: string }> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -97,41 +98,73 @@ async function analyzeQuestionWithRetry(
 
       const choicesText = q.choices?.map((c: any) => `${c.id}) ${c.text}`).join("\n") || "No choices";
 
-      // Handle image if present
-      let imageBase64: string | null = null;
-      let imageMimeType: string | null = null;
-
-      if (q.image_url) {
+      // Helper to fetch image as base64
+      const fetchImageAsBase64 = async (url: string): Promise<{ data: string; mimeType: string } | null> => {
         try {
-          const imageResponse = await fetch(q.image_url);
-          if (imageResponse.ok) {
-            const imageBuffer = await imageResponse.arrayBuffer();
-            const uint8Array = new Uint8Array(imageBuffer);
-            let binary = "";
-            const chunkSize = 32768;
-            for (let i = 0; i < uint8Array.length; i += chunkSize) {
-              const chunk = uint8Array.slice(i, i + chunkSize);
-              binary += String.fromCharCode(...chunk);
-            }
-            imageBase64 = btoa(binary);
-            imageMimeType = imageResponse.headers.get("content-type") || "image/png";
+          const imageResponse = await fetch(url);
+          if (!imageResponse.ok) return null;
+          const imageBuffer = await imageResponse.arrayBuffer();
+          const uint8Array = new Uint8Array(imageBuffer);
+          let binary = "";
+          const chunkSize = 32768;
+          for (let i = 0; i < uint8Array.length; i += chunkSize) {
+            const chunk = uint8Array.slice(i, i + chunkSize);
+            binary += String.fromCharCode(...chunk);
           }
+          return {
+            data: btoa(binary),
+            mimeType: imageResponse.headers.get("content-type") || "image/png"
+          };
         } catch {
-          // Continue without image
+          return null;
+        }
+      };
+
+      // Handle main question image
+      let mainImage: { data: string; mimeType: string } | null = null;
+      if (q.image_url) {
+        mainImage = await fetchImageAsBase64(q.image_url);
+      }
+
+      // Handle choice images (multimodal support)
+      interface ChoiceImageData {
+        choiceId: string;
+        data: string;
+        mimeType: string;
+      }
+      const choiceImages: ChoiceImageData[] = [];
+      
+      if (q.choices && Array.isArray(q.choices)) {
+        for (const choice of q.choices) {
+          if (choice.imageUrl) {
+            const imgData = await fetchImageAsBase64(choice.imageUrl);
+            if (imgData) {
+              choiceImages.push({ choiceId: choice.id, ...imgData });
+            }
+          }
         }
       }
 
-      // Build analysis prompt (simplified version - same as analyze-question)
-      const analysisPrompt = buildAnalysisPrompt(q.prompt, choicesText, topicsList, questionTypesList);
+      // Build analysis prompt with optional answer key hint
+      const analysisPrompt = buildAnalysisPrompt(q.prompt, choicesText, topicsList, questionTypesList, answerKeyHint);
 
-      // Build content parts
+      // Build content parts with all images
       const contentParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
-      if (imageBase64 && imageMimeType) {
-        contentParts.push({ inlineData: { mimeType: imageMimeType, data: imageBase64 } });
-        contentParts.push({ text: "The above image is the diagram/figure for this question.\n\n" + analysisPrompt });
-      } else {
-        contentParts.push({ text: analysisPrompt });
+      
+      // Add main question image first
+      if (mainImage) {
+        contentParts.push({ inlineData: { mimeType: mainImage.mimeType, data: mainImage.data } });
+        contentParts.push({ text: "The above image is the diagram/figure for this question.\n\n" });
       }
+      
+      // Add choice images with labels
+      for (const choiceImg of choiceImages) {
+        contentParts.push({ inlineData: { mimeType: choiceImg.mimeType, data: choiceImg.data } });
+        contentParts.push({ text: `The above image is for CHOICE ${choiceImg.choiceId.toUpperCase()}.\n\n` });
+      }
+      
+      // Add the analysis prompt
+      contentParts.push({ text: analysisPrompt });
 
       // Call Gemini API
       const geminiResponse = await fetch(
@@ -175,16 +208,27 @@ async function analyzeQuestionWithRetry(
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
       
-      if (errorMessage === "RATE_LIMIT" || errorMessage.includes("AbortError") || errorMessage.includes("timeout")) {
-        if (attempt < maxRetries) {
-          const delay = retryDelayMs * Math.pow(2, attempt);
-          console.log(`Question ${questionId} failed (attempt ${attempt + 1}/${maxRetries + 1}), retrying in ${delay}ms...`);
-          await sleep(delay);
-          continue;
-        }
+      // Expanded retry conditions - retry on more transient errors
+      const isRetryable = 
+        errorMessage === "RATE_LIMIT" ||
+        errorMessage.includes("AbortError") ||
+        errorMessage.includes("timeout") ||
+        errorMessage.includes("Failed to parse") ||
+        errorMessage.includes("network") ||
+        errorMessage.includes("fetch failed") ||
+        errorMessage.includes("500") ||
+        errorMessage.includes("502") ||
+        errorMessage.includes("503") ||
+        errorMessage.includes("504");
+      
+      if (isRetryable && attempt < maxRetries) {
+        const delay = retryDelayMs * Math.pow(2, attempt);
+        console.log(`Question ${questionId} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${errorMessage}, retrying in ${delay}ms...`);
+        await sleep(delay);
+        continue;
       }
 
-      console.error(`Question ${questionId} analysis failed:`, errorMessage);
+      console.error(`Question ${questionId} analysis permanently failed:`, errorMessage);
       return { success: false, error: errorMessage };
     }
   }
@@ -281,9 +325,16 @@ async function saveAnalysisResult(
 }
 
 // Build simplified analysis prompt
-function buildAnalysisPrompt(prompt: string, choicesText: string, topicsList: string, questionTypesList: string): string {
-  return `You are an expert math tutor analyzing an exam question. Provide a complete analysis.
+function buildAnalysisPrompt(prompt: string, choicesText: string, topicsList: string, questionTypesList: string, answerKeyHint?: string): string {
+  const correctionNote = answerKeyHint ? `
+IMPORTANT CORRECTION:
+The official answer key indicates the correct answer is "${answerKeyHint.toUpperCase()}". 
+Your previous analysis may have been incorrect. Please re-verify your work carefully.
+Explain step-by-step why "${answerKeyHint.toUpperCase()}" is the correct answer.
+` : '';
 
+  return `You are an expert math tutor analyzing an exam question. Provide a complete analysis.
+${correctionNote}
 QUESTION:
 ${prompt}
 
@@ -453,10 +504,12 @@ async function processBatchInBackground(
   // Wait for all remaining in-flight requests
   await Promise.all(inFlight);
 
-  // POST-ANALYSIS PASS: Compare AI answers with answer key
+  // POST-ANALYSIS PASS 1: Compare AI answers with answer key and identify mismatches
   console.log(`Running post-analysis answer key comparison for job ${jobId}...`);
   
   let mismatchCount = 0;
+  const mismatchedQuestions: { id: string; answer_key_answer: string }[] = [];
+  
   try {
     // Get all questions that were just analyzed and have an answer key
     const { data: questionsWithKey } = await supabase
@@ -473,6 +526,7 @@ async function processBatchInBackground(
 
         if (hasMismatch) {
           mismatchCount++;
+          mismatchedQuestions.push({ id: q.id, answer_key_answer: keyAnswer });
           console.log(`Answer mismatch for question ${q.id}: AI=${aiAnswer}, Key=${keyAnswer}`);
         }
 
@@ -481,7 +535,7 @@ async function processBatchInBackground(
           .from("questions")
           .update({
             answer_mismatch: hasMismatch,
-            needs_review: hasMismatch || false, // Set needs_review if mismatch (will merge with existing logic)
+            needs_review: hasMismatch || false,
           } as any)
           .eq("id", q.id);
       }
@@ -489,6 +543,71 @@ async function processBatchInBackground(
     }
   } catch (mismatchError) {
     console.error("Error during answer key comparison:", mismatchError);
+  }
+
+  // POST-ANALYSIS PASS 2: Re-analyze mismatched questions with answer key hint
+  let reanalyzedCount = 0;
+  let reanalyzeSuccessCount = 0;
+  
+  if (mismatchedQuestions.length > 0) {
+    console.log(`Re-analyzing ${mismatchedQuestions.length} questions with answer key hints...`);
+    
+    // Update job status to show we're re-analyzing
+    await supabase
+      .from("analysis_jobs")
+      .update({
+        current_question_prompt: `Re-analyzing ${mismatchedQuestions.length} mismatched questions...`,
+      } as any)
+      .eq("id", jobId);
+    
+    for (const mq of mismatchedQuestions) {
+      reanalyzedCount++;
+      console.log(`Re-analyzing question ${mq.id} with hint: ${mq.answer_key_answer}`);
+      
+      const result = await analyzeQuestionWithRetry(
+        supabase,
+        mq.id,
+        geminiApiKey,
+        CONFIG.MAX_RETRIES,
+        CONFIG.RETRY_DELAY_MS,
+        mq.answer_key_answer // Pass the correct answer as a hint
+      );
+      
+      if (result.success) {
+        reanalyzeSuccessCount++;
+        
+        // Re-check if the answer now matches
+        const { data: updatedQ } = await supabase
+          .from("questions")
+          .select("correct_answer")
+          .eq("id", mq.id)
+          .single();
+        
+        const newAnswer = (updatedQ as any)?.correct_answer?.toUpperCase().trim();
+        const nowMatches = newAnswer === mq.answer_key_answer;
+        
+        // Update mismatch status after re-analysis
+        await supabase
+          .from("questions")
+          .update({
+            answer_mismatch: !nowMatches,
+            needs_review: !nowMatches,
+          } as any)
+          .eq("id", mq.id);
+        
+        if (nowMatches) {
+          mismatchCount--;
+          console.log(`Question ${mq.id} now matches answer key after re-analysis`);
+        }
+      } else {
+        console.error(`Re-analysis failed for question ${mq.id}: ${result.error}`);
+      }
+      
+      // Add a small delay between re-analyses to avoid rate limiting
+      await sleep(1000);
+    }
+    
+    console.log(`Re-analysis complete: ${reanalyzeSuccessCount}/${reanalyzedCount} succeeded, ${mismatchCount} still mismatched`);
   }
 
   // Mark job as completed
@@ -500,11 +619,13 @@ async function processBatchInBackground(
       completed_at: new Date().toISOString(),
       current_question_id: null,
       current_question_prompt: null,
-      error_message: failedCount > 0 ? `${failedCount} questions failed` : (mismatchCount > 0 ? `${mismatchCount} answer mismatches` : null),
+      error_message: failedCount > 0 
+        ? `${failedCount} questions failed` 
+        : (mismatchCount > 0 ? `${mismatchCount} answer mismatches (after re-analysis)` : null),
     } as any)
     .eq("id", jobId);
 
-  console.log(`Batch analysis job ${jobId} completed: ${completedCount} succeeded, ${failedCount} failed, ${mismatchCount} mismatches`);
+  console.log(`Batch analysis job ${jobId} completed: ${completedCount} succeeded, ${failedCount} failed, ${mismatchCount} final mismatches`);
 }
 
 serve(async (req) => {
