@@ -418,6 +418,32 @@ function extractBaseTopicName(title: string): string {
     .trim();
 }
 
+// Helper to parse midterm number from exam title
+function parseMidtermNumber(title: string): number | null {
+  const match = title.match(/midterm\s*(\d)/i);
+  if (match) return parseInt(match[1], 10);
+  return null;
+}
+
+// Calculate which midterm a topic belongs to based on its date relative to exam dates
+function calculateMidtermCoverage(
+  topicDate: string | null,
+  examDates: { midtermNumber: number; date: string }[]
+): number | null {
+  if (!topicDate || examDates.length === 0) return null;
+  
+  // Find the first exam whose date is AFTER or on the topic date
+  // Topics taught BEFORE an exam are covered ON that exam
+  for (const exam of examDates) {
+    if (topicDate <= exam.date) {
+      return exam.midtermNumber;
+    }
+  }
+  
+  // Topic is after all midterms = Finals topic (null)
+  return null;
+}
+
 // Generate topics from calendar events
 export function useGenerateTopicsFromEvents() {
   const queryClient = useQueryClient();
@@ -434,6 +460,28 @@ export function useGenerateTopicsFromEvents() {
         .order("event_date", { ascending: true });
 
       if (eventsError) throw eventsError;
+
+      // Fetch exam events to determine midterm coverage
+      const { data: examEvents, error: examError } = await supabase
+        .from("calendar_events")
+        .select("title, event_date")
+        .eq("course_pack_id", coursePackId)
+        .eq("event_type", "exam")
+        .not("event_date", "is", null)
+        .order("event_date", { ascending: true });
+
+      if (examError) throw examError;
+
+      // Parse exam dates - only midterms (not finals)
+      const examDates = (examEvents || [])
+        .map(e => ({
+          midtermNumber: parseMidtermNumber(e.title),
+          date: e.event_date as string,
+        }))
+        .filter((e): e is { midtermNumber: number; date: string } => 
+          e.midtermNumber !== null && e.date !== null
+        )
+        .sort((a, b) => a.date.localeCompare(b.date));
 
       // Fetch existing topics to avoid duplicates
       const { data: existingTopics, error: topicsError } = await supabase
@@ -490,7 +538,7 @@ export function useGenerateTopicsFromEvents() {
         return { created: 0, message: "No new topics to create" };
       }
 
-      // Insert topics
+      // Insert topics with calculated midterm_coverage
       const { error: insertError } = await supabase
         .from("topics")
         .insert(topicsToCreate.map(t => ({
@@ -498,6 +546,7 @@ export function useGenerateTopicsFromEvents() {
           title: t.title,
           description: t.description || null,
           scheduled_week: t.scheduled_week,
+          midterm_coverage: calculateMidtermCoverage(t.event_date, examDates),
         })));
 
       if (insertError) throw insertError;

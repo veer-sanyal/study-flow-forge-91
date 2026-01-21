@@ -326,12 +326,15 @@ export function useQuestionTypesForCourses(courseIds: string[]) {
   });
 }
 
-// Fetch past exams grouped by year/semester
-export interface ExamYear {
-  year: string;
-  semesters: {
+// Fetch past exams grouped by exam type (Midterm 1, 2, 3, Final)
+export interface ExamTypeGroup {
+  examType: string; // "Midterm 1", "Midterm 2", "Midterm 3", "Final"
+  sortOrder: number;
+  exams: {
+    name: string; // Original source_exam value
+    label: string; // Display label like "Spring 2024"
+    year: string;
     semester: string;
-    exams: string[];
   }[];
 }
 
@@ -353,40 +356,62 @@ export function usePastExamsHierarchy(courseIds: string[]) {
       // Get unique exam names and parse them
       const uniqueExams = [...new Set(data?.map(q => q.source_exam).filter(Boolean))] as string[];
       
-      // Parse and group by year/semester
-      const yearMap: Map<string, Map<string, string[]>> = new Map();
+      // Group by exam type (Midterm 1, 2, 3, Final)
+      const examTypeMap: Map<string, ExamTypeGroup> = new Map();
       
       uniqueExams.forEach(examName => {
         // Parse exam name like "Spring 2024 - Midterm 1" or "Fall 2023 Final"
         const yearMatch = examName.match(/20\d{2}/);
         const year = yearMatch ? yearMatch[0] : 'Unknown';
         
-        let semester = 'Unknown';
+        let semester = '';
         if (/spring/i.test(examName)) semester = 'Spring';
         else if (/fall/i.test(examName)) semester = 'Fall';
         else if (/summer/i.test(examName)) semester = 'Summer';
         else if (/winter/i.test(examName)) semester = 'Winter';
         
-        if (!yearMap.has(year)) {
-          yearMap.set(year, new Map());
+        // Determine exam type
+        let examType = 'Final';
+        let sortOrder = 4;
+        const midtermMatch = examName.match(/midterm\s*(\d)/i);
+        if (midtermMatch) {
+          const midtermNum = parseInt(midtermMatch[1], 10);
+          examType = `Midterm ${midtermNum}`;
+          sortOrder = midtermNum;
+        } else if (/final/i.test(examName)) {
+          examType = 'Final';
+          sortOrder = 4;
         }
-        if (!yearMap.get(year)!.has(semester)) {
-          yearMap.get(year)!.set(semester, []);
+        
+        if (!examTypeMap.has(examType)) {
+          examTypeMap.set(examType, {
+            examType,
+            sortOrder,
+            exams: [],
+          });
         }
-        yearMap.get(year)!.get(semester)!.push(examName);
+        
+        examTypeMap.get(examType)!.exams.push({
+          name: examName,
+          label: semester && year ? `${semester} ${year}` : examName,
+          year,
+          semester,
+        });
       });
 
-      // Convert to array and sort
-      const result: ExamYear[] = [];
-      const sortedYears = Array.from(yearMap.keys()).sort((a, b) => b.localeCompare(a)); // Descending
+      // Sort groups by sort order (Midterm 1, 2, 3, then Final)
+      const result = Array.from(examTypeMap.values())
+        .sort((a, b) => a.sortOrder - b.sortOrder);
       
-      sortedYears.forEach(year => {
-        const semesterMap = yearMap.get(year)!;
-        const semesters = Array.from(semesterMap.entries()).map(([semester, exams]) => ({
-          semester,
-          exams: exams.sort(),
-        }));
-        result.push({ year, semesters });
+      // Sort exams within each group by year (descending) then semester
+      result.forEach(group => {
+        group.exams.sort((a, b) => {
+          const yearDiff = b.year.localeCompare(a.year);
+          if (yearDiff !== 0) return yearDiff;
+          // Fall before Spring within same year
+          const semesterOrder: Record<string, number> = { 'Fall': 0, 'Summer': 1, 'Spring': 2, 'Winter': 3 };
+          return (semesterOrder[a.semester] ?? 4) - (semesterOrder[b.semester] ?? 4);
+        });
       });
 
       return result;
