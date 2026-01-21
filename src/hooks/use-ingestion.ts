@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { formatExamType } from "@/lib/examUtils";
@@ -8,6 +9,30 @@ type IngestionJob = Tables<"ingestion_jobs">;
 export type IngestionKind = "pdf" | "calendar";
 
 export function useIngestionJobs(coursePackId?: string, kind?: IngestionKind) {
+  const queryClient = useQueryClient();
+
+  // Subscribe to realtime updates for ingestion jobs
+  useEffect(() => {
+    const channel = supabase
+      .channel("ingestion-jobs-updates")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ingestion_jobs",
+        },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
+
   return useQuery({
     queryKey: ["ingestion-jobs", coursePackId, kind],
     queryFn: async () => {
@@ -29,6 +54,72 @@ export function useIngestionJobs(coursePackId?: string, kind?: IngestionKind) {
       return data as (IngestionJob & { course_packs: { title: string } | null })[];
     },
   });
+}
+
+// Hook for tracking active ingestion job progress
+export function useIngestionProgress() {
+  const queryClient = useQueryClient();
+  const [activeJob, setActiveJob] = useState<IngestionJob | null>(null);
+
+  // Fetch active (processing) ingestion jobs
+  const { data: processingJobs } = useQuery({
+    queryKey: ["ingestion-jobs-processing"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("ingestion_jobs")
+        .select("*, course_packs(title)")
+        .eq("status", "processing")
+        .order("created_at", { ascending: false });
+      
+      if (error) throw error;
+      return data as (IngestionJob & { course_packs: { title: string } | null })[];
+    },
+    refetchInterval: 2000, // Poll every 2 seconds
+  });
+
+  // Subscribe to realtime updates
+  useEffect(() => {
+    const channel = supabase
+      .channel("ingestion-progress")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ingestion_jobs",
+        },
+        (payload) => {
+          queryClient.invalidateQueries({ queryKey: ["ingestion-jobs-processing"] });
+          queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
+          
+          if (payload.new && (payload.new as any).status === "processing") {
+            setActiveJob(payload.new as IngestionJob);
+          } else if (payload.new && ["completed", "failed"].includes((payload.new as any).status)) {
+            if (activeJob?.id === (payload.new as any).id) {
+              setActiveJob(payload.new as IngestionJob);
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient, activeJob]);
+
+  // Update active job from fetched data
+  useEffect(() => {
+    if (processingJobs && processingJobs.length > 0) {
+      setActiveJob(processingJobs[0]);
+    }
+  }, [processingJobs]);
+
+  return {
+    activeJob,
+    isProcessing: activeJob?.status === "processing",
+    processingJobs: processingJobs || [],
+  };
 }
 
 export function useCreateIngestionJob() {

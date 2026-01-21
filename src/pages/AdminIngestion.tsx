@@ -36,12 +36,160 @@ import { useToast } from "@/hooks/use-toast";
 import { 
   useIngestionJobs, 
   useProcessJob, 
-  useDeleteJob 
+  useDeleteJob,
+  useIngestionProgress 
 } from "@/hooks/use-ingestion";
 import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
+
+// Ingestion Progress Card Component
+function IngestionProgressCard() {
+  const navigate = useNavigate();
+  const { activeJob, processingJobs } = useIngestionProgress();
+  
+  const [now, setNow] = useState(Date.now());
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!activeJob || activeJob.status !== "processing") return;
+    
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [activeJob]);
+
+  if (!activeJob) return null;
+
+  const progressPercent = activeJob.progress_pct || 0;
+  const isCompleted = activeJob.status === "completed";
+  const isFailed = activeJob.status === "failed";
+  const startTime = activeJob.created_at ? new Date(activeJob.created_at).getTime() : now;
+  const currentElapsed = now - startTime;
+
+  const handleViewExam = () => {
+    if (!activeJob.course_pack_id || !activeJob.exam_year || !activeJob.exam_semester) return;
+    
+    const parts: string[] = [];
+    if (activeJob.exam_semester && activeJob.exam_year) {
+      parts.push(`${activeJob.exam_semester} ${activeJob.exam_year}`);
+    }
+    if (activeJob.exam_type) {
+      const type = activeJob.exam_type === "f" ? "Final" : `Midterm ${activeJob.exam_type}`;
+      parts.push(type);
+    }
+    const sourceExam = encodeURIComponent(parts.join(" ") || activeJob.file_name);
+    navigate(`/admin/questions/${activeJob.course_pack_id}/${sourceExam}`);
+  };
+
+  return (
+    <motion.div
+      variants={staggerItem}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+    >
+      <Card className={`border-2 ${isCompleted ? 'border-green-500/50 bg-green-500/5' : isFailed ? 'border-destructive/50 bg-destructive/5' : 'border-blue-500/50 bg-blue-500/5'}`}>
+        <CardContent className="p-5">
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-500/20' : isFailed ? 'bg-destructive/20' : 'bg-blue-500/20'}`}>
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : isFailed ? (
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-blue-500 animate-pulse" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-base">
+                      {isCompleted ? "Extraction Complete" : isFailed ? "Extraction Failed" : "Extracting Questions"}
+                    </h3>
+                    <Badge variant={isCompleted ? "default" : isFailed ? "destructive" : "secondary"} className={isCompleted ? "bg-green-500" : ""}>
+                      {isCompleted ? "Done" : isFailed ? "Failed" : "In Progress"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground truncate max-w-xs">
+                    {activeJob.file_name}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {isCompleted && (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={handleViewExam}
+                    className="gap-1"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View Exam
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  Step: {activeJob.current_step || "Starting..."}
+                </span>
+                <span className="text-muted-foreground">
+                  {Math.round(progressPercent)}%
+                </span>
+              </div>
+              <Progress value={progressPercent} className="h-2" />
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-2 gap-4">
+              {/* Elapsed Time */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Timer className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Elapsed</p>
+                  <p className="font-medium text-sm">{formatDuration(currentElapsed)}</p>
+                </div>
+              </div>
+
+              {/* Questions Extracted */}
+              {activeJob.questions_extracted !== null && (
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded bg-muted">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Questions</p>
+                    <p className="font-medium text-sm">{activeJob.questions_extracted}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {isFailed && activeJob.error_message && (
+              <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/30 text-destructive">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm">{activeJob.error_message}</span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
 
 // Helper to format time in human readable format
 function formatDuration(ms: number): string {
@@ -350,6 +498,9 @@ export default function AdminIngestion() {
             Refresh
           </Button>
         </motion.div>
+
+        {/* Ingestion Progress Card (PDF extraction) */}
+        <IngestionProgressCard />
 
         {/* Analysis Progress Card */}
         {analysisProgress && <AnalysisProgressCard />}
