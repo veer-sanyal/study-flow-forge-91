@@ -1,9 +1,10 @@
-import { BookOpen, BarChart3, Settings } from "lucide-react";
+import { BookOpen, BarChart3, Settings, Calendar } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { to: "/study", label: "Study", icon: BookOpen },
+  { to: "/calendar", label: "Calendar", icon: Calendar },
   { to: "/progress", label: "Progress", icon: BarChart3 },
   { to: "/settings", label: "Settings", icon: Settings },
 ];
