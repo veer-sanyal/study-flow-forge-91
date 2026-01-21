@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, ChevronRight, Check, Star, Calendar, Target, RefreshCw } from 'lucide-react';
+import { X, ChevronRight, Check, Star, Calendar, Target, RefreshCw, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -30,7 +29,8 @@ import {
   useQuestionTypesForCourses,
 } from '@/hooks/use-focus';
 import { useRecommendedPresets } from '@/hooks/use-study-recommendations';
-import { fadeSlideUp, duration, easing } from '@/lib/motion';
+import { fadeSlideUp, duration } from '@/lib/motion';
+import { getCourseCardColor } from '@/lib/examUtils';
 
 interface FocusDrawerProps {
   open: boolean;
@@ -70,11 +70,14 @@ export function FocusDrawer({
   const { data: questionTypes = [] } = useQuestionTypesForCourses(filters.courseIds);
   const recommendedPresets = useRecommendedPresets(filters.courseIds);
 
-  const [expandedYears, setExpandedYears] = useState<string[]>([]);
-  const [expandedSemesters, setExpandedSemesters] = useState<string[]>([]);
   const [expandedTopicGroups, setExpandedTopicGroups] = useState<number[]>([]);
 
-  const allCoursesSelected = filters.courseIds.length === 0;
+  const hasCoursesSelected = filters.courseIds.length > 0;
+
+  // Get upcoming midterms (future exams only)
+  const upcomingMidterms = upcomingExams.filter(
+    e => e.midtermNumber && e.daysUntil !== null && e.daysUntil >= 0
+  );
 
   const handleCourseToggle = (courseId: string) => {
     if (filters.courseIds.includes(courseId)) {
@@ -82,10 +85,6 @@ export function FocusDrawer({
     } else {
       onCourseIdsChange([...filters.courseIds, courseId]);
     }
-  };
-
-  const handleAllCoursesToggle = () => {
-    onCourseIdsChange([]);
   };
 
   const handleTopicToggle = (topicId: string) => {
@@ -160,103 +159,135 @@ export function FocusDrawer({
               </section>
             )}
 
-            {/* Courses */}
+            {/* Courses - Visual cards */}
             <section className="space-y-3">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Courses
+                Select Course
               </h3>
-              <div className="space-y-2">
-                <label className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer">
-                  <Checkbox
-                    checked={allCoursesSelected}
-                    onCheckedChange={handleAllCoursesToggle}
-                  />
-                  <span className="text-sm font-medium">All courses</span>
-                </label>
-                {courses.map((course) => (
-                  <label
-                    key={course.id}
-                    className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                  >
-                    <Checkbox
-                      checked={filters.courseIds.includes(course.id)}
-                      onCheckedChange={() => handleCourseToggle(course.id)}
-                    />
-                    <span className="text-sm">{course.title}</span>
-                  </label>
-                ))}
+              <div className="grid gap-3 grid-cols-2">
+                {courses.map((course, index) => {
+                  const isSelected = filters.courseIds.includes(course.id);
+                  const { gradient } = getCourseCardColor(course.title, index);
+                  
+                  return (
+                    <button
+                      key={course.id}
+                      onClick={() => handleCourseToggle(course.id)}
+                      className={cn(
+                        "relative p-4 rounded-xl text-left transition-all overflow-hidden",
+                        "bg-gradient-to-br",
+                        gradient,
+                        isSelected 
+                          ? "ring-2 ring-primary ring-offset-2 ring-offset-background" 
+                          : "opacity-75 hover:opacity-100"
+                      )}
+                    >
+                      {isSelected && (
+                        <div className="absolute top-2 right-2 h-5 w-5 rounded-full bg-white/90 flex items-center justify-center">
+                          <Check className="h-3 w-3 text-primary" />
+                        </div>
+                      )}
+                      <div className="h-8 w-8 rounded-lg bg-white/20 flex items-center justify-center mb-2">
+                        <BookOpen className="h-4 w-4 text-white" />
+                      </div>
+                      <h4 className="font-medium text-white text-sm leading-tight line-clamp-2">
+                        {course.title}
+                      </h4>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
-            {/* Narrow By */}
-            <section className="space-y-3">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Narrow by (optional)
-              </h3>
-              <RadioGroup
-                value={narrowBy || ''}
-                onValueChange={(v) => onNarrowByChange(v as NarrowByOption || null)}
-              >
-                <div className="space-y-2">
-                  {[
-                    { value: 'midterm', label: 'Upcoming Midterm' },
-                    { value: 'exam', label: 'Past Exam' },
-                    { value: 'topics', label: 'Topics' },
-                    { value: 'types', label: 'Question Types' },
-                  ].map((option) => (
-                    <label
-                      key={option.value}
-                      className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                    >
-                      <RadioGroupItem value={option.value} />
-                      <span className="text-sm">{option.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </RadioGroup>
-            </section>
-
-            {/* Conditional content based on narrowBy */}
-            <AnimatePresence mode="wait">
-              {narrowBy === 'midterm' && (
+            {/* Upcoming Midterms - Show automatically when courses are selected */}
+            <AnimatePresence>
+              {hasCoursesSelected && upcomingMidterms.length > 0 && (
                 <motion.section
-                  key="midterm"
-                  {...fadeSlideUp}
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: duration.fast }}
+                  className="space-y-3"
+                >
+                  <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-orange-500" />
+                    Upcoming Exams
+                  </h3>
+                  <div className="space-y-2">
+                    {upcomingMidterms.map((exam) => (
+                      <button
+                        key={exam.id}
+                        onClick={() => onMidtermNumberChange(exam.midtermNumber)}
+                        className={cn(
+                          "flex items-center justify-between w-full p-3 rounded-lg border transition-all text-left",
+                          filters.midtermNumber === exam.midtermNumber
+                            ? "border-primary bg-primary/5"
+                            : "hover:bg-accent/50"
+                        )}
+                      >
+                        <span className="font-medium text-sm">{exam.title}</span>
+                        {exam.daysUntil !== null && (
+                          <Badge 
+                            variant={exam.daysUntil <= 3 ? "destructive" : "secondary"} 
+                            className="text-xs"
+                          >
+                            {exam.daysUntil === 0 ? 'Today' : 
+                             exam.daysUntil === 1 ? 'Tomorrow' : 
+                             `${exam.daysUntil}d`}
+                          </Badge>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </motion.section>
+              )}
+            </AnimatePresence>
+
+            {/* Narrow By - Only show after course is selected */}
+            <AnimatePresence>
+              {hasCoursesSelected && (
+                <motion.section
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
                   transition={{ duration: duration.fast }}
                   className="space-y-3"
                 >
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                    Select Midterm
+                    Filter by (optional)
                   </h3>
                   <RadioGroup
-                    value={filters.midtermNumber?.toString() || ''}
-                    onValueChange={(v) => onMidtermNumberChange(v ? parseInt(v) : null)}
+                    value={narrowBy || ''}
+                    onValueChange={(v) => onNarrowByChange(v as NarrowByOption || null)}
                   >
-                    {upcomingExams
-                      .filter(e => e.midtermNumber)
-                      .map((exam) => (
+                    <div className="space-y-2">
+                      {[
+                        { value: 'exam', label: 'Past Exams' },
+                        { value: 'topics', label: 'Topics' },
+                        { value: 'types', label: 'Question Types' },
+                      ].map((option) => (
                         <label
-                          key={exam.id}
-                          className="flex items-center justify-between p-3 rounded-lg border hover:bg-accent/50 cursor-pointer"
-                        >
-                          <div className="flex items-center gap-3">
-                            <RadioGroupItem value={exam.midtermNumber!.toString()} />
-                            <span className="text-sm font-medium">{exam.title}</span>
-                          </div>
-                          {exam.daysUntil !== null && exam.daysUntil >= 0 && (
-                            <Badge variant="secondary" className="text-xs">
-                              {exam.daysUntil === 0 ? 'Today' : 
-                               exam.daysUntil === 1 ? 'Tomorrow' : 
-                               `${exam.daysUntil}d`}
-                            </Badge>
+                          key={option.value}
+                          className={cn(
+                            "flex items-center gap-3 p-2 rounded-lg cursor-pointer transition-colors",
+                            narrowBy === option.value
+                              ? "bg-primary/10"
+                              : "hover:bg-accent/50"
                           )}
+                        >
+                          <RadioGroupItem value={option.value} />
+                          <span className="text-sm">{option.label}</span>
                         </label>
                       ))}
+                    </div>
                   </RadioGroup>
                 </motion.section>
               )}
+            </AnimatePresence>
 
-              {narrowBy === 'topics' && (
+            {/* Conditional content based on narrowBy */}
+            <AnimatePresence mode="wait">
+              {narrowBy === 'topics' && hasCoursesSelected && (
                 <motion.section
                   key="topics"
                   {...fadeSlideUp}
@@ -317,7 +348,7 @@ export function FocusDrawer({
                 </motion.section>
               )}
 
-              {narrowBy === 'types' && (
+              {narrowBy === 'types' && hasCoursesSelected && (
                 <motion.section
                   key="types"
                   {...fadeSlideUp}
@@ -344,7 +375,7 @@ export function FocusDrawer({
                 </motion.section>
               )}
 
-              {narrowBy === 'exam' && (
+              {narrowBy === 'exam' && hasCoursesSelected && (
                 <motion.section
                   key="exam"
                   {...fadeSlideUp}
@@ -354,63 +385,29 @@ export function FocusDrawer({
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                     Past Exams
                   </h3>
-                  {pastExams.map((yearGroup) => (
-                    <Collapsible
-                      key={yearGroup.year}
-                      open={expandedYears.includes(yearGroup.year)}
-                      onOpenChange={(open) => {
-                        setExpandedYears(open 
-                          ? [...expandedYears, yearGroup.year]
-                          : expandedYears.filter(y => y !== yearGroup.year)
-                        );
-                      }}
-                    >
-                      <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-lg hover:bg-accent/50">
-                        <span className="text-sm font-medium">{yearGroup.year}</span>
-                        <ChevronRight className={cn(
-                          'h-4 w-4 transition-transform',
-                          expandedYears.includes(yearGroup.year) && 'rotate-90'
-                        )} />
-                      </CollapsibleTrigger>
-                      <CollapsibleContent className="pl-4 space-y-1 pt-1">
-                        {yearGroup.semesters.map((sem) => (
-                          <Collapsible
-                            key={`${yearGroup.year}-${sem.semester}`}
-                            open={expandedSemesters.includes(`${yearGroup.year}-${sem.semester}`)}
-                            onOpenChange={(open) => {
-                              const key = `${yearGroup.year}-${sem.semester}`;
-                              setExpandedSemesters(open 
-                                ? [...expandedSemesters, key]
-                                : expandedSemesters.filter(s => s !== key)
-                              );
-                            }}
-                          >
-                            <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-lg hover:bg-accent/50">
-                              <span className="text-sm">{sem.semester}</span>
-                              <ChevronRight className={cn(
-                                'h-4 w-4 transition-transform',
-                                expandedSemesters.includes(`${yearGroup.year}-${sem.semester}`) && 'rotate-90'
-                              )} />
-                            </CollapsibleTrigger>
-                            <CollapsibleContent className="pl-4 space-y-1 pt-1">
-                              {sem.exams.map((exam) => (
-                                <label
-                                  key={exam}
-                                  className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
-                                >
-                                  <Checkbox
-                                    checked={filters.examNames.includes(exam)}
-                                    onCheckedChange={() => handleExamToggle(exam)}
-                                  />
-                                  <span className="text-sm">{exam}</span>
-                                </label>
-                              ))}
-                            </CollapsibleContent>
-                          </Collapsible>
-                        ))}
-                      </CollapsibleContent>
-                    </Collapsible>
-                  ))}
+                  <div className="space-y-4">
+                    {pastExams.map((group) => (
+                      <div key={group.examType} className="space-y-2">
+                        <h4 className="text-sm font-medium text-foreground">
+                          {group.examType}
+                        </h4>
+                        <div className="space-y-1 pl-2">
+                          {group.exams.map((exam) => (
+                            <label
+                              key={exam.name}
+                              className="flex items-center gap-3 p-2 rounded-lg hover:bg-accent/50 cursor-pointer"
+                            >
+                              <Checkbox
+                                checked={filters.examNames.includes(exam.name)}
+                                onCheckedChange={() => handleExamToggle(exam.name)}
+                              />
+                              <span className="text-sm">{exam.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </motion.section>
               )}
             </AnimatePresence>
@@ -422,7 +419,7 @@ export function FocusDrawer({
           <Button variant="outline" onClick={onClear} className="flex-1">
             Clear All
           </Button>
-          <Button onClick={onApply} className="flex-1">
+          <Button onClick={onApply} className="flex-1" disabled={!hasCoursesSelected}>
             Apply Focus
           </Button>
         </div>

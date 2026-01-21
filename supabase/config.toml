@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.process-answer-key]
 verify_jwt = false
+
+[functions.backfill-topic-coverage]
+verify_jwt = false

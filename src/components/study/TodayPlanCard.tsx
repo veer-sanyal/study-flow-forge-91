@@ -1,6 +1,5 @@
 import { motion } from 'framer-motion';
-import { Play, Clock, CheckCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Clock, CheckCircle, ChevronRight } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -21,12 +20,18 @@ export function TodayPlanCard({ stats, isLoading, onStart }: TodayPlanCardProps)
   const remaining = Math.max(0, stats.totalQuestions - stats.completedQuestions);
 
   return (
-    <motion.div
+    <motion.button
       {...fadeSlideUp}
       transition={{ duration: duration.slow, ease: easing.easeOut }}
+      whileHover={{ scale: 1.01 }}
+      whileTap={{ scale: 0.99 }}
+      onClick={onStart}
+      disabled={isLoading || isComplete}
       className={cn(
-        'relative overflow-hidden rounded-xl border bg-card p-6',
-        'shadow-sm hover:shadow-md transition-shadow'
+        'relative w-full text-left overflow-hidden rounded-xl border bg-card p-6',
+        'shadow-sm hover:shadow-md transition-all',
+        'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
+        (isLoading || isComplete) && 'opacity-60 cursor-not-allowed'
       )}
     >
       {/* Subtle gradient overlay */}
@@ -53,7 +58,9 @@ export function TodayPlanCard({ stats, isLoading, onStart }: TodayPlanCardProps)
               <CheckCircle className="h-5 w-5" />
               <span className="text-sm font-medium">Complete!</span>
             </div>
-          ) : null}
+          ) : (
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          )}
         </div>
 
         {/* Stats row */}
@@ -98,17 +105,14 @@ export function TodayPlanCard({ stats, isLoading, onStart }: TodayPlanCardProps)
           </div>
         )}
 
-        {/* Start button */}
-        <Button
-          size="lg"
-          className="w-full gap-2 font-semibold"
-          onClick={onStart}
-          disabled={isLoading || isComplete}
-        >
-          <Play className="h-4 w-4" />
-          {isComplete ? 'Plan Complete' : stats.completedQuestions > 0 ? 'Continue' : 'Start'}
-        </Button>
+        {/* Visual cue for clickability */}
+        {!isComplete && (
+          <div className="text-sm font-medium text-primary flex items-center gap-1">
+            {stats.completedQuestions > 0 ? 'Continue' : 'Start studying'}
+            <ChevronRight className="h-4 w-4" />
+          </div>
+        )}
       </div>
-    </motion.div>
+    </motion.button>
   );
 }
