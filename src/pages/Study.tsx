@@ -279,67 +279,69 @@ export default function Study() {
 
     return (
       <PageTransition className="min-h-full">
-        {/* Background treatment - subtle gradient wash */}
-        <div className="fixed inset-0 bg-gradient-to-br from-background via-background to-muted/20 pointer-events-none -z-10" />
-        
-        <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
-          {/* Page header */}
-          <div className="space-y-1">
-            <h1 className="text-h1 font-bold tracking-tight">Study</h1>
-            <p className="text-body text-muted-foreground">
-              {todayPlan.completedQuestions > 0 
-                ? `${todayPlan.completedQuestions} of ${dailyGoal} completed today`
-                : 'Ready to learn something new?'
-              }
-            </p>
-          </div>
-
-          {/* Focus Bar with course/exam context */}
-          <StudyFocusBar 
-            overdueCount={stats.reviewsDue} 
-          />
-
-          {/* 2-column layout on desktop */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-            {/* Left column (primary) - 3/5 width */}
-            <div className="lg:col-span-3 space-y-5">
-              {/* Today's Plan Card - Hero treatment */}
-              <TodayPlanCard
-                stats={todayPlan}
-                isLoading={dashboardLoading}
-                onStart={handleStartTodayPlan}
-                onCustomize={() => navigate('/study/focus')}
-              />
-
-              {/* Continue where you left off */}
-              {dashboardData?.lastSession && (
-                <ContinueSessionCard
-                  session={dashboardData.lastSession}
-                  onContinue={handleContinueSession}
-                  onReviewMistakes={() => {
-                    // TODO: Implement review mistakes functionality
-                    handleContinueSession();
-                  }}
-                />
-              )}
+        {/* Background: subtle paper panel effect */}
+        <div className="min-h-full bg-background">
+          <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-4">
+            {/* Page header - tighter */}
+            <div className="flex items-baseline justify-between">
+              <div>
+                <h1 className="text-h1 font-semibold tracking-tight">Study</h1>
+                <p className="text-meta text-muted-foreground">
+                  {todayPlan.completedQuestions > 0 
+                    ? `${todayPlan.completedQuestions} of ${dailyGoal} completed today`
+                    : 'Ready to learn something new?'
+                  }
+                </p>
+              </div>
             </div>
 
-            {/* Right column (secondary) - 2/5 width */}
-            <div className="lg:col-span-2 space-y-5">
-              {/* Stats strip */}
-              <StatsStrip
-                streak={stats.streak}
-                weeklyAccuracy={stats.weeklyAccuracy}
-                reviewsDue={stats.reviewsDue}
-                questionsToday={stats.questionsToday}
-              />
+            {/* Focus Bar with course/exam context */}
+            <StudyFocusBar 
+              overdueCount={stats.reviewsDue} 
+            />
 
-              {/* Practice Recommendations */}
-              <RecommendationCards
-                recommendations={dashboardData?.practiceRecommendations || []}
-                onStartRecommendation={handleStartRecommendation}
-                onCustomPractice={() => navigate('/study/focus')}
-              />
+            {/* 2-column layout on desktop */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+              {/* Left column (primary) - 3/5 width */}
+              <div className="lg:col-span-3 space-y-4">
+                {/* Today's Plan Card - Hero treatment */}
+                <TodayPlanCard
+                  stats={todayPlan}
+                  isLoading={dashboardLoading}
+                  onStart={handleStartTodayPlan}
+                  onCustomize={() => navigate('/study/focus')}
+                />
+
+                {/* Continue where you left off */}
+                {dashboardData?.lastSession && (
+                  <ContinueSessionCard
+                    session={dashboardData.lastSession}
+                    onContinue={handleContinueSession}
+                    onReviewMistakes={() => {
+                      // TODO: Implement review mistakes functionality
+                      handleContinueSession();
+                    }}
+                  />
+                )}
+              </div>
+
+              {/* Right column (secondary) - 2/5 width */}
+              <div className="lg:col-span-2 space-y-4">
+                {/* Stats strip */}
+                <StatsStrip
+                  streak={stats.streak}
+                  weeklyAccuracy={stats.weeklyAccuracy}
+                  reviewsDue={stats.reviewsDue}
+                  questionsToday={stats.questionsToday}
+                />
+
+                {/* Practice Recommendations */}
+                <RecommendationCards
+                  recommendations={dashboardData?.practiceRecommendations || []}
+                  onStartRecommendation={handleStartRecommendation}
+                  onCustomPractice={() => navigate('/study/focus')}
+                />
+              </div>
             </div>
           </div>
         </div>

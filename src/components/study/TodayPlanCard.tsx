@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion';
-import { Calendar, ChevronRight, Sparkles, Clock, CheckCircle } from 'lucide-react';
+import { Calendar, ChevronRight, Sparkles, Clock, CheckCircle, Settings2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
-import { ProgressRing, Pill } from '@/components/ui/primitives';
+import { ProgressRing } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/button';
 import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -21,40 +21,35 @@ export function TodayPlanCard({ stats, isLoading, onStart, onCustomize }: TodayP
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 16 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: duration.slow, ease: easing.easeOut }}
+      transition={{ duration: duration.normal, ease: easing.easeOut }}
       className={cn(
-        'relative overflow-hidden rounded-2xl border-2 border-primary/20',
-        'bg-gradient-to-br from-card via-card to-primary/5',
+        'relative overflow-hidden rounded-xl',
+        'bg-surface border border-border',
         'shadow-raised',
-        isComplete && 'border-success/30'
+        isComplete && 'ring-2 ring-success/20'
       )}
     >
-      {/* Hero header strip with gradient */}
-      <div className="h-1.5 bg-gradient-to-r from-primary via-primary-glow to-primary" />
-      
-      {/* Decorative corner element */}
-      <div className="absolute top-0 right-0 w-32 h-32 opacity-[0.03] pointer-events-none">
-        <Calendar className="w-full h-full" />
-      </div>
+      {/* Hero header accent line */}
+      <div className="h-1 bg-gradient-to-r from-primary via-primary-glow to-primary" />
 
-      <div className="relative p-6 space-y-5">
+      <div className="relative p-5 space-y-4">
         {/* Header row */}
         <div className="flex items-start justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <div className="p-2 rounded-xl bg-primary/10 text-primary">
-                <Calendar className="h-5 w-5" />
+          <div className="space-y-0.5">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                <Calendar className="h-4 w-4" />
               </div>
-              <h2 className="text-h2 font-bold tracking-tight">Today's Plan</h2>
+              <h2 className="text-h2 font-semibold tracking-tight">Today's Plan</h2>
             </div>
             {stats.primaryCourse ? (
-              <p className="text-body text-muted-foreground pl-11">
+              <p className="text-meta text-muted-foreground pl-[38px]">
                 {stats.primaryCourse.title}
               </p>
             ) : (
-              <p className="text-body text-muted-foreground pl-11">
+              <p className="text-meta text-muted-foreground pl-[38px]">
                 Your personalized study session
               </p>
             )}
@@ -62,36 +57,37 @@ export function TodayPlanCard({ stats, isLoading, onStart, onCustomize }: TodayP
           
           {/* Progress ring or completion badge */}
           {isComplete ? (
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-success/10 text-success">
-              <CheckCircle className="h-5 w-5" />
-              <span className="text-body font-semibold">Done!</span>
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-success/10 text-success">
+              <CheckCircle className="h-4 w-4" />
+              <span className="text-meta font-semibold">Complete</span>
             </div>
           ) : (
             <ProgressRing 
               value={stats.progressPercent} 
-              size={56}
-              strokeWidth={5}
+              size={48}
+              strokeWidth={4}
               className="shrink-0"
             />
           )}
         </div>
 
-        {/* Stats row with pills */}
-        <div className="flex items-center gap-3 flex-wrap">
-          <Pill variant="default" size="md">
+        {/* Stats row */}
+        <div className="flex items-center gap-4 text-body">
+          <span>
             <span className="font-semibold text-foreground">{remaining}</span>
-            <span>question{remaining !== 1 ? 's' : ''} left</span>
-          </Pill>
-          <Pill variant="muted" size="md">
+            <span className="text-muted-foreground ml-1">question{remaining !== 1 ? 's' : ''}</span>
+          </span>
+          <span className="text-border">•</span>
+          <span className="flex items-center gap-1 text-muted-foreground">
             <Clock className="h-3.5 w-3.5" />
-            <span>~{stats.estimatedMinutes} min</span>
-          </Pill>
+            ~{stats.estimatedMinutes} min
+          </span>
         </div>
 
         {/* Progress bar - only show if there's progress */}
         {hasProgress && !isComplete && (
-          <div className="space-y-2">
-            <Progress value={stats.progressPercent} className="h-2.5" />
+          <div className="space-y-1.5">
+            <Progress value={stats.progressPercent} className="h-2" />
             <div className="flex items-center justify-between text-meta text-muted-foreground">
               <span>
                 {stats.completedQuestions} of {stats.totalQuestions} completed
@@ -105,37 +101,29 @@ export function TodayPlanCard({ stats, isLoading, onStart, onCustomize }: TodayP
           </div>
         )}
 
-        {/* Why these questions? */}
-        <div className="flex items-center gap-2 text-meta text-muted-foreground">
-          <Sparkles className="h-3.5 w-3.5 text-primary" />
-          <span>Based on your weak topics + upcoming schedule</span>
-        </div>
-
-        {/* Also due section */}
-        {stats.alsoDueCourses.length > 0 && (
-          <div className="pt-3 border-t border-border/50">
-            <p className="text-meta text-muted-foreground">
-              Also due:{' '}
-              {stats.alsoDueCourses.map((c, i) => (
-                <span key={c.id}>
-                  {i > 0 && ', '}
-                  <span className="font-medium text-foreground">{c.title}</span> ({c.count})
-                </span>
-              ))}
-            </p>
+        {/* Why these questions + closure message */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-1.5 text-meta text-muted-foreground">
+            <Sparkles className="h-3 w-3 text-primary" />
+            <span>Based on your weak topics + upcoming schedule</span>
           </div>
-        )}
+          {!isComplete && remaining <= stats.totalQuestions && (
+            <p className="text-meta text-muted-foreground/70 pl-[18px]">
+              Finish this and you'll be caught up for today
+            </p>
+          )}
+        </div>
 
         {/* CTA Buttons */}
         {!isComplete && (
-          <div className="flex items-center gap-3 pt-2">
+          <div className="flex items-center gap-2 pt-1">
             <Button
-              size="lg"
+              size="default"
               onClick={onStart}
               disabled={isLoading}
-              className="gap-2 flex-1 sm:flex-none shadow-sm"
+              className="gap-1.5 shadow-sm"
             >
-              {hasProgress ? 'Continue Today\'s Plan' : 'Start Today\'s Plan'}
+              {hasProgress ? 'Continue' : 'Start Today\'s Plan'}
               <ChevronRight className="h-4 w-4" />
             </Button>
             {onCustomize && (
@@ -143,22 +131,20 @@ export function TodayPlanCard({ stats, isLoading, onStart, onCustomize }: TodayP
                 variant="ghost"
                 size="sm"
                 onClick={onCustomize}
-                className="text-muted-foreground hover:text-foreground"
+                className="gap-1.5 text-muted-foreground hover:text-foreground"
               >
+                <Settings2 className="h-3.5 w-3.5" />
                 Customize
               </Button>
             )}
           </div>
         )}
 
-        {/* Completed state CTA */}
+        {/* Completed state */}
         {isComplete && (
-          <div className="text-center py-2">
-            <p className="text-body text-success font-medium mb-1">
+          <div className="pt-1">
+            <p className="text-body text-success font-medium">
               🎉 Great work! You've completed your daily goal.
-            </p>
-            <p className="text-meta text-muted-foreground">
-              Keep practicing below to reinforce what you've learned.
             </p>
           </div>
         )}

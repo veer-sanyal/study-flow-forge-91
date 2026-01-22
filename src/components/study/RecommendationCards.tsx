@@ -1,7 +1,8 @@
 import { motion } from 'framer-motion';
-import { Target, RefreshCw, Calendar, Zap, ChevronRight, Clock, Sparkles } from 'lucide-react';
+import { Target, RefreshCw, Calendar, Zap, ChevronRight, Clock, Sparkles, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { fadeSlideUp, duration, easing, stagger } from '@/lib/motion';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { PracticeRecommendation } from '@/hooks/use-study-dashboard';
 
@@ -14,27 +15,31 @@ interface RecommendationRowProps {
 const typeConfig = {
   overdue_review: {
     icon: RefreshCw,
-    accentClass: 'bg-warning/10 text-warning border-warning/20',
-    badgeClass: 'bg-warning/10 text-warning',
-    label: 'High impact',
+    accentColor: 'bg-warning',
+    badgeText: 'High impact',
+    badgeClass: 'text-warning bg-warning/10',
+    ctaText: 'Do now',
   },
   weak_topic: {
     icon: Target,
-    accentClass: 'bg-destructive/10 text-destructive border-destructive/20',
-    badgeClass: 'bg-destructive/10 text-destructive',
-    label: 'Needs work',
+    accentColor: 'bg-destructive',
+    badgeText: 'Needs work',
+    badgeClass: 'text-destructive bg-destructive/10',
+    ctaText: 'Practice',
   },
   upcoming_exam: {
     icon: Calendar,
-    accentClass: 'bg-primary/10 text-primary border-primary/20',
-    badgeClass: 'bg-primary/10 text-primary',
-    label: 'Exam prep',
+    accentColor: 'bg-primary',
+    badgeText: 'Exam prep',
+    badgeClass: 'text-primary bg-primary/10',
+    ctaText: 'Practice',
   },
   question_type: {
     icon: Zap,
-    accentClass: 'bg-muted text-muted-foreground border-border',
-    badgeClass: 'bg-muted text-muted-foreground',
-    label: 'Practice',
+    accentColor: 'bg-muted-foreground',
+    badgeText: 'Practice',
+    badgeClass: 'text-muted-foreground bg-muted',
+    ctaText: 'Start',
   },
 };
 
@@ -47,26 +52,25 @@ function RecommendationRow({ recommendation, onStart, index }: RecommendationRow
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -8 }}
-      animate={{ opacity: 1, x: 0 }}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
       transition={{ 
         duration: duration.normal, 
         ease: easing.easeOut, 
-        delay: index * 0.05 
+        delay: index * 0.03 
       }}
       className={cn(
-        'group flex items-center gap-3 p-3 rounded-lg border',
-        'hover:bg-muted/50 transition-colors cursor-pointer',
-        config.accentClass
+        'group flex items-center gap-3 p-3 rounded-lg',
+        'bg-surface border border-border',
+        'hover:border-border/80 hover:shadow-surface transition-all'
       )}
-      onClick={onStart}
     >
-      {/* Icon badge */}
-      <div className={cn(
-        'shrink-0 p-2 rounded-lg',
-        config.badgeClass
-      )}>
-        <Icon className="h-4 w-4" />
+      {/* Left accent rail */}
+      <div className={cn('w-1 h-8 rounded-full shrink-0', config.accentColor)} />
+
+      {/* Icon */}
+      <div className="shrink-0 p-1.5 rounded-md bg-muted text-muted-foreground">
+        <Icon className="h-3.5 w-3.5" />
       </div>
 
       {/* Content */}
@@ -81,19 +85,27 @@ function RecommendationRow({ recommendation, onStart, index }: RecommendationRow
         )}
       </div>
 
-      {/* Right side: time estimate + action */}
+      {/* Right side: badge + time + CTA */}
       <div className="flex items-center gap-2 shrink-0">
         <span className={cn(
-          'text-[11px] font-medium px-2 py-0.5 rounded-full',
+          'hidden sm:inline-block text-[11px] font-medium px-1.5 py-0.5 rounded',
           config.badgeClass
         )}>
-          {config.label}
+          {config.badgeText}
         </span>
         <span className="text-meta text-muted-foreground flex items-center gap-1">
           <Clock className="h-3 w-3" />
           {estimatedTime}
         </span>
-        <ChevronRight className="h-4 w-4 text-muted-foreground group-hover:translate-x-0.5 transition-transform" />
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onStart}
+          className="gap-1 h-7 px-2 text-muted-foreground hover:text-foreground"
+        >
+          {config.ctaText}
+          <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+        </Button>
       </div>
     </motion.div>
   );
@@ -110,13 +122,13 @@ export function RecommendationCards({
   onStartRecommendation,
   onCustomPractice 
 }: RecommendationCardsProps) {
-  // Get top 3 recommendations
-  const topRecommendations = recommendations.slice(0, 3);
+  // Get top 2 recommendations
+  const topRecommendations = recommendations.slice(0, 2);
 
   return (
     <motion.div
       {...fadeSlideUp}
-      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.15 }}
+      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.12 }}
       className="space-y-3"
     >
       {/* Section header */}
@@ -124,14 +136,26 @@ export function RecommendationCards({
         <div className="flex items-center gap-2">
           <Sparkles className="h-4 w-4 text-primary" />
           <h3 className="text-body font-semibold text-foreground">Recommended for you</h3>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className="text-muted-foreground hover:text-foreground transition-colors">
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[200px] text-center">
+                <p className="text-meta">Based on your mastery levels, spaced repetition schedule, and upcoming exams</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
         <Button
           variant="ghost"
           size="sm"
           onClick={onCustomPractice}
-          className="gap-1 text-meta text-muted-foreground hover:text-foreground"
+          className="gap-1 text-meta text-muted-foreground hover:text-foreground h-7"
         >
-          Custom practice
+          See all
           <ChevronRight className="h-3.5 w-3.5" />
         </Button>
       </div>
@@ -148,9 +172,9 @@ export function RecommendationCards({
         ))}
 
         {topRecommendations.length === 0 && (
-          <div className="text-center py-6 text-muted-foreground">
-            <p className="text-body">No recommendations yet</p>
-            <p className="text-meta">Complete more practice sessions to get personalized suggestions</p>
+          <div className="text-center py-6 rounded-lg border border-dashed border-border bg-muted/30">
+            <p className="text-body text-muted-foreground">No recommendations yet</p>
+            <p className="text-meta text-muted-foreground/70">Complete more sessions to get personalized suggestions</p>
           </div>
         )}
       </div>
