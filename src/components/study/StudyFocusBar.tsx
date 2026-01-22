@@ -1,9 +1,8 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Calendar, RefreshCw, Settings2, ChevronRight, Lightbulb } from 'lucide-react';
+import { Calendar, RefreshCw, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Pill } from '@/components/ui/primitives';
 import { useFocusContext } from '@/contexts/FocusContext';
 import { useCourses, useUpcomingExams } from '@/hooks/use-focus';
 import { fadeSlideUp, duration, easing } from '@/lib/motion';
@@ -14,26 +13,11 @@ interface StudyFocusBarProps {
   className?: string;
 }
 
-// Rotating tips for the delight element
-const TIPS = [
-  "Small sessions, big progress.",
-  "Consistency beats intensity.",
-  "Review what's due, learn what's new.",
-  "Every question counts.",
-  "Progress is progress, no matter how small.",
-];
-
 export function StudyFocusBar({ overdueCount, className }: StudyFocusBarProps) {
   const navigate = useNavigate();
   const { filters } = useFocusContext();
   const { data: courses = [] } = useCourses();
   const { data: upcomingExams = [] } = useUpcomingExams(filters.courseIds);
-
-  // Get current tip based on day
-  const tip = useMemo(() => {
-    const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / 86400000);
-    return TIPS[dayOfYear % TIPS.length];
-  }, []);
 
   // Get selected course name
   const courseLabel = useMemo(() => {
@@ -69,56 +53,47 @@ export function StudyFocusBar({ overdueCount, className }: StudyFocusBarProps) {
       {...fadeSlideUp}
       transition={{ duration: duration.fast, ease: easing.easeOut }}
       className={cn(
-        'flex flex-col gap-3 p-4 rounded-xl',
-        'bg-gradient-to-r from-muted/50 via-muted/30 to-transparent',
-        'border border-border/50',
+        'flex items-center gap-3 flex-wrap',
         className
       )}
     >
-      {/* Main focus bar */}
-      <div className="flex items-center gap-3 flex-wrap">
-        {/* Course pill */}
-        <Pill variant="primary" size="md" className="font-medium">
-          {courseLabel}
-        </Pill>
+      {/* Course pill */}
+      <span className="text-meta font-medium text-foreground bg-muted px-2.5 py-1 rounded-md">
+        {courseLabel}
+      </span>
 
-        {/* Next exam */}
-        {nextExam && (
-          <Pill 
-            variant={nextExam.isUrgent ? 'warning' : 'muted'} 
-            size="md"
-          >
-            <Calendar className="h-3.5 w-3.5" />
-            <span className="truncate max-w-[120px]">{nextExam.title}</span>
-            <span className="font-semibold">{nextExam.daysText}</span>
-          </Pill>
-        )}
+      {/* Next exam */}
+      {nextExam && (
+        <span className={cn(
+          'text-meta px-2.5 py-1 rounded-md flex items-center gap-1.5',
+          nextExam.isUrgent 
+            ? 'text-warning bg-warning/10 font-medium' 
+            : 'text-muted-foreground bg-muted'
+        )}>
+          <Calendar className="h-3 w-3" />
+          <span className="truncate max-w-[100px]">{nextExam.title}</span>
+          <span className={nextExam.isUrgent ? 'font-semibold' : ''}>{nextExam.daysText}</span>
+        </span>
+      )}
 
-        {/* Overdue reviews */}
-        {overdueCount > 0 && (
-          <Pill variant="warning" size="md">
-            <RefreshCw className="h-3.5 w-3.5" />
-            <span>{overdueCount} review{overdueCount !== 1 ? 's' : ''} due</span>
-          </Pill>
-        )}
+      {/* Overdue reviews */}
+      {overdueCount > 0 && (
+        <span className="text-meta text-warning bg-warning/10 px-2.5 py-1 rounded-md flex items-center gap-1.5 font-medium">
+          <RefreshCw className="h-3 w-3" />
+          {overdueCount} due
+        </span>
+      )}
 
-        {/* Change focus button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => navigate('/study/focus')}
-          className="ml-auto gap-1.5 text-muted-foreground hover:text-foreground"
-        >
-          <Settings2 className="h-4 w-4" />
-          <span className="hidden sm:inline">Change focus</span>
-        </Button>
-      </div>
-
-      {/* Delight: Tip of the day */}
-      <div className="flex items-center gap-2 text-meta text-muted-foreground">
-        <Lightbulb className="h-3.5 w-3.5 text-primary/70" />
-        <span className="italic">{tip}</span>
-      </div>
+      {/* Change focus button */}
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={() => navigate('/study/focus')}
+        className="ml-auto gap-1.5 text-muted-foreground hover:text-foreground h-7"
+      >
+        <Settings2 className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Change focus</span>
+      </Button>
     </motion.div>
   );
 }

@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion';
 import { Flame, Target, CheckCircle } from 'lucide-react';
-import { fadeSlideUp, duration, easing, stagger } from '@/lib/motion';
+import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
 interface StatsStripProps {
@@ -14,72 +14,71 @@ interface StatsStripProps {
 export function StatsStrip({ 
   streak, 
   weeklyAccuracy, 
-  reviewsDue, 
   questionsToday,
   className 
 }: StatsStripProps) {
   const stats = [
     {
       id: 'streak',
-      label: 'Day streak',
+      label: 'day streak',
       value: streak,
       icon: Flame,
-      color: streak > 0 ? 'text-warning' : 'text-muted-foreground',
-      bgColor: streak > 0 ? 'bg-warning/10' : 'bg-muted',
+      isActive: streak > 0,
     },
     {
       id: 'accuracy',
-      label: '7-day accuracy',
+      label: 'accuracy (7d)',
       value: `${weeklyAccuracy}%`,
       icon: Target,
-      color: weeklyAccuracy >= 70 ? 'text-success' : 'text-muted-foreground',
-      bgColor: weeklyAccuracy >= 70 ? 'bg-success/10' : 'bg-muted',
+      isActive: weeklyAccuracy >= 70,
     },
     {
       id: 'today',
-      label: 'Today',
+      label: 'today',
       value: questionsToday,
       icon: CheckCircle,
-      color: questionsToday > 0 ? 'text-primary' : 'text-muted-foreground',
-      bgColor: questionsToday > 0 ? 'bg-primary/10' : 'bg-muted',
+      isActive: questionsToday > 0,
     },
   ];
 
   return (
     <motion.div
-      initial="initial"
-      animate="animate"
-      variants={{
-        animate: {
-          transition: { staggerChildren: stagger.fast },
-        },
-      }}
-      className={cn('grid grid-cols-3 gap-3', className)}
+      {...fadeSlideUp}
+      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.1 }}
+      className={cn(
+        'flex items-stretch rounded-xl overflow-hidden',
+        'bg-surface border border-border shadow-surface',
+        className
+      )}
     >
-      {stats.map((stat) => {
+      {stats.map((stat, index) => {
         const Icon = stat.icon;
         return (
-          <motion.div
+          <div
             key={stat.id}
-            variants={fadeSlideUp}
             className={cn(
-              'flex items-center gap-2.5 p-3 rounded-xl',
-              'bg-surface border border-border/50 shadow-surface',
-              'hover:shadow-raised transition-shadow'
+              'flex-1 flex items-center gap-2 px-4 py-3',
+              index !== stats.length - 1 && 'border-r border-border'
             )}
           >
-            <div className={cn('p-2 rounded-lg', stat.bgColor)}>
-              <Icon className={cn('h-4 w-4', stat.color)} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-h3 font-bold tabular-nums truncate">
+            <Icon 
+              className={cn(
+                'h-4 w-4 shrink-0',
+                stat.isActive ? 'text-primary' : 'text-muted-foreground/50'
+              )} 
+            />
+            <div className="min-w-0 flex items-baseline gap-1.5">
+              <span className={cn(
+                'text-body font-semibold tabular-nums',
+                stat.isActive ? 'text-foreground' : 'text-muted-foreground'
+              )}>
                 {stat.value}
-              </p>
-              <p className="text-meta text-muted-foreground truncate">
+              </span>
+              <span className="text-meta text-muted-foreground truncate">
                 {stat.label}
-              </p>
+              </span>
             </div>
-          </motion.div>
+          </div>
         );
       })}
     </motion.div>

@@ -16,73 +16,94 @@ export function ContinueSessionCard({ session, onContinue, onReviewMistakes }: C
   const timeAgo = formatDistanceToNow(session.timestamp, { addSuffix: true });
   const missedCount = session.totalAttempts - session.correctCount;
   const hasMistakes = missedCount > 0;
+  
+  // Estimate time for missed questions (1.5 min each)
+  const estimatedMinutes = Math.ceil(missedCount * 1.5);
 
   return (
     <motion.div
       {...fadeSlideUp}
-      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.1 }}
+      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.05 }}
       className={cn(
-        'relative overflow-hidden rounded-xl border bg-surface',
-        'shadow-surface hover:shadow-raised transition-shadow'
+        'relative overflow-hidden rounded-xl',
+        'bg-surface border border-border',
+        'hover:shadow-surface transition-shadow'
       )}
     >
       <div className="p-4">
-        <div className="flex items-start gap-4">
+        <div className="flex items-start gap-3">
           {/* Icon badge */}
-          <div className="shrink-0 p-2.5 rounded-xl bg-muted text-muted-foreground">
-            <RotateCcw className="h-5 w-5" />
+          <div className="shrink-0 p-2 rounded-lg bg-muted text-muted-foreground">
+            <RotateCcw className="h-4 w-4" />
           </div>
           
           {/* Content */}
           <div className="flex-1 min-w-0 space-y-2">
-            {/* Title - forward-looking hook */}
+            {/* Title */}
             <div>
-              <h3 className="text-body font-semibold text-foreground">
+              <h3 className="text-body font-medium text-foreground">
                 Pick up where you left off
               </h3>
               <p className="text-meta text-muted-foreground">
-                {session.totalAttempts} question{session.totalAttempts !== 1 ? 's' : ''} {timeAgo}
-                {hasMistakes && (
-                  <span> • We'll target the ones you missed</span>
+                {hasMistakes ? (
+                  <>
+                    <span className="font-medium text-foreground">{missedCount} missed</span>
+                    {' • '}est {estimatedMinutes} min
+                  </>
+                ) : (
+                  <>{session.totalAttempts} questions {timeAgo}</>
                 )}
               </p>
             </div>
             
             {/* Context pills */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {session.courseTitle && (
-                <span className="text-meta text-muted-foreground bg-muted px-2 py-0.5 rounded-md truncate max-w-[140px]">
-                  {session.courseTitle}
-                </span>
-              )}
-              {session.topicTitle && (
-                <span className="text-meta text-muted-foreground bg-muted px-2 py-0.5 rounded-md truncate max-w-[120px]">
-                  {session.topicTitle}
-                </span>
-              )}
-            </div>
+            {(session.courseTitle || session.topicTitle) && (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {session.courseTitle && (
+                  <span className="text-meta text-muted-foreground bg-muted px-2 py-0.5 rounded truncate max-w-[140px]">
+                    {session.courseTitle}
+                  </span>
+                )}
+                {session.topicTitle && (
+                  <span className="text-meta text-muted-foreground bg-muted px-2 py-0.5 rounded truncate max-w-[120px]">
+                    {session.topicTitle}
+                  </span>
+                )}
+              </div>
+            )}
 
-            {/* Actions */}
-            <div className="flex items-center gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={onContinue}
-                className="gap-1.5"
-              >
-                Resume
-                <ChevronRight className="h-3.5 w-3.5" />
-              </Button>
-              
-              {hasMistakes && onReviewMistakes && (
+            {/* Actions - Review mistakes is primary when available */}
+            <div className="flex items-center gap-2">
+              {hasMistakes && onReviewMistakes ? (
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={onReviewMistakes}
+                    className="gap-1.5"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                    Review {missedCount} mistake{missedCount !== 1 ? 's' : ''}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={onContinue}
+                    className="gap-1 text-muted-foreground hover:text-foreground"
+                  >
+                    Resume
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              ) : (
                 <Button
                   size="sm"
-                  variant="ghost"
-                  onClick={onReviewMistakes}
-                  className="gap-1.5 text-muted-foreground hover:text-foreground"
+                  variant="outline"
+                  onClick={onContinue}
+                  className="gap-1.5"
                 >
-                  <Eye className="h-3.5 w-3.5" />
-                  Review {missedCount} mistake{missedCount !== 1 ? 's' : ''}
+                  Resume
+                  <ChevronRight className="h-3.5 w-3.5" />
                 </Button>
               )}
             </div>
