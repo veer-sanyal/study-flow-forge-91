@@ -249,11 +249,12 @@ function processExams(data: any[]): UpcomingExam[] {
   });
 }
 
-// Fetch topics grouped by midterm coverage
+// Fetch topics grouped by midterm coverage with question counts
 export interface TopicGroup {
   midtermNumber: number | null;
   label: string;
-  topics: { id: string; title: string }[];
+  topics: { id: string; title: string; questionCount: number }[];
+  totalQuestions: number;
 }
 
 export function useTopicsGroupedByMidterm(courseIds: string[]) {
@@ -262,27 +263,53 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
     queryFn: async () => {
       if (courseIds.length === 0) return [];
 
-      const { data, error } = await supabase
+      // Get topics
+      const { data: topicsData, error: topicsError } = await supabase
         .from('topics')
         .select('id, title, midterm_coverage')
         .in('course_pack_id', courseIds)
         .order('scheduled_week', { ascending: true });
 
-      if (error) throw error;
+      if (topicsError) throw topicsError;
+
+      // Get questions to count per topic
+      const { data: questions, error: questionsError } = await supabase
+        .from('questions')
+        .select('topic_ids')
+        .in('course_pack_id', courseIds)
+        .eq('needs_review', false);
+
+      if (questionsError) throw questionsError;
+
+      // Count questions per topic
+      const topicCountMap = new Map<string, number>();
+      questions?.forEach((q) => {
+        if (Array.isArray(q.topic_ids)) {
+          q.topic_ids.forEach((topicId: string) => {
+            topicCountMap.set(topicId, (topicCountMap.get(topicId) || 0) + 1);
+          });
+        }
+      });
 
       // Group by midterm_coverage
       const groups: Map<number | null, TopicGroup> = new Map();
       
-      (data || []).forEach(topic => {
+      (topicsData || []).forEach(topic => {
         const coverage = topic.midterm_coverage;
+        const questionCount = topicCountMap.get(topic.id) || 0;
+        
         if (!groups.has(coverage)) {
           groups.set(coverage, {
             midtermNumber: coverage,
             label: coverage ? `Midterm ${coverage} Topics` : 'Final Topics',
             topics: [],
+            totalQuestions: 0,
           });
         }
-        groups.get(coverage)!.topics.push({ id: topic.id, title: topic.title });
+        
+        const group = groups.get(coverage)!;
+        group.topics.push({ id: topic.id, title: topic.title, questionCount });
+        group.totalQuestions += questionCount;
       });
 
       // Sort: midterm 1, 2, 3, then final (null)
@@ -296,33 +323,154 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
   });
 }
 
-// Fetch question types for courses
+// Fetch question types for courses with question counts, grouped by midterm
+export interface QuestionTypeWithCount {
+  id: string;
+  name: string;
+  questionCount: number;
+}
+
+export interface QuestionTypeGroup {
+  midtermNumber: number | null;
+  label: string;
+  types: QuestionTypeWithCount[];
+  totalQuestions: number;
+}
+
 export function useQuestionTypesForCourses(courseIds: string[]) {
   return useQuery({
     queryKey: ['question-types-for-courses', courseIds],
     queryFn: async () => {
-      if (courseIds.length === 0) {
-        // Fetch all active types
-        const { data, error } = await supabase
-          .from('question_types')
-          .select('id, name')
-          .eq('status', 'active')
-          .order('name');
+      // Get question types
+      let typesQuery = supabase
+        .from('question_types')
+        .select('id, name, course_pack_id')
+        .eq('status', 'active')
+        .order('name');
 
-        if (error) throw error;
-        return data || [];
+      if (courseIds.length > 0) {
+        typesQuery = typesQuery.or(`course_pack_id.in.(${courseIds.join(',')}),course_pack_id.is.null`);
       }
 
-      const { data, error } = await supabase
+      const { data: types, error: typesError } = await typesQuery;
+      if (typesError) throw typesError;
+
+      // Get questions for counting
+      let questionsQuery = supabase
+        .from('questions')
+        .select('question_type_id')
+        .eq('needs_review', false);
+
+      if (courseIds.length > 0) {
+        questionsQuery = questionsQuery.in('course_pack_id', courseIds);
+      }
+
+      const { data: questions, error: questionsError } = await questionsQuery;
+      if (questionsError) throw questionsError;
+
+      // Count questions per type
+      const typeCountMap = new Map<string, number>();
+      questions?.forEach((q) => {
+        if (q.question_type_id) {
+          typeCountMap.set(q.question_type_id, (typeCountMap.get(q.question_type_id) || 0) + 1);
+        }
+      });
+
+      return (types || []).map(type => ({
+        id: type.id,
+        name: type.name,
+        questionCount: typeCountMap.get(type.id) || 0,
+      }));
+    },
+  });
+}
+
+// Question types grouped by midterm (for display)
+export function useQuestionTypesGroupedByMidterm(courseIds: string[]) {
+  return useQuery({
+    queryKey: ['question-types-by-midterm', courseIds],
+    queryFn: async () => {
+      if (courseIds.length === 0) return [];
+
+      // Get question types
+      const { data: types, error: typesError } = await supabase
         .from('question_types')
         .select('id, name')
         .or(`course_pack_id.in.(${courseIds.join(',')}),course_pack_id.is.null`)
         .eq('status', 'active')
         .order('name');
 
-      if (error) throw error;
-      return data || [];
+      if (typesError) throw typesError;
+
+      // Get questions with type and midterm info
+      const { data: questions, error: questionsError } = await supabase
+        .from('questions')
+        .select('question_type_id, midterm_number')
+        .in('course_pack_id', courseIds)
+        .eq('needs_review', false);
+
+      if (questionsError) throw questionsError;
+
+      // Build type -> midterm -> count map
+      const typeMap = new Map<string, Map<number | null, number>>();
+      
+      questions?.forEach((q) => {
+        if (!q.question_type_id) return;
+        
+        if (!typeMap.has(q.question_type_id)) {
+          typeMap.set(q.question_type_id, new Map());
+        }
+        
+        const midtermMap = typeMap.get(q.question_type_id)!;
+        const midterm = q.midterm_number;
+        midtermMap.set(midterm, (midtermMap.get(midterm) || 0) + 1);
+      });
+
+      // Group types by their primary midterm (highest question count)
+      const midtermGroups = new Map<number | null, QuestionTypeGroup>();
+      
+      types?.forEach(type => {
+        const midtermCounts = typeMap.get(type.id);
+        let primaryMidterm: number | null = null;
+        let totalCount = 0;
+        
+        if (midtermCounts) {
+          let maxCount = 0;
+          midtermCounts.forEach((count, midterm) => {
+            totalCount += count;
+            if (count > maxCount) {
+              maxCount = count;
+              primaryMidterm = midterm;
+            }
+          });
+        }
+
+        if (!midtermGroups.has(primaryMidterm)) {
+          let label = 'Uncategorized';
+          if (primaryMidterm === 0 || primaryMidterm === null) label = 'Final / General';
+          else label = `Midterm ${primaryMidterm}`;
+          
+          midtermGroups.set(primaryMidterm, {
+            midtermNumber: primaryMidterm,
+            label,
+            types: [],
+            totalQuestions: 0,
+          });
+        }
+        
+        const group = midtermGroups.get(primaryMidterm)!;
+        group.types.push({ id: type.id, name: type.name, questionCount: totalCount });
+        group.totalQuestions += totalCount;
+      });
+
+      // Sort groups
+      return Array.from(midtermGroups.values()).sort((a, b) => {
+        if (a.midtermNumber === null) return 1;
+        if (b.midtermNumber === null) return -1;
+        return (a.midtermNumber ?? 0) - (b.midtermNumber ?? 0);
+      });
     },
+    enabled: courseIds.length > 0,
   });
 }
 

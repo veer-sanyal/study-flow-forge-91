@@ -413,7 +413,12 @@ export default function StudyFocus() {
                                 checked={filters.topicIds.includes(topic.id)}
                                 onCheckedChange={() => handleTopicToggle(topic.id)}
                               />
-                              <span className="text-sm truncate">{topic.title}</span>
+                              <span className="text-sm truncate flex-1">{topic.title}</span>
+                              {topic.questionCount > 0 && (
+                                <Badge variant="outline" className="text-xs shrink-0 tabular-nums">
+                                  {topic.questionCount}
+                                </Badge>
+                              )}
                             </label>
                           ))}
                         </div>
@@ -474,7 +479,12 @@ export default function StudyFocus() {
                       )}
                     >
                       <RadioGroupItem value={type.id} />
-                      <span className="text-sm truncate">{type.name}</span>
+                      <span className="text-sm truncate flex-1">{type.name}</span>
+                      {type.questionCount > 0 && (
+                        <Badge variant="outline" className="text-xs shrink-0 tabular-nums">
+                          {type.questionCount}
+                        </Badge>
+                      )}
                     </label>
                   ))}
                 </RadioGroup>
