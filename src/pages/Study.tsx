@@ -281,8 +281,8 @@ export default function Study() {
       <PageTransition className="min-h-full">
         {/* Background: subtle paper panel effect */}
         <div className="min-h-full bg-background">
-          <div className="p-4 sm:p-6 lg:p-8 max-w-5xl mx-auto space-y-4">
-            {/* Page header - tighter */}
+          <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-5">
+            {/* Page header */}
             <div className="flex items-baseline justify-between">
               <div>
                 <h1 className="text-h1 font-semibold tracking-tight">Study</h1>
@@ -300,10 +300,18 @@ export default function Study() {
               overdueCount={stats.reviewsDue} 
             />
 
-            {/* 2-column layout on desktop */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
-              {/* Left column (primary) - 3/5 width */}
-              <div className="lg:col-span-3 space-y-4">
+            {/* Stats strip - full width */}
+            <StatsStrip
+              streak={stats.streak}
+              weeklyAccuracy={stats.weeklyAccuracy}
+              reviewsDue={stats.reviewsDue}
+              questionsToday={stats.questionsToday}
+            />
+
+            {/* 2-column layout on larger screens */}
+            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+              {/* Left column (primary) - 2/3 width on xl */}
+              <div className="xl:col-span-2 space-y-5">
                 {/* Today's Plan Card - Hero treatment */}
                 <TodayPlanCard
                   stats={todayPlan}
@@ -325,16 +333,8 @@ export default function Study() {
                 )}
               </div>
 
-              {/* Right column (secondary) - 2/5 width */}
-              <div className="lg:col-span-2 space-y-4">
-                {/* Stats strip */}
-                <StatsStrip
-                  streak={stats.streak}
-                  weeklyAccuracy={stats.weeklyAccuracy}
-                  reviewsDue={stats.reviewsDue}
-                  questionsToday={stats.questionsToday}
-                />
-
+              {/* Right column (secondary) - 1/3 width on xl */}
+              <div className="xl:col-span-1 space-y-5">
                 {/* Practice Recommendations */}
                 <RecommendationCards
                   recommendations={dashboardData?.practiceRecommendations || []}
