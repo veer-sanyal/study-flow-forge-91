@@ -7,7 +7,7 @@ import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
 import { TodayPlanCard } from "@/components/study/TodayPlanCard";
 import { PracticeCard } from "@/components/study/PracticeCard";
-import { ActiveFocusChips } from "@/components/study/ActiveFocusChips";
+import { FocusBar } from "@/components/study/FocusBar";
 import { CompletionCard } from "@/components/study/CompletionCard";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
@@ -338,22 +338,22 @@ export default function Study() {
 
     return (
       <div className="flex flex-col h-full">
-        {/* Header with back button and active filters */}
-        <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={handleGoHome}>
-            <ArrowLeft className="h-5 w-5" />
+        {/* Focus Bar - persistent context header */}
+        <FocusBar
+          showProgress={showTotalProgress}
+          questionsCompleted={currentIndex}
+          questionsTotal={questions.length}
+        />
+
+        {/* Header with back button */}
+        <div className="px-4 py-2 flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={handleGoHome} className="gap-1.5">
+            <ArrowLeft className="h-4 w-4" />
+            <span className="text-meta">Exit</span>
           </Button>
-          {hasActiveFilters ? (
-            <ActiveFocusChips
-              filters={filters}
-              onClear={clearFilters}
-              className="flex-1"
-            />
-          ) : (
-            <span className="text-sm text-muted-foreground">
-              {studyPhase === "today_plan" ? "Today's Plan" : "Practice"}
-            </span>
-          )}
+          <span className="text-meta text-muted-foreground">
+            Question {currentIndex + 1}{showTotalProgress ? ` of ${questions.length}` : ""}
+          </span>
         </div>
 
         <PageTransition className="flex-1 space-y-6 p-4">
