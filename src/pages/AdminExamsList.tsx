@@ -9,6 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -50,7 +51,9 @@ import {
   Check,
   Wand2,
   Square,
-  CheckSquare
+  CheckSquare,
+  BookOpen,
+  Tag
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { 
@@ -70,6 +73,9 @@ import { useCreateIngestionJob, useProcessJob } from "@/hooks/use-ingestion";
 import { useCanHover } from "@/hooks/use-can-hover";
 import { useAnalysisQueue, QueuedExam } from "@/hooks/use-analysis-queue";
 import { cn } from "@/lib/utils";
+import { TopicsGroupedView, TypesGroupedView } from "@/components/admin/GroupedQuestionViews";
+
+type ViewMode = "exams" | "topics" | "types";
 
 function useCoursePack(courseId: string) {
   return useQuery({
@@ -927,6 +933,9 @@ export default function AdminExamsList() {
   const updateExamDetails = useUpdateExamDetails();
   const { queueExamsForAnalysis, isProcessing, totalQueued, runningJob } = useAnalysisQueue();
 
+  // View mode state
+  const [viewMode, setViewMode] = useState<ViewMode>("exams");
+
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [addExamOpen, setAddExamOpen] = useState(false);
@@ -1164,59 +1173,63 @@ export default function AdminExamsList() {
           </Card>
         )}
 
-        {/* Exam List - Hierarchy: Year → Semester → Exam */}
-        {isLoading ? (
-          <ExamListSkeleton />
-        ) : !hasExams ? (
-          <Card className="p-8 text-center">
-            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No exams yet</h3>
-            <p className="text-muted-foreground">
-              Upload exam PDFs to add questions to this course.
-            </p>
-          </Card>
-        ) : (
-          <div className="space-y-8">
-            {yearGroups?.map((yearGroup) => (
-              <div key={yearGroup.year} className="space-y-6">
-                {/* Year Header */}
-                <h2 className="text-xl font-bold text-foreground">
-                  {yearGroup.year}
-                </h2>
-                
-                {/* Semesters within the year */}
-                <div className="space-y-6 pl-2 border-l-2 border-muted">
-                  {yearGroup.semesters?.map((semesterGroup) => (
-                    <div key={`${yearGroup.year}-${semesterGroup.semester}`} className="space-y-3 pl-4">
-                      {/* Semester Header */}
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <h3 className="text-base font-semibold text-muted-foreground">
-                          {semesterGroup.semester}
-                        </h3>
-                      </div>
-                      
-                      {/* Exams within the semester */}
-                      <div className="space-y-2">
-                        {semesterGroup.exams?.map((exam: any) => (
-                          <ExamCard
-                            key={exam.sourceExam}
-                            exam={exam}
-                            courseId={courseId!}
-                            onDelete={setExamToDelete}
-                            onEdit={setExamToEdit}
-                            isSelectionMode={isSelectionMode}
-                            isSelected={selectedExams.has(exam.sourceExam)}
-                            onToggleSelect={handleToggleSelect}
-                          />
-                        ))}
-                      </div>
+        {/* Exam List - Hierarchy: Year → Semester → Exam - Only show in exams view mode */}
+        {viewMode === "exams" && (
+          <>
+            {isLoading ? (
+              <ExamListSkeleton />
+            ) : !hasExams ? (
+              <Card className="p-8 text-center">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No exams yet</h3>
+                <p className="text-muted-foreground">
+                  Upload exam PDFs to add questions to this course.
+                </p>
+              </Card>
+            ) : (
+              <div className="space-y-8">
+                {yearGroups?.map((yearGroup) => (
+                  <div key={yearGroup.year} className="space-y-6">
+                    {/* Year Header */}
+                    <h2 className="text-xl font-bold text-foreground">
+                      {yearGroup.year}
+                    </h2>
+                    
+                    {/* Semesters within the year */}
+                    <div className="space-y-6 pl-2 border-l-2 border-muted">
+                      {yearGroup.semesters?.map((semesterGroup) => (
+                        <div key={`${yearGroup.year}-${semesterGroup.semester}`} className="space-y-3 pl-4">
+                          {/* Semester Header */}
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <h3 className="text-base font-semibold text-muted-foreground">
+                              {semesterGroup.semester}
+                            </h3>
+                          </div>
+                          
+                          {/* Exams within the semester */}
+                          <div className="space-y-2">
+                            {semesterGroup.exams?.map((exam: any) => (
+                              <ExamCard
+                                key={exam.sourceExam}
+                                exam={exam}
+                                courseId={courseId!}
+                                onDelete={setExamToDelete}
+                                onEdit={setExamToEdit}
+                                isSelectionMode={isSelectionMode}
+                                isSelected={selectedExams.has(exam.sourceExam)}
+                                onToggleSelect={handleToggleSelect}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
+            )}
+          </>
         )}
 
         {/* Edit Course Dialog */}

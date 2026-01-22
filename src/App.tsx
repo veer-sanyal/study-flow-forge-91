@@ -21,6 +21,7 @@ import AdminCoursesList from "@/pages/AdminCoursesList";
 import AdminExamsList from "@/pages/AdminExamsList";
 import AdminQuestionsEditor from "@/pages/AdminQuestionsEditor";
 import AdminQuestionDetail from "@/pages/AdminQuestionDetail";
+import AdminQuestionTypes from "@/pages/AdminQuestionTypes";
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -52,6 +53,7 @@ const App = () => (
                     <Route path="/admin/calendar" element={<AdminCalendar />} />
                     <Route path="/admin/ingestion" element={<AdminIngestion />} />
                     <Route path="/admin/questions" element={<AdminCoursesList />} />
+                    <Route path="/admin/question-types" element={<AdminQuestionTypes />} />
                     <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
                     <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
                     <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
