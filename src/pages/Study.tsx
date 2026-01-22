@@ -6,14 +6,15 @@ import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
 import { TodayPlanCard } from "@/components/study/TodayPlanCard";
-import { PracticeCard } from "@/components/study/PracticeCard";
 import { FocusBar } from "@/components/study/FocusBar";
 import { CompletionCard } from "@/components/study/CompletionCard";
 import { ContinueSessionCard } from "@/components/study/ContinueSessionCard";
-import { StudyDashboardHeader } from "@/components/study/StudyDashboardHeader";
+import { StudyFocusBar } from "@/components/study/StudyFocusBar";
+import { RecommendationCards } from "@/components/study/RecommendationCards";
+import { StatsStrip } from "@/components/study/StatsStrip";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
-import { useStudyDashboard } from "@/hooks/use-study-dashboard";
+import { useStudyDashboard, PracticeRecommendation } from "@/hooks/use-study-dashboard";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -249,6 +250,14 @@ export default function Study() {
     handleStartPractice();
   }, [handleStartPractice]);
 
+  // Handle starting a recommendation
+  const handleStartRecommendation = useCallback((rec: PracticeRecommendation) => {
+    if (rec.filters.topicIds) {
+      setTopicIds(rec.filters.topicIds);
+    }
+    handleStartPractice();
+  }, [setTopicIds, handleStartPractice]);
+
   // HOME state
   if (studyState === "home") {
     const todayPlan = dashboardData?.todayPlan || {
@@ -261,38 +270,78 @@ export default function Study() {
       progressPercent: 0,
     };
 
+    const stats = dashboardData?.stats || {
+      streak: 0,
+      weeklyAccuracy: 0,
+      reviewsDue: 0,
+      questionsToday: 0,
+    };
+
     return (
-      <PageTransition className="flex flex-col h-full p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
-        <div className="space-y-6">
+      <PageTransition className="min-h-full">
+        {/* Background treatment - subtle gradient wash */}
+        <div className="fixed inset-0 bg-gradient-to-br from-background via-background to-muted/20 pointer-events-none -z-10" />
+        
+        <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-6">
           {/* Page header */}
-          <StudyDashboardHeader
-            progressPercent={todayPlan.progressPercent}
-            completedToday={todayPlan.completedQuestions}
-            dailyGoal={dailyGoal}
-            primaryCourse={todayPlan.primaryCourse?.title}
+          <div className="space-y-1">
+            <h1 className="text-h1 font-bold tracking-tight">Study</h1>
+            <p className="text-body text-muted-foreground">
+              {todayPlan.completedQuestions > 0 
+                ? `${todayPlan.completedQuestions} of ${dailyGoal} completed today`
+                : 'Ready to learn something new?'
+              }
+            </p>
+          </div>
+
+          {/* Focus Bar with course/exam context */}
+          <StudyFocusBar 
+            overdueCount={stats.reviewsDue} 
           />
 
-          {/* Today's Plan Card - Primary CTA */}
-          <TodayPlanCard
-            stats={todayPlan}
-            isLoading={dashboardLoading}
-            onStart={handleStartTodayPlan}
-          />
+          {/* 2-column layout on desktop */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Left column (primary) - 3/5 width */}
+            <div className="lg:col-span-3 space-y-5">
+              {/* Today's Plan Card - Hero treatment */}
+              <TodayPlanCard
+                stats={todayPlan}
+                isLoading={dashboardLoading}
+                onStart={handleStartTodayPlan}
+                onCustomize={() => navigate('/study/focus')}
+              />
 
-          {/* Continue where you left off - only show if there's a recent session */}
-          {dashboardData?.lastSession && (
-            <ContinueSessionCard
-              session={dashboardData.lastSession}
-              onContinue={handleContinueSession}
-            />
-          )}
+              {/* Continue where you left off */}
+              {dashboardData?.lastSession && (
+                <ContinueSessionCard
+                  session={dashboardData.lastSession}
+                  onContinue={handleContinueSession}
+                  onReviewMistakes={() => {
+                    // TODO: Implement review mistakes functionality
+                    handleContinueSession();
+                  }}
+                />
+              )}
+            </div>
 
-          {/* Practice Card - Secondary CTA with recommendations */}
-          <PracticeCard
-            presets={dashboardData?.presets || []}
-            recommendations={dashboardData?.practiceRecommendations}
-            onPresetClick={handleStartPractice}
-          />
+            {/* Right column (secondary) - 2/5 width */}
+            <div className="lg:col-span-2 space-y-5">
+              {/* Stats strip */}
+              <StatsStrip
+                streak={stats.streak}
+                weeklyAccuracy={stats.weeklyAccuracy}
+                reviewsDue={stats.reviewsDue}
+                questionsToday={stats.questionsToday}
+              />
+
+              {/* Practice Recommendations */}
+              <RecommendationCards
+                recommendations={dashboardData?.practiceRecommendations || []}
+                onStartRecommendation={handleStartRecommendation}
+                onCustomPractice={() => navigate('/study/focus')}
+              />
+            </div>
+          </div>
         </div>
       </PageTransition>
     );
