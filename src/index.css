@@ -12,15 +12,33 @@ All colors MUST be HSL.
     --background: 45 20% 98%;
     --foreground: 0 0% 5%;
 
+    /* === ELEVATION SYSTEM === */
+    /* Level 0: Page background (default --background) */
+    /* Level 1: Surface cards, panels */
+    --surface: 0 0% 100%;
+    --surface-foreground: 0 0% 5%;
+    /* Level 2: Raised elements (modals, dropdowns, hover states) */
+    --raised: 0 0% 100%;
+    --raised-foreground: 0 0% 5%;
+    /* Level 3: Sticky bars, elevated headers */
+    --elevated: 0 0% 100%;
+    --elevated-foreground: 0 0% 5%;
+    /* Elevation shadows */
+    --shadow-surface: 0 1px 2px 0 hsl(0 0% 0% / 0.03);
+    --shadow-raised: 0 4px 6px -1px hsl(0 0% 0% / 0.05), 0 2px 4px -2px hsl(0 0% 0% / 0.05);
+    --shadow-elevated: 0 10px 15px -3px hsl(0 0% 0% / 0.08), 0 4px 6px -4px hsl(0 0% 0% / 0.05);
+
     --card: 0 0% 100%;
     --card-foreground: 0 0% 5%;
 
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 5%;
 
-    /* Purdue Old Gold */
+    /* Purdue Old Gold - Primary accent */
     --primary: 39 47% 69%;
     --primary-foreground: 0 0% 5%;
+    /* Primary glow for gradients */
+    --primary-glow: 47 60% 55%;
 
     /* Lighter gold tint */
     --secondary: 39 35% 92%;
@@ -46,6 +64,19 @@ All colors MUST be HSL.
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
 
+    /* === TYPOGRAPHY SCALE === */
+    --text-h1: 1.75rem;      /* 28px */
+    --text-h2: 1.25rem;      /* 20px */
+    --text-h3: 1.125rem;     /* 18px */
+    --text-body: 0.875rem;   /* 14px */
+    --text-meta: 0.75rem;    /* 12px */
+    
+    --leading-h1: 2rem;
+    --leading-h2: 1.75rem;
+    --leading-h3: 1.5rem;
+    --leading-body: 1.25rem;
+    --leading-meta: 1rem;
+
     --sidebar-background: 40 15% 96%;
     --sidebar-foreground: 0 0% 20%;
     --sidebar-primary: 39 47% 69%;
@@ -61,6 +92,17 @@ All colors MUST be HSL.
     --background: 0 0% 4%;
     --foreground: 45 30% 95%;
 
+    /* === ELEVATION SYSTEM (Dark) === */
+    --surface: 0 0% 7%;
+    --surface-foreground: 45 30% 95%;
+    --raised: 0 0% 10%;
+    --raised-foreground: 45 30% 95%;
+    --elevated: 0 0% 12%;
+    --elevated-foreground: 45 30% 95%;
+    --shadow-surface: 0 1px 2px 0 hsl(0 0% 0% / 0.2);
+    --shadow-raised: 0 4px 6px -1px hsl(0 0% 0% / 0.3), 0 2px 4px -2px hsl(0 0% 0% / 0.2);
+    --shadow-elevated: 0 10px 15px -3px hsl(0 0% 0% / 0.4), 0 4px 6px -4px hsl(0 0% 0% / 0.3);
+
     --card: 0 0% 7%;
     --card-foreground: 45 30% 95%;
 
@@ -70,6 +112,7 @@ All colors MUST be HSL.
     /* Rush Gold - brighter for dark mode */
     --primary: 47 100% 43%;
     --primary-foreground: 0 0% 5%;
+    --primary-glow: 39 90% 50%;
 
     --secondary: 40 20% 15%;
     --secondary-foreground: 45 30% 90%;
@@ -110,5 +153,61 @@ All colors MUST be HSL.
 
   body {
     @apply bg-background text-foreground;
+  }
+
+  /* Typography utility classes */
+  .text-h1 {
+    font-size: var(--text-h1);
+    line-height: var(--leading-h1);
+    font-weight: 700;
+  }
+
+  .text-h2 {
+    font-size: var(--text-h2);
+    line-height: var(--leading-h2);
+    font-weight: 600;
+  }
+
+  .text-h3 {
+    font-size: var(--text-h3);
+    line-height: var(--leading-h3);
+    font-weight: 600;
+  }
+
+  .text-body {
+    font-size: var(--text-body);
+    line-height: var(--leading-body);
+  }
+
+  .text-meta {
+    font-size: var(--text-meta);
+    line-height: var(--leading-meta);
+    color: hsl(var(--muted-foreground));
+  }
+}
+
+@layer utilities {
+  /* Elevation utility classes */
+  .surface {
+    background-color: hsl(var(--surface));
+    color: hsl(var(--surface-foreground));
+    box-shadow: var(--shadow-surface);
+  }
+
+  .raised {
+    background-color: hsl(var(--raised));
+    color: hsl(var(--raised-foreground));
+    box-shadow: var(--shadow-raised);
+  }
+
+  .elevated {
+    background-color: hsl(var(--elevated));
+    color: hsl(var(--elevated-foreground));
+    box-shadow: var(--shadow-elevated);
+  }
+
+  /* Primary gradient utility */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-glow)));
   }
 }

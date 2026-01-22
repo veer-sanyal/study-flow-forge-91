@@ -19,9 +19,23 @@ export default {
         ring: "hsl(var(--ring))",
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
+        // Elevation system
+        surface: {
+          DEFAULT: "hsl(var(--surface))",
+          foreground: "hsl(var(--surface-foreground))",
+        },
+        raised: {
+          DEFAULT: "hsl(var(--raised))",
+          foreground: "hsl(var(--raised-foreground))",
+        },
+        elevated: {
+          DEFAULT: "hsl(var(--elevated))",
+          foreground: "hsl(var(--elevated-foreground))",
+        },
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          glow: "hsl(var(--primary-glow))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -61,6 +75,18 @@ export default {
           border: "hsl(var(--sidebar-border))",
           ring: "hsl(var(--sidebar-ring))",
         },
+      },
+      fontSize: {
+        h1: ["var(--text-h1)", { lineHeight: "var(--leading-h1)" }],
+        h2: ["var(--text-h2)", { lineHeight: "var(--leading-h2)" }],
+        h3: ["var(--text-h3)", { lineHeight: "var(--leading-h3)" }],
+        body: ["var(--text-body)", { lineHeight: "var(--leading-body)" }],
+        meta: ["var(--text-meta)", { lineHeight: "var(--leading-meta)" }],
+      },
+      boxShadow: {
+        surface: "var(--shadow-surface)",
+        raised: "var(--shadow-raised)",
+        elevated: "var(--shadow-elevated)",
       },
       borderRadius: {
         lg: "var(--radius)",

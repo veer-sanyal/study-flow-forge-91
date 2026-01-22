@@ -275,30 +275,23 @@ export function groupExamsByYearAndSemester(exams: ExamInfo[]): YearGroup[] {
 }
 
 /**
- * Get a color for a course card based on its index or title hash
+ * Get a color for a course card - uses consistent gold/primary accent system
+ * All courses use the same brand colors with subtle variation
  */
 export function getCourseCardColor(title: string, index: number): { 
   gradient: string; 
   accentColor: string;
 } {
+  // Use consistent primary/gold themed colors for brand consistency
+  // Variations are subtle - different gold/amber shades
   const colors = [
-    { gradient: "from-rose-500 to-pink-600", accentColor: "bg-rose-400" },
-    { gradient: "from-purple-500 to-indigo-600", accentColor: "bg-purple-400" },
-    { gradient: "from-blue-500 to-cyan-600", accentColor: "bg-blue-400" },
-    { gradient: "from-emerald-500 to-teal-600", accentColor: "bg-emerald-400" },
-    { gradient: "from-orange-500 to-amber-600", accentColor: "bg-orange-400" },
-    { gradient: "from-red-500 to-rose-600", accentColor: "bg-red-400" },
-    { gradient: "from-violet-500 to-purple-600", accentColor: "bg-violet-400" },
-    { gradient: "from-sky-500 to-blue-600", accentColor: "bg-sky-400" },
+    { gradient: "from-amber-500 to-yellow-600", accentColor: "bg-amber-400" },
+    { gradient: "from-yellow-500 to-amber-600", accentColor: "bg-yellow-400" },
+    { gradient: "from-orange-400 to-amber-500", accentColor: "bg-orange-400" },
+    { gradient: "from-amber-400 to-yellow-500", accentColor: "bg-amber-300" },
   ];
 
-  // Use a simple hash of the title to get consistent colors
-  let hash = 0;
-  for (let i = 0; i < title.length; i++) {
-    hash = ((hash << 5) - hash) + title.charCodeAt(i);
-    hash = hash & hash;
-  }
-
-  const colorIndex = Math.abs(hash) % colors.length;
+  // Use index for consistent but varied assignment
+  const colorIndex = index % colors.length;
   return colors[colorIndex];
 }
