@@ -44,11 +44,19 @@ export interface PracticeRecommendation {
   }>;
 }
 
+export interface StudyStats {
+  streak: number;
+  weeklyAccuracy: number;
+  reviewsDue: number;
+  questionsToday: number;
+}
+
 export interface StudyDashboardData {
   todayPlan: TodayPlanSummary;
   practiceRecommendations: PracticeRecommendation[];
   lastSession: LastSession | null;
   presets: FocusPreset[];
+  stats: StudyStats;
 }
 
 export function useStudyDashboard() {
@@ -74,12 +82,22 @@ export function useStudyDashboard() {
           practiceRecommendations: [],
           lastSession: null,
           presets: [],
+          stats: {
+            streak: 0,
+            weeklyAccuracy: 0,
+            reviewsDue: 0,
+            questionsToday: 0,
+          },
         };
       }
 
       // Run all queries in parallel
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+
+      // Calculate week ago for weekly stats
+      const weekAgo = new Date(today);
+      weekAgo.setDate(weekAgo.getDate() - 7);
 
       const [
         attemptsResult,
@@ -88,6 +106,7 @@ export function useStudyDashboard() {
         overdueReviewsResult,
         weakTopicsResult,
         lastSessionResult,
+        weeklyAttemptsResult,
       ] = await Promise.all([
         // Today's attempts
         supabase
@@ -143,6 +162,13 @@ export function useStudyDashboard() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(10),
+        
+        // Weekly attempts (for 7-day accuracy)
+        supabase
+          .from('attempts')
+          .select('id, is_correct, created_at')
+          .eq('user_id', user.id)
+          .gte('created_at', weekAgo.toISOString()),
       ]);
 
       // Process today's attempts
@@ -302,6 +328,17 @@ export function useStudyDashboard() {
         filters: rec.filters,
       }));
 
+      // Calculate stats
+      const weeklyAttempts = weeklyAttemptsResult.data || [];
+      const weeklyCorrect = weeklyAttempts.filter(a => a.is_correct).length;
+      const weeklyAccuracy = weeklyAttempts.length > 0 
+        ? Math.round((weeklyCorrect / weeklyAttempts.length) * 100)
+        : 0;
+
+      // Calculate streak (consecutive days with attempts)
+      // For now, simplified: just check if there are attempts today
+      const streak = completedQuestions > 0 ? 1 : 0; // Simplified for now
+
       return {
         todayPlan: {
           totalQuestions: dailyGoal,
@@ -315,6 +352,12 @@ export function useStudyDashboard() {
         practiceRecommendations,
         lastSession,
         presets,
+        stats: {
+          streak,
+          weeklyAccuracy,
+          reviewsDue: overdueCount,
+          questionsToday: completedQuestions,
+        },
       };
     },
     enabled: !!user,

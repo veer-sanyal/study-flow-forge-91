@@ -1,6 +1,7 @@
 import { motion } from 'framer-motion';
-import { RotateCcw, ChevronRight, Clock } from 'lucide-react';
-import { fadeSlideUp, duration, easing, buttonPress } from '@/lib/motion';
+import { RotateCcw, ChevronRight, Eye, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 import { LastSession } from '@/hooks/use-study-dashboard';
 import { formatDistanceToNow } from 'date-fns';
@@ -8,69 +9,86 @@ import { formatDistanceToNow } from 'date-fns';
 interface ContinueSessionCardProps {
   session: LastSession;
   onContinue: () => void;
+  onReviewMistakes?: () => void;
 }
 
-export function ContinueSessionCard({ session, onContinue }: ContinueSessionCardProps) {
+export function ContinueSessionCard({ session, onContinue, onReviewMistakes }: ContinueSessionCardProps) {
   const timeAgo = formatDistanceToNow(session.timestamp, { addSuffix: true });
-  const accuracy = session.totalAttempts > 0 
-    ? Math.round((session.correctCount / session.totalAttempts) * 100)
-    : 0;
+  const missedCount = session.totalAttempts - session.correctCount;
+  const hasMistakes = missedCount > 0;
 
   return (
-    <motion.button
+    <motion.div
       {...fadeSlideUp}
-      {...buttonPress}
-      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.15 }}
-      onClick={onContinue}
+      transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.1 }}
       className={cn(
-        'relative w-full text-left overflow-hidden rounded-xl border bg-card',
-        'shadow-sm hover:shadow-md transition-all',
-        'focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2',
-        'group'
+        'relative overflow-hidden rounded-xl border bg-surface',
+        'shadow-surface hover:shadow-raised transition-shadow'
       )}
     >
-      {/* Left accent strip */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-muted-foreground/30 group-hover:bg-muted-foreground/50 transition-colors" />
-      
-      <div className="flex items-center gap-4 p-4 pl-5">
-        {/* Icon */}
-        <div className="shrink-0 p-2.5 rounded-lg bg-muted text-muted-foreground">
-          <RotateCcw className="h-5 w-5" />
-        </div>
-        
-        {/* Content */}
-        <div className="flex-1 min-w-0 space-y-1">
-          <div className="flex items-center gap-2">
-            <h3 className="text-body font-medium text-foreground truncate">
-              Continue where you left off
-            </h3>
+      <div className="p-4">
+        <div className="flex items-start gap-4">
+          {/* Icon badge */}
+          <div className="shrink-0 p-2.5 rounded-xl bg-muted text-muted-foreground">
+            <RotateCcw className="h-5 w-5" />
           </div>
           
-          <div className="flex items-center gap-3 text-meta text-muted-foreground">
-            {session.courseTitle && (
-              <span className="truncate max-w-[120px]">{session.courseTitle}</span>
-            )}
-            {session.topicTitle && (
-              <>
-                <span>•</span>
-                <span className="truncate max-w-[100px]">{session.topicTitle}</span>
-              </>
-            )}
-            <span className="flex items-center gap-1 shrink-0">
-              <Clock className="h-3 w-3" />
-              {timeAgo}
-            </span>
+          {/* Content */}
+          <div className="flex-1 min-w-0 space-y-2">
+            {/* Title - forward-looking hook */}
+            <div>
+              <h3 className="text-body font-semibold text-foreground">
+                Pick up where you left off
+              </h3>
+              <p className="text-meta text-muted-foreground">
+                {session.totalAttempts} question{session.totalAttempts !== 1 ? 's' : ''} {timeAgo}
+                {hasMistakes && (
+                  <span> • We'll target the ones you missed</span>
+                )}
+              </p>
+            </div>
+            
+            {/* Context pills */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {session.courseTitle && (
+                <span className="text-meta text-muted-foreground bg-muted px-2 py-0.5 rounded-md truncate max-w-[140px]">
+                  {session.courseTitle}
+                </span>
+              )}
+              {session.topicTitle && (
+                <span className="text-meta text-muted-foreground bg-muted px-2 py-0.5 rounded-md truncate max-w-[120px]">
+                  {session.topicTitle}
+                </span>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={onContinue}
+                className="gap-1.5"
+              >
+                Resume
+                <ChevronRight className="h-3.5 w-3.5" />
+              </Button>
+              
+              {hasMistakes && onReviewMistakes && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onReviewMistakes}
+                  className="gap-1.5 text-muted-foreground hover:text-foreground"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  Review {missedCount} mistake{missedCount !== 1 ? 's' : ''}
+                </Button>
+              )}
+            </div>
           </div>
-
-          {/* Session stats */}
-          <p className="text-meta text-muted-foreground">
-            Last session: {session.totalAttempts} questions • {accuracy}% correct
-          </p>
         </div>
-
-        {/* Chevron */}
-        <ChevronRight className="h-5 w-5 text-muted-foreground shrink-0 group-hover:translate-x-0.5 transition-transform" />
       </div>
-    </motion.button>
+    </motion.div>
   );
 }
