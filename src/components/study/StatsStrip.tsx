@@ -21,6 +21,7 @@ export function StatsStrip({
     {
       id: 'streak',
       label: 'day streak',
+      shortLabel: 'streak',
       value: streak,
       icon: Flame,
       isActive: streak > 0,
@@ -28,13 +29,15 @@ export function StatsStrip({
     {
       id: 'accuracy',
       label: 'accuracy (7d)',
+      shortLabel: '7d acc',
       value: `${weeklyAccuracy}%`,
       icon: Target,
       isActive: weeklyAccuracy >= 70,
     },
     {
       id: 'today',
-      label: 'today',
+      label: 'completed today',
+      shortLabel: 'today',
       value: questionsToday,
       icon: CheckCircle,
       isActive: questionsToday > 0,
@@ -46,19 +49,18 @@ export function StatsStrip({
       {...fadeSlideUp}
       transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.1 }}
       className={cn(
-        'flex items-stretch rounded-xl overflow-hidden',
-        'bg-surface border border-border shadow-surface',
+        'grid grid-cols-3 gap-3 sm:gap-4',
         className
       )}
     >
-      {stats.map((stat, index) => {
+      {stats.map((stat) => {
         const Icon = stat.icon;
         return (
           <div
             key={stat.id}
             className={cn(
-              'flex-1 flex items-center gap-2 px-4 py-3',
-              index !== stats.length - 1 && 'border-r border-border'
+              'flex items-center gap-2 sm:gap-3 px-3 sm:px-4 py-3',
+              'bg-surface border border-border rounded-xl shadow-surface'
             )}
           >
             <Icon 
@@ -67,16 +69,17 @@ export function StatsStrip({
                 stat.isActive ? 'text-primary' : 'text-muted-foreground/50'
               )} 
             />
-            <div className="min-w-0 flex items-baseline gap-1.5">
-              <span className={cn(
+            <div className="min-w-0">
+              <div className={cn(
                 'text-body font-semibold tabular-nums',
                 stat.isActive ? 'text-foreground' : 'text-muted-foreground'
               )}>
                 {stat.value}
-              </span>
-              <span className="text-meta text-muted-foreground truncate">
-                {stat.label}
-              </span>
+              </div>
+              <div className="text-meta text-muted-foreground truncate">
+                <span className="hidden sm:inline">{stat.label}</span>
+                <span className="sm:hidden">{stat.shortLabel}</span>
+              </div>
             </div>
           </div>
         );
