@@ -9,9 +9,11 @@ import { TodayPlanCard } from "@/components/study/TodayPlanCard";
 import { PracticeCard } from "@/components/study/PracticeCard";
 import { FocusBar } from "@/components/study/FocusBar";
 import { CompletionCard } from "@/components/study/CompletionCard";
+import { ContinueSessionCard } from "@/components/study/ContinueSessionCard";
+import { StudyDashboardHeader } from "@/components/study/StudyDashboardHeader";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
-import { useTodayPlanStats, useRecommendedPresets, useWeakAreas, useOverdueReviews } from "@/hooks/use-study-recommendations";
+import { useStudyDashboard } from "@/hooks/use-study-dashboard";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -53,13 +55,10 @@ export default function Study() {
     hasActiveFilters,
   } = useFocusContext();
 
-  // Recommendations
+  // Unified dashboard data
   const dailyGoal = settings.daily_goal || 10;
   const dailyPlanMode = settings.daily_plan_mode || 'single_course';
-  const { data: todayStats, isLoading: statsLoading } = useTodayPlanStats(dailyGoal, dailyPlanMode);
-  const recommendedPresets = useRecommendedPresets(filters.courseIds);
-  const { data: weakAreas } = useWeakAreas(filters.courseIds);
-  const { data: overdueReviews } = useOverdueReviews(filters.courseIds);
+  const { data: dashboardData, isLoading: dashboardLoading } = useStudyDashboard();
 
   // Handle navigation state from StudyFocus page
   useEffect(() => {
@@ -195,12 +194,12 @@ export default function Study() {
     console.log("Similar clicked");
   }, []);
 
-  // Build completion suggestions
+  // Build completion suggestions from dashboard data
   const completionSuggestions = useMemo(() => {
     const suggestions: { id: string; label: string; description?: string; icon: 'arrow' | 'target' | 'refresh'; onClick: () => void }[] = [];
 
-    if (todayStats?.alsoDueCourses && todayStats.alsoDueCourses.length > 0) {
-      const next = todayStats.alsoDueCourses[0];
+    if (dashboardData?.todayPlan.alsoDueCourses && dashboardData.todayPlan.alsoDueCourses.length > 0) {
+      const next = dashboardData.todayPlan.alsoDueCourses[0];
       suggestions.push({
         id: 'next-course',
         label: `Next: ${next.title}`,
@@ -213,52 +212,85 @@ export default function Study() {
       });
     }
 
-    if (weakAreas?.weakTopics && weakAreas.weakTopics.length > 0) {
-      const weak = weakAreas.weakTopics[0];
+    // Use practice recommendations for weak topics
+    const weakRec = dashboardData?.practiceRecommendations.find(r => r.type === 'weak_topic');
+    if (weakRec) {
       suggestions.push({
         id: 'weak-topic',
-        label: `Weak: ${weak.title}`,
-        description: `${Math.round(weak.mastery * 100)}% mastery`,
+        label: weakRec.label,
+        description: weakRec.description,
         icon: 'target',
         onClick: () => {
-          setTopicIds([weak.id]);
+          if (weakRec.filters.topicIds) {
+            setTopicIds(weakRec.filters.topicIds);
+          }
           handleKeepPracticing();
         },
       });
     }
 
-    if (overdueReviews && overdueReviews.count > 0) {
+    // Use practice recommendations for overdue reviews
+    const overdueRec = dashboardData?.practiceRecommendations.find(r => r.type === 'overdue_review');
+    if (overdueRec) {
       suggestions.push({
         id: 'overdue',
-        label: `Review: ${overdueReviews.count} overdue`,
+        label: overdueRec.label,
         icon: 'refresh',
         onClick: handleKeepPracticing,
       });
     }
 
     return suggestions;
-  }, [todayStats, weakAreas, overdueReviews, setCourseIds, setTopicIds, handleKeepPracticing]);
+  }, [dashboardData, setCourseIds, setTopicIds, handleKeepPracticing]);
+
+  // Handle continue session
+  const handleContinueSession = useCallback(() => {
+    // Resume practice with same focus
+    handleStartPractice();
+  }, [handleStartPractice]);
 
   // HOME state
   if (studyState === "home") {
+    const todayPlan = dashboardData?.todayPlan || {
+      totalQuestions: dailyGoal,
+      completedQuestions: 0,
+      correctCount: 0,
+      estimatedMinutes: Math.round(dailyGoal * 1.5),
+      primaryCourse: null,
+      alsoDueCourses: [],
+      progressPercent: 0,
+    };
+
     return (
       <PageTransition className="flex flex-col h-full p-4 sm:p-6 lg:p-8 max-w-2xl mx-auto">
         <div className="space-y-6">
+          {/* Page header */}
+          <StudyDashboardHeader
+            progressPercent={todayPlan.progressPercent}
+            completedToday={todayPlan.completedQuestions}
+            dailyGoal={dailyGoal}
+            primaryCourse={todayPlan.primaryCourse?.title}
+          />
+
+          {/* Today's Plan Card - Primary CTA */}
           <TodayPlanCard
-            stats={todayStats || {
-              totalQuestions: dailyGoal,
-              completedQuestions: 0,
-              correctCount: 0,
-              estimatedMinutes: Math.round(dailyGoal * 1.5),
-              primaryCourse: null,
-              alsoDueCourses: [],
-            }}
-            isLoading={statsLoading}
+            stats={todayPlan}
+            isLoading={dashboardLoading}
             onStart={handleStartTodayPlan}
           />
 
+          {/* Continue where you left off - only show if there's a recent session */}
+          {dashboardData?.lastSession && (
+            <ContinueSessionCard
+              session={dashboardData.lastSession}
+              onContinue={handleContinueSession}
+            />
+          )}
+
+          {/* Practice Card - Secondary CTA with recommendations */}
           <PracticeCard
-            presets={recommendedPresets}
+            presets={dashboardData?.presets || []}
+            recommendations={dashboardData?.practiceRecommendations}
             onPresetClick={handleStartPractice}
           />
         </div>
