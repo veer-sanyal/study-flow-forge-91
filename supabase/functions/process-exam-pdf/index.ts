@@ -6,9 +6,17 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+interface ExtractedSubpart {
+  id: string;      // "a", "b", "c", "d"
+  prompt: string;
+  points?: number;
+}
+
 interface ExtractedQuestion {
   prompt: string;
-  choices: { id: string; text: string }[];
+  questionFormat: 'multiple_choice' | 'short_answer' | 'numeric';
+  choices?: { id: string; text: string }[];  // Only for MCQ
+  subparts?: ExtractedSubpart[];             // For multi-part questions
   questionOrder: number;
 }
 
@@ -111,7 +119,7 @@ Extract ALL questions with precise LaTeX formatting that renders correctly in a 
 
 OUTPUT REQUIREMENTS:
 - Return JSON via extract_questions only (no extra commentary).
-- Each question has: questionOrder (1..N), prompt, choices[{id, text}], (optional) questionNumberFromPDF.
+- Each question has: questionOrder (1..N), questionFormat, prompt, and either choices (for MCQ) or subparts (for multi-part short answer).
 
 EXAM METADATA EXTRACTION (CRITICAL):
 From the cover page or header, extract these SEPARATE fields:
@@ -120,13 +128,50 @@ From the cover page or header, extract these SEPARATE fields:
 - examType: Simple value representing the exam type. Use exactly one of: "1", "2", "3" (for Midterm 1, 2, 3) or "f" (for Final).
   Examples: First midterm exam → "1", Second midterm → "2", Final exam → "f"
 
+QUESTION FORMAT DETECTION (CRITICAL - NEW):
+Determine the question format based on these rules:
+1. "multiple_choice": Question has labeled answer choices (A, B, C, D, E) to SELECT from
+2. "short_answer": Question requires written explanation, proof, derivation, or free-form response
+3. "numeric": Question asks for a specific numerical answer to be calculated (no choices, single number expected)
+
+DISTINGUISHING MCQ FROM SHORT-ANSWER:
+- If a question has (A), (B), (C), (D), (E) as OPTIONS TO CHOOSE FROM → this is "multiple_choice"
+- If a question has (a), (b), (c), (d) as SEPARATE PARTS TO ANSWER → this is "short_answer" with subparts
+- If a question says "find", "compute", "evaluate", "what is the value" with NO choices → "short_answer" or "numeric"
+- If a question says "show that", "prove", "explain", "derive" → "short_answer"
+
+SUBPART EXTRACTION (FOR SHORT-ANSWER QUESTIONS):
+When a short-answer question has labeled subparts like (a), (b), (c), (d) that each require SEPARATE answers:
+- Set the main "prompt" to the overall question setup/context (the shared information)
+- Extract each subpart into the "subparts" array with:
+  - id: The subpart letter ("a", "b", "c", etc.) - exactly one lowercase letter
+  - prompt: The specific question for that subpart
+  - points: Point value if shown (e.g., "(2 points)" → 2, "(3 pts)" → 3)
+- Do NOT include choices array for short-answer questions
+- Example:
+  PDF shows:
+  "5. (12 points) Let X be a random variable with PDF f(x) = 2x for 0 ≤ x ≤ 1.
+   (a) (3 points) Find E[X].
+   (b) (4 points) Find Var(X).
+   (c) (5 points) Find P(X > 0.5)."
+  
+  Output:
+  {
+    "questionOrder": 5,
+    "questionFormat": "short_answer",
+    "prompt": "Let X be a random variable with PDF $f(x) = 2x$ for $0 \\le x \\le 1$.",
+    "subparts": [
+      { "id": "a", "prompt": "Find $E[X]$.", "points": 3 },
+      { "id": "b", "prompt": "Find $\\text{Var}(X)$.", "points": 4 },
+      { "id": "c", "prompt": "Find $P(X > 0.5)$.", "points": 5 }
+    ]
+  }
+
 QUESTION NUMBER & POINTS REMOVAL (MANDATORY):
 - Strip the question number (e.g., "8.", "1.", "12.") from the beginning of the prompt.
-- Strip any point values (e.g., "(12 points)", "(10 pts)", "(5 points)") from the prompt.
+- Strip any point values (e.g., "(12 points)", "(10 pts)", "(5 points)") from the MAIN prompt.
+- For subparts, extract points separately into the points field, then remove from subpart prompt.
 - The prompt should START with the actual question content, NOT "8. (12 points) If..."
-- Example transformation:
-  PDF shows: "8. (12 points) If $\\mathbf{v}$ and $\\mathbf{w}$ are vectors..."
-  Output prompt: "If $\\mathbf{v}$ and $\\mathbf{w}$ are vectors..."
 
 PROMPT LAYOUT (CRITICAL):
 - Preserve the PDF's visual layout using NEWLINES.
@@ -142,40 +187,21 @@ PROMPT LAYOUT (CRITICAL):
 
 - Do NOT use \\[ \\] or \\(...\\) because the renderer won't parse them.
 
-SUB-ITEM FORMATTING (CRITICAL):
-- When a question contains labeled sub-items like (i), (ii), (iii) or (a), (b), (c):
-  - Each sub-item MUST be on its OWN LINE.
-  - Include a blank line before each sub-item for visual separation.
-  - NEVER collapse multiple sub-items onto a single line.
-  
-  Example output:
-  "Which of the following equations is guaranteed to hold?
-  
-  (i) $(\\mathbf{v} \\times \\mathbf{w}) \\cdot \\mathbf{v} = 0$
-  
-  (ii) $(\\mathbf{v} \\times \\mathbf{w}) + (\\mathbf{w} \\times \\mathbf{v}) = \\mathbf{0}$
-  
-  (iii) $(\\mathbf{v} \\times \\mathbf{w}) \\times \\mathbf{w} = \\mathbf{0}$
-  
-  Note: Partial credit is possible for this question."
-
 NOTES AND REMARKS:
 - Keep notes like "Note: Partial credit is possible for this question." as plain text.
-- These should be on their own line at the end of the prompt (before choices).
+- These should be on their own line at the end of the prompt (before choices/subparts).
 
 PUNCTUATION:
 - If punctuation belongs to the sentence, keep it outside math delimiters.
 - If punctuation is printed as part of a standalone centered math line, keep it inside that $$...$$ block.
 
-CHOICE ID RULES (CRITICAL - STRICT ENFORCEMENT):
+CHOICE ID RULES (FOR MCQ ONLY - STRICT ENFORCEMENT):
 - The choice "id" field MUST be EXACTLY one lowercase letter: a, b, c, d, or e.
 - Do NOT include ANY additional text, words, watermarks, or characters in the id field.
 - If you see text like "PARADOX", "PARADIGM", "VERSION", "FORM", or similar near choices, this is a WATERMARK or exam branding - COMPLETELY IGNORE IT.
-- The id is ONLY the letter identifying the choice (A, B, C, D, E) converted to lowercase.
-- Valid id values: "a", "b", "c", "d", "e"
-- INVALID id values (DO NOT USE): "A paradox", "a PARADOX", "A.", "(A)", "a ", "A FORM", etc.
+- Only include choices array for multiple_choice questions.
 
-CHOICE TEXT RULES:
+CHOICE TEXT RULES (FOR MCQ):
 - If a choice is purely mathematical, wrap the ENTIRE choice in $...$.
 - If a choice mixes words + math, only wrap the math parts in $...$.
 - For integral-heavy or fraction-heavy pure-math choices, use display sizing:
@@ -206,8 +232,8 @@ QUALITY CHECKS (DO THESE):
 - Ensure every choice obeys the math delimiter rules.
 - Ensure the question order matches the PDF numbering sequence.
 - Verify that question numbers and point values are REMOVED from prompts.
-- Verify that sub-items (i), (ii), (iii) are on SEPARATE lines with blank lines between them.
-- VERIFY that ALL choice id fields contain ONLY a single lowercase letter (a, b, c, d, or e).
+- VERIFY that questionFormat is correctly determined for each question.
+- VERIFY that short-answer questions with subparts have subparts extracted, NOT choices.
 - Do NOT solve problems or infer correct answers.
 
 Return your response using the extract_questions function.`;
@@ -264,22 +290,49 @@ Return your response using the extract_questions function.`;
                           prompt: {
                             type: "string",
                             description:
-                              "Question text. Use $$...$$ for display math, $...$ for inline math. Punctuation outside delimiters.",
+                              "Question text (main context/setup). Use $$...$$ for display math, $...$ for inline math.",
+                          },
+                          questionFormat: {
+                            type: "string",
+                            enum: ["multiple_choice", "short_answer", "numeric"],
+                            description: "The format of the question: 'multiple_choice' (has choices A-E), 'short_answer' (free response/proof), or 'numeric' (single number answer)",
                           },
                           choices: {
                             type: "array",
+                            description: "Answer choices - ONLY include for multiple_choice questions",
                             items: {
                               type: "object",
                               properties: {
                                 id: { 
                                   type: "string", 
-                                  description: "EXACTLY one lowercase letter: a, b, c, d, or e. NO additional text, words, or characters.",
+                                  description: "EXACTLY one lowercase letter: a, b, c, d, or e.",
                                   enum: ["a", "b", "c", "d", "e"]
                                 },
                                 text: {
                                   type: "string",
-                                  description:
-                                    "Choice text. ALL math expressions MUST be wrapped in $...$ delimiters. Example: '$\\\\frac{1}{2}$'",
+                                  description: "Choice text with math wrapped in $...$",
+                                },
+                              },
+                            },
+                          },
+                          subparts: {
+                            type: "array",
+                            description: "For multi-part short-answer questions, each subpart that requires a separate answer",
+                            items: {
+                              type: "object",
+                              properties: {
+                                id: { 
+                                  type: "string", 
+                                  description: "Subpart letter: a, b, c, d, etc.",
+                                  enum: ["a", "b", "c", "d", "e", "f", "g", "h"]
+                                },
+                                prompt: {
+                                  type: "string",
+                                  description: "The specific question for this subpart",
+                                },
+                                points: {
+                                  type: "number",
+                                  description: "Point value for this subpart if shown",
                                 },
                               },
                             },
@@ -463,20 +516,39 @@ Return your response using the extract_questions function.`;
   }
 
   for (const q of extractedData.questions) {
-    // Format choices with normalized IDs (fix PARADOX issue)
-    const formattedChoices =
-      q.choices?.map((c) => ({
-        id: normalizeChoiceId(c.id), // Normalize to single lowercase letter
-        text: c.text,
-        isCorrect: false, // Will be updated during analysis
-      })) || null;
+    // Determine question format (default to multiple_choice for backwards compatibility)
+    const questionFormat = q.questionFormat || (q.choices && q.choices.length > 0 ? 'multiple_choice' : 'short_answer');
+    
+    // Format choices with normalized IDs (only for MCQ)
+    const formattedChoices = questionFormat === 'multiple_choice' && q.choices
+      ? q.choices.map((c) => ({
+          id: normalizeChoiceId(c.id), // Normalize to single lowercase letter
+          text: c.text,
+          isCorrect: false, // Will be updated during analysis
+        }))
+      : null;
 
-    // Get answer from answer key if available
+    // Format subparts (for short-answer questions)
+    const formattedSubparts = q.subparts && q.subparts.length > 0
+      ? q.subparts.map((sp) => ({
+          id: sp.id.toLowerCase().trim(),
+          prompt: sp.prompt,
+          points: sp.points || null,
+          correctAnswer: null,    // Will be set during analysis
+          solutionSteps: null,    // Will be set during analysis
+        }))
+      : null;
+
+    // Get answer from answer key if available (primarily for MCQ)
     const answerKeyAnswer = answerKeyMap.get(q.questionOrder) || null;
+
+    console.log(`Inserting question ${q.questionOrder}: format=${questionFormat}, choices=${formattedChoices?.length || 0}, subparts=${formattedSubparts?.length || 0}`);
 
     const { error: insertError } = await supabase.from("questions").insert({
       prompt: q.prompt,
+      question_format: questionFormat,
       choices: formattedChoices,
+      subparts: formattedSubparts,
       correct_answer: null, // Will be set during analysis
       solution_steps: null, // Will be set during analysis
       guide_me_steps: null, // Will be set during analysis
