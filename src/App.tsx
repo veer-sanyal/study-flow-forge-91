@@ -21,6 +21,7 @@ import AdminCoursesList from "@/pages/AdminCoursesList";
 import AdminExamsList from "@/pages/AdminExamsList";
 import AdminQuestionsEditor from "@/pages/AdminQuestionsEditor";
 import AdminQuestionDetail from "@/pages/AdminQuestionDetail";
+import AdminSubpartDetail from "@/pages/AdminSubpartDetail";
 import AdminQuestionTypes from "@/pages/AdminQuestionTypes";
 import NotFound from "@/pages/NotFound";
 
@@ -57,6 +58,7 @@ const App = () => (
                     <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
                     <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
                     <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
+                    <Route path="/admin/questions/:courseId/:examName/:questionId/subpart/:subpartId" element={<AdminSubpartDetail />} />
                   </Route>
                 </Route>
               </Route>
