@@ -126,7 +126,7 @@ export default function AdminSubpartDetail() {
     navigate(`/admin/questions/${courseId}/${examName}/${questionId}/subpart/${spId}`);
   };
 
-  // Image upload handler
+  // Image upload handler with background removal
   const handleImageUpload = async (file: File) => {
     if (!questionId || !subpartId) return;
     setIsUploadingImage(true);
@@ -135,25 +135,47 @@ export default function AdminSubpartDetail() {
       const fileName = `${questionId}_${subpartId}_${Date.now()}.${fileExt}`;
       const filePath = `subparts/${fileName}`;
 
-      // Upload to storage
+      // Upload original to storage first
       const { error: uploadError } = await supabase.storage
         .from("question-images")
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
-      // Get public URL
+      // Get public URL of original
       const { data: urlData } = supabase.storage
         .from("question-images")
         .getPublicUrl(filePath);
 
-      const publicUrl = urlData.publicUrl;
+      const originalUrl = urlData.publicUrl;
 
-      // Skip background removal for subpart images for now
-      // The process-question-image function is designed for main question images
-      // and updates the questions table directly, which isn't suitable for subparts
+      // Process image for background removal
+      const processedPath = `subparts/${questionId}_${subpartId}_${Date.now()}_processed.png`;
+      
+      try {
+        const { data: processData, error: processError } = await supabase.functions.invoke(
+          "process-image-background",
+          {
+            body: { 
+              imageUrl: originalUrl, 
+              outputPath: processedPath 
+            },
+          }
+        );
 
-      setImageUrl(publicUrl);
+        if (processError) {
+          console.warn("Image processing failed, using original:", processError);
+          setImageUrl(originalUrl);
+        } else if (processData?.processedUrl) {
+          setImageUrl(processData.processedUrl);
+        } else {
+          setImageUrl(originalUrl);
+        }
+      } catch (processErr) {
+        console.warn("Image processing skipped, using original:", processErr);
+        setImageUrl(originalUrl);
+      }
+
       setIsDirty(true);
       toast.success("Image uploaded");
     } catch (err) {
