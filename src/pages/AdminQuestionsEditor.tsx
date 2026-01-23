@@ -356,7 +356,8 @@ function GuideMeStepCard({
                     : 'bg-background text-muted-foreground border border-transparent'
                 }`}
               >
-                <span className="font-medium w-6">{choice.id.toUpperCase()}.</span>
+                {/* Extract just the first letter from IDs like "a_correct" */}
+                <span className="font-medium w-6">{choice.id.charAt(0).toUpperCase()}.</span>
                 <MathRenderer content={choice.text} />
                 {choice.isCorrect && <Check className="h-3 w-3 ml-auto flex-shrink-0" />}
               </div>
