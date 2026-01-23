@@ -61,45 +61,45 @@ function RecommendationRow({ recommendation, onStart, index }: RecommendationRow
       }}
       onClick={onStart}
       className={cn(
-        'w-full text-left group flex items-start gap-3 p-4 rounded-xl',
+        'w-full text-left group flex items-start gap-4 p-5 rounded-xl',
         'bg-surface border border-border',
         'hover:border-primary/30 hover:shadow-raised transition-all'
       )}
     >
       {/* Left accent rail */}
-      <div className={cn('w-1 self-stretch rounded-full shrink-0', config.accentColor)} />
+      <div className={cn('w-1 self-stretch rounded-full shrink-0 min-h-[60px]', config.accentColor)} />
 
       {/* Icon */}
-      <div className="shrink-0 p-2 rounded-lg bg-muted text-muted-foreground">
-        <Icon className="h-4 w-4" />
+      <div className="shrink-0 p-2.5 rounded-lg bg-muted text-muted-foreground">
+        <Icon className="h-5 w-5" />
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-w-0 space-y-1.5">
-        <p className="text-body font-medium text-foreground line-clamp-2">
+      <div className="flex-1 min-w-0 space-y-2">
+        <p className="text-base font-medium text-foreground leading-snug">
           {recommendation.label}
         </p>
         {recommendation.description && (
-          <p className="text-meta text-muted-foreground line-clamp-1">
+          <p className="text-sm text-muted-foreground leading-relaxed">
             {recommendation.description}
           </p>
         )}
         
         {/* Bottom row: badge + time + CTA */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex flex-wrap items-center gap-3 pt-1">
           <span className={cn(
-            'text-[11px] font-medium px-1.5 py-0.5 rounded',
+            'text-xs font-medium px-2 py-1 rounded',
             config.badgeClass
           )}>
             {config.badgeText}
           </span>
-          <span className="text-meta text-muted-foreground flex items-center gap-1">
-            <Clock className="h-3 w-3" />
+          <span className="text-sm text-muted-foreground flex items-center gap-1.5">
+            <Clock className="h-3.5 w-3.5" />
             {estimatedTime}
           </span>
-          <span className="ml-auto text-meta font-medium text-foreground flex items-center gap-0.5 group-hover:text-primary transition-colors">
+          <span className="ml-auto text-sm font-medium text-foreground flex items-center gap-1 group-hover:text-primary transition-colors">
             {config.ctaText}
-            <ChevronRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+            <ChevronRight className="h-4 w-4 group-hover:translate-x-0.5 transition-transform" />
           </span>
         </div>
       </div>
