@@ -716,15 +716,13 @@ function QuestionCard({
                   className="p-4 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
                   onClick={() => navigate(`/admin/questions/${courseId}/${examName}/${question.id}/subpart/${subpart.id}`)}
                 >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary font-bold">
-                        {question.question_order}.{subpart.id}
-                      </div>
-                      <div className="flex-1">
-                        <div className="prose prose-sm dark:prose-invert max-w-none line-clamp-2">
-                          <MathRenderer content={subpart.prompt} />
-                        </div>
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary font-bold flex-shrink-0">
+                      {question.question_order}.{subpart.id}
+                    </div>
+                    <div className="flex-1 min-w-0 overflow-hidden">
+                      <div className="prose prose-sm dark:prose-invert max-w-none line-clamp-2 overflow-hidden">
+                        <MathRenderer content={subpart.prompt} />
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
