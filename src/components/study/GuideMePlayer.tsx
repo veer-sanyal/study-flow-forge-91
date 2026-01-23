@@ -199,7 +199,8 @@ export function GuideMePlayer({
                   <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-medium ${
                     isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
                   }`}>
-                    {choice.id.toUpperCase()}
+                    {/* Extract just the first letter from IDs like "a_correct" or just "a" */}
+                    {choice.id.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
                     <MathRenderer content={choice.text} />
