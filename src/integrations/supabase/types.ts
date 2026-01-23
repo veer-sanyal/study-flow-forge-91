@@ -85,41 +85,59 @@ export type Database = {
       }
       attempts: {
         Row: {
+          ai_feedback: Json | null
           answer_given: string | null
+          answer_image_url: string | null
+          answer_text: string | null
           confidence: string | null
           created_at: string
           guide_used: boolean
           hint_used: boolean
           id: string
           is_correct: boolean
+          max_points: number | null
+          points_earned: number | null
           question_id: string
           selected_choice_id: string | null
+          subpart_id: string | null
           time_spent_ms: number | null
           user_id: string
         }
         Insert: {
+          ai_feedback?: Json | null
           answer_given?: string | null
+          answer_image_url?: string | null
+          answer_text?: string | null
           confidence?: string | null
           created_at?: string
           guide_used?: boolean
           hint_used?: boolean
           id?: string
           is_correct: boolean
+          max_points?: number | null
+          points_earned?: number | null
           question_id: string
           selected_choice_id?: string | null
+          subpart_id?: string | null
           time_spent_ms?: number | null
           user_id: string
         }
         Update: {
+          ai_feedback?: Json | null
           answer_given?: string | null
+          answer_image_url?: string | null
+          answer_text?: string | null
           confidence?: string | null
           created_at?: string
           guide_used?: boolean
           hint_used?: boolean
           id?: string
           is_correct?: boolean
+          max_points?: number | null
+          points_earned?: number | null
           question_id?: string
           selected_choice_id?: string | null
+          subpart_id?: string | null
           time_spent_ms?: number | null
           user_id?: string
         }
@@ -403,10 +421,12 @@ export type Database = {
           midterm_number: number | null
           needs_review: boolean
           prompt: string
+          question_format: string | null
           question_order: number | null
           question_type_id: string | null
           solution_steps: Json | null
           source_exam: string | null
+          subparts: Json | null
           topic_ids: string[]
           unmapped_topic_suggestions: string[] | null
           updated_at: string
@@ -427,10 +447,12 @@ export type Database = {
           midterm_number?: number | null
           needs_review?: boolean
           prompt: string
+          question_format?: string | null
           question_order?: number | null
           question_type_id?: string | null
           solution_steps?: Json | null
           source_exam?: string | null
+          subparts?: Json | null
           topic_ids?: string[]
           unmapped_topic_suggestions?: string[] | null
           updated_at?: string
@@ -451,10 +473,12 @@ export type Database = {
           midterm_number?: number | null
           needs_review?: boolean
           prompt?: string
+          question_format?: string | null
           question_order?: number | null
           question_type_id?: string | null
           solution_steps?: Json | null
           source_exam?: string | null
+          subparts?: Json | null
           topic_ids?: string[]
           unmapped_topic_suggestions?: string[] | null
           updated_at?: string
