@@ -6,9 +6,18 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Enhanced to support both MCQ and short-answer formats
 interface AnswerKeyEntry {
-  questionNumber: number;
-  answer: string;
+  questionNumber: string; // e.g., "2.1", "3", "4"
+  questionType: "mcq" | "short_answer";
+  // For MCQ: single letter answer
+  answer?: string;
+  // For short-answer: subpart answers
+  subparts?: {
+    id: string; // e.g., "a", "b", "c"
+    answer: string; // The final answer (number, expression, etc.)
+    points?: number;
+  }[];
 }
 
 interface AnswerKeyResult {
@@ -104,19 +113,48 @@ serve(async (req) => {
 
     console.log("Answer key PDF converted to base64, calling Gemini...");
 
-    // Call Gemini to extract answers
+    // Enhanced extraction prompt for mixed MCQ + short-answer formats
     const extractionPrompt = `You are an expert at extracting answer keys from exam documents.
 
-Extract the answer key from this document. The answer key typically shows:
-- A list of question numbers with their correct answers
-- Format might be: "1. B", "1) B", "#1: B", "Q1 = B", etc.
-- Sometimes displayed in tables or columns
+This document contains a GRADED EXAM with instructor corrections/solutions marked (often in red ink or annotations).
 
-OUTPUT REQUIREMENTS:
-- Return JSON via extract_answer_key only (no extra commentary).
-- Each entry has: questionNumber (integer), answer (single letter like "A", "B", "C", "D", "E")
-- Normalize all answers to UPPERCASE single letters
-- Handle variations: "b" → "B", "(B)" → "B", "B." → "B"
+DOCUMENT STRUCTURE:
+- Some questions are MULTIPLE CHOICE (MCQ): The correct answer is circled or marked. Extract the single letter (A, B, C, D, E).
+- Some questions are SHORT-ANSWER/FREE-RESPONSE: These have multi-part subquestions (a, b, c, d...) with worked solutions. Extract the FINAL ANSWER for each subpart.
+
+EXTRACTION RULES:
+
+1. QUESTION NUMBERING:
+   - Questions may be numbered as: "2.1", "2.2" or just "1", "2", "3"
+   - Use the exact numbering from the document (e.g., "2.1", "2.2", "3", "4")
+
+2. MCQ QUESTIONS:
+   - questionType: "mcq"
+   - Look for circled, boxed, or highlighted answer letters
+   - answer: The correct letter (A, B, C, D, or E)
+   - subparts: null or empty
+
+3. SHORT-ANSWER QUESTIONS:
+   - questionType: "short_answer"
+   - answer: null (answers are in subparts)
+   - subparts: Array of {id, answer, points}
+     - id: The subpart letter (a, b, c, d, etc.)
+     - answer: The FINAL answer only (a number, expression, or short phrase)
+       - For probability: "0.1932", "0.2786"
+       - For distributions: "Poisson(λ = 6)", "N(82, 64/35)"
+       - For numeric: "80.4449", "1.48"
+     - points: Point value if visible (e.g., 2, 4, 6, 8)
+
+4. ANSWER EXTRACTION:
+   - Extract only the FINAL answer, not the full solution steps
+   - Preserve mathematical notation: fractions, exponents, special symbols
+   - For LaTeX expressions, use standard notation: \\frac{}, \\sqrt{}, etc.
+   - If answer is boxed or underlined in the solution, that's likely the final answer
+
+5. IGNORE:
+   - Student work or wrong attempts (focus on instructor corrections in red)
+   - Watermarks like "PARADOX", "PARADIGM"
+   - Partial credit annotations
 
 Return your response using the extract_answer_key function.`;
 
@@ -148,26 +186,53 @@ Return your response using the extract_answer_key function.`;
               functionDeclarations: [
                 {
                   name: "extract_answer_key",
-                  description: "Extract the answer key mapping question numbers to correct answers",
+                  description: "Extract the answer key from a graded exam, supporting both MCQ and short-answer formats",
                   parameters: {
                     type: "object",
                     properties: {
                       answers: {
                         type: "array",
-                        description: "List of question number to answer mappings",
+                        description: "List of questions with their correct answers",
                         items: {
                           type: "object",
                           properties: {
                             questionNumber: {
-                              type: "number",
-                              description: "The question number (1, 2, 3, etc.)",
+                              type: "string",
+                              description: "The question identifier as shown in the document (e.g., '2.1', '3', '4')",
+                            },
+                            questionType: {
+                              type: "string",
+                              enum: ["mcq", "short_answer"],
+                              description: "Whether this is a multiple choice or short-answer question",
                             },
                             answer: {
                               type: "string",
-                              description: "The correct answer letter (A, B, C, D, or E)",
+                              description: "For MCQ only: the correct answer letter (A, B, C, D, or E). Null for short-answer.",
+                            },
+                            subparts: {
+                              type: "array",
+                              description: "For short-answer only: array of subpart answers",
+                              items: {
+                                type: "object",
+                                properties: {
+                                  id: {
+                                    type: "string",
+                                    description: "Subpart identifier (a, b, c, d, etc.)",
+                                  },
+                                  answer: {
+                                    type: "string",
+                                    description: "The final answer for this subpart",
+                                  },
+                                  points: {
+                                    type: "number",
+                                    description: "Point value for this subpart if visible",
+                                  },
+                                },
+                                required: ["id", "answer"],
+                              },
                             },
                           },
-                          required: ["questionNumber", "answer"],
+                          required: ["questionNumber", "questionType"],
                         },
                       },
                     },
@@ -216,19 +281,48 @@ Return your response using the extract_answer_key function.`;
       console.error("Failed to parse Gemini response:", parseError);
     }
 
-    // Normalize answers to uppercase
-    const normalizedAnswers = answerKeyData.answers.map((a) => ({
-      questionNumber: a.questionNumber,
-      answer: a.answer.toUpperCase().replace(/[^A-E]/g, ""),
-    }));
+    // Normalize and validate answers
+    const normalizedAnswers = answerKeyData.answers.map((entry) => {
+      if (entry.questionType === "mcq") {
+        return {
+          questionNumber: entry.questionNumber,
+          questionType: "mcq" as const,
+          answer: entry.answer?.toUpperCase().replace(/[^A-E]/g, "") || "",
+          subparts: null,
+        };
+      } else {
+        return {
+          questionNumber: entry.questionNumber,
+          questionType: "short_answer" as const,
+          answer: null,
+          subparts: entry.subparts?.map((sp) => ({
+            id: sp.id.toLowerCase(),
+            answer: sp.answer,
+            points: sp.points,
+          })) || [],
+        };
+      }
+    });
 
-    console.log(`Extracted ${normalizedAnswers.length} answers from answer key`);
+    // Calculate stats
+    const mcqCount = normalizedAnswers.filter((a) => a.questionType === "mcq").length;
+    const shortAnswerCount = normalizedAnswers.filter((a) => a.questionType === "short_answer").length;
+    const totalSubparts = normalizedAnswers
+      .filter((a) => a.questionType === "short_answer")
+      .reduce((sum, a) => sum + (a.subparts?.length || 0), 0);
+
+    console.log(`Extracted ${normalizedAnswers.length} questions: ${mcqCount} MCQ, ${shortAnswerCount} short-answer (${totalSubparts} subparts)`);
 
     return new Response(
       JSON.stringify({
         success: true,
         answers: normalizedAnswers,
-        count: normalizedAnswers.length,
+        stats: {
+          total: normalizedAnswers.length,
+          mcq: mcqCount,
+          shortAnswer: shortAnswerCount,
+          totalSubparts,
+        },
       }),
       {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
