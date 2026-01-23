@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -10,13 +10,6 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
   ArrowLeft,
   Save,
   Loader2,
@@ -24,14 +17,14 @@ import {
   X,
   ChevronLeft,
   ChevronRight,
+  Upload,
 } from "lucide-react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { MathRenderer } from "@/components/study/MathRenderer";
+import { QuestionImage } from "@/components/study/QuestionImage";
 import {
   useUpdateQuestion,
-  useUploadQuestionImage,
-  useRemoveQuestionImage,
   useAllTopics,
 } from "@/hooks/use-questions";
 import type { Tables, Json } from "@/integrations/supabase/types";
@@ -44,6 +37,7 @@ interface Subpart {
   points: number | null;
   correctAnswer?: string | null;
   solutionSteps?: string[] | null;
+  imageUrl?: string | null;
 }
 
 function parseSubparts(subparts: Json | null): Subpart[] {
@@ -54,6 +48,7 @@ function parseSubparts(subparts: Json | null): Subpart[] {
     points: sp.points ?? null,
     correctAnswer: sp.correctAnswer || null,
     solutionSteps: sp.solutionSteps || null,
+    imageUrl: sp.imageUrl || null,
   }));
 }
 
@@ -88,8 +83,6 @@ export default function AdminSubpartDetail() {
 
   // Mutations
   const updateQuestion = useUpdateQuestion();
-  const uploadQuestionImage = useUploadQuestionImage();
-  const removeQuestionImage = useRemoveQuestionImage();
 
   // Parse subparts from question
   const subparts = question ? parseSubparts(question.subparts) : [];
@@ -101,8 +94,12 @@ export default function AdminSubpartDetail() {
   const [points, setPoints] = useState<number | null>(null);
   const [correctAnswer, setCorrectAnswer] = useState("");
   const [solutionSteps, setSolutionSteps] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [isDirty, setIsDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDraggingImage, setIsDraggingImage] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Initialize state from subpart
   useEffect(() => {
@@ -111,6 +108,7 @@ export default function AdminSubpartDetail() {
       setPoints(currentSubpart.points);
       setCorrectAnswer(currentSubpart.correctAnswer || "");
       setSolutionSteps(currentSubpart.solutionSteps?.join("\n\n") || "");
+      setImageUrl(currentSubpart.imageUrl || null);
       setIsDirty(false);
     }
   }, [currentSubpart?.id, question?.id]);
@@ -126,6 +124,52 @@ export default function AdminSubpartDetail() {
       if (!confirm("You have unsaved changes. Continue without saving?")) return;
     }
     navigate(`/admin/questions/${courseId}/${examName}/${questionId}/subpart/${spId}`);
+  };
+
+  // Image upload handler
+  const handleImageUpload = async (file: File) => {
+    if (!questionId || !subpartId) return;
+    setIsUploadingImage(true);
+    try {
+      const fileExt = file.name.split(".").pop();
+      const fileName = `${questionId}_${subpartId}_${Date.now()}.${fileExt}`;
+      const filePath = `subparts/${fileName}`;
+
+      // Upload to storage
+      const { error: uploadError } = await supabase.storage
+        .from("question-images")
+        .upload(filePath, file, { upsert: true });
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from("question-images")
+        .getPublicUrl(filePath);
+
+      // Process image for background removal (optional, uses same endpoint)
+      try {
+        await supabase.functions.invoke("process-question-image", {
+          body: { filePath, bucketName: "question-images" },
+        });
+      } catch (processErr) {
+        console.warn("Image processing skipped:", processErr);
+      }
+
+      setImageUrl(urlData.publicUrl);
+      setIsDirty(true);
+      toast.success("Image uploaded");
+    } catch (err) {
+      console.error(err);
+      toast.error("Failed to upload image");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const handleRemoveImage = () => {
+    setImageUrl(null);
+    setIsDirty(true);
   };
 
   // Save handler
@@ -144,6 +188,7 @@ export default function AdminSubpartDetail() {
             solutionSteps: solutionSteps.trim() 
               ? solutionSteps.split(/\n\n+/).filter(Boolean) 
               : null,
+            imageUrl: imageUrl || null,
           };
         }
         return sp;
@@ -311,6 +356,75 @@ export default function AdminSubpartDetail() {
               <MathRenderer content={prompt} />
             </div>
           )}
+        </section>
+
+        {/* Subpart Image */}
+        <section className="space-y-2">
+          <label className="text-sm font-medium text-muted-foreground">
+            Subpart Image
+          </label>
+          <div
+            className={cn(
+              "relative border-2 border-dashed rounded-lg p-6 transition-colors",
+              isDraggingImage
+                ? "border-primary bg-primary/5"
+                : "border-border hover:border-muted-foreground/50",
+              imageUrl && "border-solid",
+              isUploadingImage && "opacity-50 pointer-events-none"
+            )}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDraggingImage(true);
+            }}
+            onDragLeave={() => setIsDraggingImage(false)}
+            onDrop={async (e) => {
+              e.preventDefault();
+              setIsDraggingImage(false);
+              const file = e.dataTransfer.files[0];
+              if (file?.type.startsWith("image/")) {
+                await handleImageUpload(file);
+              }
+            }}
+          >
+            {isUploadingImage && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/50 z-10 rounded-lg">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            )}
+            {imageUrl ? (
+              <div className="relative flex justify-center">
+                <QuestionImage
+                  src={imageUrl}
+                  alt="Subpart diagram"
+                />
+                <Button
+                  variant="destructive"
+                  size="icon"
+                  className="absolute top-2 right-2"
+                  onClick={handleRemoveImage}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            ) : (
+              <label className="flex flex-col items-center gap-2 cursor-pointer">
+                <Upload className="h-10 w-10 text-muted-foreground" />
+                <span className="text-sm text-muted-foreground">
+                  Drag & drop or click to upload
+                </span>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleImageUpload(file);
+                  }}
+                />
+              </label>
+            )}
+          </div>
         </section>
 
         {/* Points */}
