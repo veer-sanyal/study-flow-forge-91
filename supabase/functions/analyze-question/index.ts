@@ -40,17 +40,23 @@ interface MethodSummary {
   proTip?: string;
 }
 
-// MiniVariant removed - not needed for question analysis
+interface SubpartAnalysis {
+  id: string;           // "a", "b", "c", etc.
+  correctAnswer: string;
+  points: number | null;
+  solutionSteps: string[];
+}
 
 interface AnalysisResult {
-  correctAnswer: string;
+  correctAnswer: string;      // For MCQ: "a"/"b"/etc, For short-answer: full model answer
   difficulty: number;
   detailedSolution: string;
   guideMeSteps: GuideStep[];
   methodSummary: MethodSummary;
-  topicIds: string[]; // Direct topic IDs - no suggestions
+  topicIds: string[];         // Direct topic IDs - no suggestions
   questionTypeId: string | null; // ID of existing question type
-  questionTypeName: string; // Name of question type (for new types or confirmation)
+  questionTypeName: string;   // Name of question type (for new types or confirmation)
+  subpartAnalysis?: SubpartAnalysis[];  // For multi-part short-answer questions
 }
 
 serve(async (req) => {
@@ -200,12 +206,30 @@ serve(async (req) => {
       }
     }
 
-    // Format the question choices for analysis - note which have images
-    const choicesWithImageInfo = question.choices?.map((c: any) => {
-      const hasImage = !!c.imageUrl;
-      return `${c.id}) ${c.text || "(image-only choice)"}${hasImage ? " [HAS IMAGE - see below]" : ""}`;
-    }) || [];
-    const choicesText = choicesWithImageInfo.join("\n") || "No choices";
+    // Determine question format
+    const questionFormat = question.question_format || 
+      (question.choices && Array.isArray(question.choices) && question.choices.length > 0 
+        ? 'multiple_choice' 
+        : 'short_answer');
+    
+    console.log(`Question format detected: ${questionFormat}`);
+    
+    // Format the question choices for analysis (MCQ only) - note which have images
+    const choicesWithImageInfo = questionFormat === 'multiple_choice' && question.choices
+      ? question.choices.map((c: any) => {
+          const hasImage = !!c.imageUrl;
+          return `${c.id}) ${c.text || "(image-only choice)"}${hasImage ? " [HAS IMAGE - see below]" : ""}`;
+        })
+      : [];
+    const choicesText = choicesWithImageInfo.join("\n") || "No choices (short-answer question)";
+    
+    // Format subparts for short-answer questions
+    const subpartsText = question.subparts && Array.isArray(question.subparts) && question.subparts.length > 0
+      ? question.subparts.map((sp: any) => {
+          const pointsInfo = sp.points ? ` (${sp.points} points)` : "";
+          return `(${sp.id})${pointsInfo} ${sp.prompt}`;
+        }).join("\n")
+      : null;
 
     // Fetch question image if present
     let questionImage: { data: string; mimeType: string } | null = null;
@@ -214,7 +238,7 @@ serve(async (req) => {
       questionImage = await fetchImageAsBase64(question.image_url);
     }
 
-    // Fetch choice images if present
+    // Fetch choice images if present (MCQ only)
     interface ChoiceImageData {
       choiceId: string;
       data: string;
@@ -222,7 +246,7 @@ serve(async (req) => {
     }
     const choiceImages: ChoiceImageData[] = [];
     
-    if (question.choices && Array.isArray(question.choices)) {
+    if (questionFormat === 'multiple_choice' && question.choices && Array.isArray(question.choices)) {
       for (const choice of question.choices) {
         if (choice.imageUrl) {
           console.log(`Fetching image for choice ${choice.id}...`, choice.imageUrl);
@@ -636,6 +660,23 @@ Now generate the analysis and return using analyze_question.`;
                         description:
                           "REQUIRED: The name of the question type - either the name of the selected existing type, or a new suggested name if questionTypeId is null",
                       },
+                      subpartAnalysis: {
+                        type: "array",
+                        description: "For multi-part short-answer questions, analysis for each subpart",
+                        items: {
+                          type: "object",
+                          properties: {
+                            id: { type: "string", description: "Subpart letter: a, b, c, etc." },
+                            correctAnswer: { type: "string", description: "Complete model answer for this subpart" },
+                            points: { type: "number", description: "Point value for this subpart" },
+                            solutionSteps: { 
+                              type: "array", 
+                              items: { type: "string" },
+                              description: "Step-by-step solution for this subpart" 
+                            },
+                          },
+                        },
+                      },
                     },
                   },
                 },
@@ -765,12 +806,26 @@ Now generate the analysis and return using analyze_question.`;
       }
     }
 
-    // Update choices with correct answer
-    const updatedChoices =
-      question.choices?.map((c: any) => ({
-        ...c,
-        isCorrect: c.id.toLowerCase() === analysis!.correctAnswer.toLowerCase(),
-      })) || null;
+    // Update choices with correct answer (MCQ only)
+    const updatedChoices = questionFormat === 'multiple_choice' && question.choices
+      ? question.choices.map((c: any) => ({
+          ...c,
+          isCorrect: c.id.toLowerCase() === analysis!.correctAnswer.toLowerCase(),
+        }))
+      : question.choices || null;
+
+    // Update subparts with analysis (short-answer only)
+    const updatedSubparts = questionFormat !== 'multiple_choice' && question.subparts && analysis.subpartAnalysis
+      ? question.subparts.map((sp: any) => {
+          const subpartResult = analysis!.subpartAnalysis?.find((sa: SubpartAnalysis) => sa.id.toLowerCase() === sp.id.toLowerCase());
+          return {
+            ...sp,
+            correctAnswer: subpartResult?.correctAnswer || null,
+            solutionSteps: subpartResult?.solutionSteps || null,
+            points: subpartResult?.points || sp.points || null,
+          };
+        })
+      : question.subparts || null;
 
     // Build the complete guide_me_steps object with all enhanced data
     const guideData = {
@@ -781,11 +836,14 @@ Now generate the analysis and return using analyze_question.`;
     // NOTE: Answer key mismatch detection is now deferred to post-analysis pass
     // This allows batch analysis to complete first, then compare all answers at once
 
+    console.log(`Updating question: format=${questionFormat}, subparts=${updatedSubparts?.length || 0}`);
+
     // Update the question (no more unmapped_topic_suggestions - always force best match)
     const { error: updateError } = await supabase
       .from("questions")
       .update({
         choices: updatedChoices,
+        subparts: updatedSubparts,
         correct_answer: analysis.correctAnswer,
         solution_steps: analysis.detailedSolution ? [analysis.detailedSolution] : null,
         guide_me_steps: guideData,
