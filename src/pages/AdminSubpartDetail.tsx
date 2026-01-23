@@ -147,16 +147,13 @@ export default function AdminSubpartDetail() {
         .from("question-images")
         .getPublicUrl(filePath);
 
-      // Process image for background removal (optional, uses same endpoint)
-      try {
-        await supabase.functions.invoke("process-question-image", {
-          body: { filePath, bucketName: "question-images" },
-        });
-      } catch (processErr) {
-        console.warn("Image processing skipped:", processErr);
-      }
+      const publicUrl = urlData.publicUrl;
 
-      setImageUrl(urlData.publicUrl);
+      // Skip background removal for subpart images for now
+      // The process-question-image function is designed for main question images
+      // and updates the questions table directly, which isn't suitable for subparts
+
+      setImageUrl(publicUrl);
       setIsDirty(true);
       toast.success("Image uploaded");
     } catch (err) {
