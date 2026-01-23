@@ -294,7 +294,8 @@ export function GuideMeDrawer({
                         ) : showIncorrect ? (
                           <X className="h-3 w-3" />
                         ) : (
-                          choice.id.toUpperCase()
+                          /* Extract just the first letter from IDs like "a_correct" or just "a" */
+                          choice.id.charAt(0).toUpperCase()
                         )}
                       </span>
                       <span className="flex-1">
