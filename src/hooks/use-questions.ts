@@ -146,6 +146,8 @@ export function useUpdateQuestion() {
       midterm_number?: number | null;
       question_order?: number | null;
       image_url?: string | null;
+      subparts?: Json | null;
+      question_format?: string | null;
     }) => {
       const { data, error } = await supabase
         .from("questions")

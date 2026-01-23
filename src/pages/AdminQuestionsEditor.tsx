@@ -77,6 +77,14 @@ interface QuestionChoice {
   imageUrl?: string;
 }
 
+interface Subpart {
+  id: string;
+  prompt: string;
+  points: number | null;
+  correctAnswer?: string | null;
+  solutionSteps?: string[] | null;
+}
+
 interface Question {
   id: string;
   prompt: string;
@@ -97,6 +105,8 @@ interface Question {
   question_types?: { id: string; name: string } | null;
   answer_key_answer?: string | null;
   answer_mismatch?: boolean;
+  question_format?: string | null;
+  subparts?: Subpart[] | null;
 }
 
 // Hooks
@@ -137,6 +147,9 @@ function useQuestionsForExam(courseId: string, sourceExam: string) {
           : null,
         solution_steps: Array.isArray(q.solution_steps)
           ? (q.solution_steps as string[])
+          : null,
+        subparts: Array.isArray(q.subparts)
+          ? (q.subparts as unknown as Subpart[])
           : null,
       })) as Question[];
     },
@@ -448,6 +461,8 @@ function QuestionCard({
   question,
   index,
   topics,
+  courseId,
+  examName,
   onEdit,
   onDelete,
   onAnalyze,
@@ -458,6 +473,8 @@ function QuestionCard({
   question: Question;
   index: number;
   topics: Map<string, string>;
+  courseId: string;
+  examName: string;
   onEdit: () => void;
   onDelete: () => void;
   onAnalyze: () => void;
@@ -465,6 +482,7 @@ function QuestionCard({
   onRemoveImage: () => void;
   isAnalyzing: boolean;
 }) {
+  const navigate = useNavigate();
   const getGuideSteps = (guideMeSteps: Json | null): Array<unknown> => {
     if (!guideMeSteps) return [];
     if (Array.isArray(guideMeSteps)) return guideMeSteps;
@@ -688,7 +706,49 @@ function QuestionCard({
             </div>
           )}
 
-          {/* Answer Mismatch Warning */}
+          {/* Subparts for short-answer questions */}
+          {question.subparts && question.subparts.length > 0 && (
+            <div className="space-y-3">
+              <span className="text-sm font-medium text-muted-foreground">Subparts:</span>
+              {question.subparts.map((subpart) => (
+                <div
+                  key={subpart.id}
+                  className="p-4 rounded-lg border bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/admin/questions/${courseId}/${examName}/${question.id}/subpart/${subpart.id}`)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center justify-center w-10 h-10 rounded-full bg-primary/10 text-primary font-bold">
+                        {question.question_order}.{subpart.id}
+                      </div>
+                      <div className="flex-1">
+                        <div className="prose prose-sm dark:prose-invert max-w-none line-clamp-2">
+                          <MathRenderer content={subpart.prompt} />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {subpart.points && (
+                        <Badge variant="outline">{subpart.points} pts</Badge>
+                      )}
+                      {subpart.correctAnswer ? (
+                        <Badge variant="secondary" className="bg-accent/50">
+                          <Check className="h-3 w-3 mr-1" />
+                          Has Answer
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary" className="bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                          Needs Answer
+                        </Badge>
+                      )}
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
           {question.answer_mismatch && question.answer_key_answer && (
             <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10">
               <div className="flex items-center gap-2 mb-2">
@@ -1436,6 +1496,8 @@ export default function AdminQuestionsEditor() {
                   question={question}
                   index={index}
                   topics={topicsMap}
+                  courseId={courseId || ""}
+                  examName={examName || ""}
                   onEdit={() => navigate(`/admin/questions/${courseId}/${examName}/${question.id}`)}
                   onDelete={() => setQuestionToDelete(question.id)}
                   onAnalyze={() => handleAnalyze(question.id)}
