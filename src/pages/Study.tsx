@@ -308,40 +308,34 @@ export default function Study() {
               questionsToday={stats.questionsToday}
             />
 
-            {/* 2-column layout on larger screens */}
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              {/* Left column (primary) - 2/3 width on xl */}
-              <div className="xl:col-span-2 space-y-5">
-                {/* Today's Plan Card - Hero treatment */}
-                <TodayPlanCard
-                  stats={todayPlan}
-                  isLoading={dashboardLoading}
-                  onStart={handleStartTodayPlan}
-                  onCustomize={() => navigate('/study/focus')}
-                />
+            {/* Single column layout - stacked */}
+            <div className="space-y-5">
+              {/* Today's Plan Card - Hero treatment */}
+              <TodayPlanCard
+                stats={todayPlan}
+                isLoading={dashboardLoading}
+                onStart={handleStartTodayPlan}
+                onCustomize={() => navigate('/study/focus')}
+              />
 
-                {/* Continue where you left off */}
-                {dashboardData?.lastSession && (
-                  <ContinueSessionCard
-                    session={dashboardData.lastSession}
-                    onContinue={handleContinueSession}
-                    onReviewMistakes={() => {
-                      // TODO: Implement review mistakes functionality
-                      handleContinueSession();
-                    }}
-                  />
-                )}
-              </div>
-
-              {/* Right column (secondary) - 1/3 width on xl */}
-              <div className="xl:col-span-1 space-y-5">
-                {/* Practice Recommendations */}
-                <RecommendationCards
-                  recommendations={dashboardData?.practiceRecommendations || []}
-                  onStartRecommendation={handleStartRecommendation}
-                  onCustomPractice={() => navigate('/study/focus')}
+              {/* Continue where you left off */}
+              {dashboardData?.lastSession && (
+                <ContinueSessionCard
+                  session={dashboardData.lastSession}
+                  onContinue={handleContinueSession}
+                  onReviewMistakes={() => {
+                    // TODO: Implement review mistakes functionality
+                    handleContinueSession();
+                  }}
                 />
-              </div>
+              )}
+
+              {/* Practice Recommendations - below main cards */}
+              <RecommendationCards
+                recommendations={dashboardData?.practiceRecommendations || []}
+                onStartRecommendation={handleStartRecommendation}
+                onCustomPractice={() => navigate('/study/focus')}
+              />
             </div>
           </div>
         </div>
