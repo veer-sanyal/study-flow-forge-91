@@ -501,6 +501,7 @@ function extractSectionNumber(title: string): string | null {
 function extractBaseTopicName(title: string): string {
   // Remove common multi-day suffixes: I, II, III, IV, V, Part 1, Part 2, Day 1, Day 2, (continued), etc.
   return title
+    .replace(/\s*-\s*Part\s*\d+\s*$/i, '')        // - Part 1, - Part 2 (from our extraction)
     .replace(/\s+(I{1,3}|IV|V|VI{0,3})\s*$/i, '') // Roman numerals at end
     .replace(/\s+part\s*\d+\s*$/i, '')            // Part 1, Part 2
     .replace(/\s+day\s*\d+\s*$/i, '')             // Day 1, Day 2
@@ -592,11 +593,13 @@ export function useGenerateTopicsFromEvents() {
       }
 
       // Group events by section number OR base topic name to consolidate multi-day topics
+      // This ensures topics like "Interest Rates and Bond Valuation - Part 1" and "- Part 2" become ONE topic
       const consolidatedTopics = new Map<string, { 
         title: string; 
         description: string; 
         scheduled_week: number;
         event_date: string | null;
+        partCount: number; // Track how many parts/days this topic spans
       }>();
 
       for (const event of events || []) {
@@ -604,7 +607,7 @@ export function useGenerateTopicsFromEvents() {
         const section = extractSectionNumber(normalizedTitle);
         const baseTitle = extractBaseTopicName(normalizedTitle);
         
-        // Use section number as key if available, otherwise use base title
+        // Use section number as key if available, otherwise use base title (lowercase for consistency)
         const consolidationKey = section || baseTitle.toLowerCase();
         
         // Skip if this section/base already exists in the database
@@ -614,13 +617,18 @@ export function useGenerateTopicsFromEvents() {
         // If we haven't seen this topic yet, add it
         if (!consolidatedTopics.has(consolidationKey)) {
           consolidatedTopics.set(consolidationKey, {
-            title: baseTitle, // Use the cleaned base title without I/II suffix
+            title: section ? normalizedTitle.replace(/\s*-\s*Part\s*\d+\s*$/i, '') : baseTitle, // Keep section prefix if present
             description: event.description || "",
             scheduled_week: event.week_number,
             event_date: event.event_date,
+            partCount: 1,
           });
+        } else {
+          // We've seen this topic before - it's a multi-day topic
+          // Just increment the part count, keep the first occurrence's data
+          const existing = consolidatedTopics.get(consolidationKey)!;
+          existing.partCount += 1;
         }
-        // If we've seen it, we keep the first occurrence (earliest week/date)
       }
 
       const topicsToCreate = Array.from(consolidatedTopics.values());

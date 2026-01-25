@@ -155,6 +155,7 @@ IMPORTANT RULES:
 4. Format topic names as "SECTION#: Topic Name" (e.g., "13.1: Vectors in the Plane", "6.3: Volumes by Slicing")
 5. Extract the EXACT DATE (YYYY-MM-DD format) for when each topic is covered
 6. Still track the week number for organization purposes
+7. IMPORTANT: If the SAME topic appears on MULTIPLE consecutive days (multi-day coverage), create a separate entry for EACH day. The downstream system will handle consolidation.
 
 For EXAMS and QUIZZES, DO extract them with:
 - event_type: "exam" or "quiz"
@@ -166,7 +167,7 @@ ${topicList}
 
 Be thorough - extract every DISTINCT topic from the calendar, splitting multi-topic entries into individual topics.`;
 
-    const userPrompt = systemPrompt + "\n\nExtract all DISTINCT TOPICS from this course schedule image. For each topic, identify the EXACT date it is covered. If a single row contains multiple topics, create separate entries for each. Skip recitations, reviews, lectures (extract only the topics from them). Format each topic as 'SECTION#: Topic Name'. Return the structured data using the extract_calendar_events tool.";
+    const userPrompt = systemPrompt + "\n\nExtract all DISTINCT TOPICS from this course schedule image. For each topic, identify the EXACT date it is covered. If a single row contains multiple topics, create separate entries for each. If the same topic is covered over multiple days, still create an entry for each day. Skip recitations, reviews, lectures (extract only the topics from them). Format each topic as 'SECTION#: Topic Name'. Return the structured data using the extract_calendar_events tool.";
 
     const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + GEMINI_API_KEY, {
       method: "POST",
@@ -189,13 +190,13 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
         tools: [{
           functionDeclarations: [{
             name: "extract_calendar_events",
-            description: "Extract distinct topics and exam events from the course schedule. Each topic should be a separate entry even if multiple topics are on the same calendar line.",
+            description: "Extract distinct topics and exam events from the course schedule. Each topic should be a separate entry even if multiple topics are on the same calendar line. If the same topic spans multiple days, create separate entries for each day.",
             parameters: {
               type: "object",
               properties: {
                 events: {
                   type: "array",
-                  description: "Array of distinct topics and exams. If a single calendar row has multiple topics, create separate entries for each.",
+                  description: "Array of distinct topics and exams. If a single calendar row has multiple topics, create separate entries for each. If the same topic is taught over multiple days, create an entry for each day.",
                   items: {
                     type: "object",
                     properties: {
@@ -277,10 +278,6 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
       })
       .eq("id", jobId);
 
-    // Insert calendar events
-    let insertedCount = 0;
-    let needsReviewCount = 0;
-
     // Helper to validate and fix date format
     const parseEventDate = (dateStr: string | null | undefined): string | null => {
       if (!dateStr || dateStr === "TBD" || dateStr.toLowerCase() === "tbd") {
@@ -308,7 +305,72 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
       return null;
     };
 
+    // Helper to extract base topic name (removing section numbers for grouping)
+    const extractBaseTopic = (title: string): string => {
+      // Remove section prefix like "13.1: " or "6.3: "
+      return title.replace(/^\d+(?:\.\d+)?\s*:\s*/, '').trim().toLowerCase();
+    };
+
+    // Helper to get section number
+    const extractSection = (title: string): string | null => {
+      const match = title.match(/^(\d+(?:\.\d+)?)\s*:/);
+      return match ? match[1] : null;
+    };
+
+    // Group topic events by their base name to detect multi-day topics
+    const topicGroups = new Map<string, typeof events>();
+    const nonTopicEvents: typeof events = [];
+
     for (const event of events) {
+      if (event.event_type === "topic") {
+        const section = extractSection(event.title);
+        const baseTopic = extractBaseTopic(event.title);
+        // Use section number if available, otherwise base topic name
+        const groupKey = section || baseTopic;
+        
+        if (!topicGroups.has(groupKey)) {
+          topicGroups.set(groupKey, []);
+        }
+        topicGroups.get(groupKey)!.push(event);
+      } else {
+        nonTopicEvents.push(event);
+      }
+    }
+
+    // Process topic groups and add "Part X" suffix for multi-day topics
+    const processedEvents: typeof events = [];
+
+    for (const [groupKey, groupEvents] of topicGroups) {
+      // Sort by date
+      groupEvents.sort((a: { event_date?: string }, b: { event_date?: string }) => {
+        const dateA = parseEventDate(a.event_date) || '';
+        const dateB = parseEventDate(b.event_date) || '';
+        return dateA.localeCompare(dateB);
+      });
+
+      if (groupEvents.length === 1) {
+        // Single day topic - no suffix needed
+        processedEvents.push(groupEvents[0]);
+      } else {
+        // Multi-day topic - add "Part 1", "Part 2", etc.
+        groupEvents.forEach((event: { title: string }, index: number) => {
+          const partNumber = index + 1;
+          processedEvents.push({
+            ...event,
+            title: `${event.title} - Part ${partNumber}`,
+          });
+        });
+      }
+    }
+
+    // Add non-topic events back
+    processedEvents.push(...nonTopicEvents);
+
+    // Insert calendar events
+    let insertedCount = 0;
+    let needsReviewCount = 0;
+
+    for (const event of processedEvents) {
       const parsedDate = parseEventDate(event.event_date);
       // Mark as needs_review if it's an exam or has missing date
       const needsReview = event.event_type === "exam" || !parsedDate;
