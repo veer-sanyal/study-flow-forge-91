@@ -492,6 +492,29 @@ export function usePastExamsHierarchy(courseIds: string[]) {
     queryFn: async () => {
       if (courseIds.length === 0) return [];
 
+      // First get published ingestion jobs to know which source_exams are published
+      const { data: publishedJobs, error: jobsError } = await supabase
+        .from('ingestion_jobs')
+        .select('file_name, exam_year, exam_semester, exam_type')
+        .in('course_pack_id', courseIds)
+        .eq('is_published', true)
+        .eq('status', 'completed');
+
+      if (jobsError) throw jobsError;
+
+      // Build a set of published source_exam patterns to match against
+      // source_exam format is like "Spring 2024 Midterm 1" or "Fall 2023 Final"
+      const publishedExamPatterns = new Set<string>();
+      publishedJobs?.forEach(job => {
+        if (job.exam_year && job.exam_semester && job.exam_type) {
+          // Build the source_exam string pattern
+          const examTypeLabel = job.exam_type === 'Final' ? 'Final' : `Midterm ${job.exam_type}`;
+          const pattern = `${job.exam_semester} ${job.exam_year} ${examTypeLabel}`;
+          publishedExamPatterns.add(pattern.toLowerCase());
+        }
+      });
+
+      // Get questions with source_exam
       const { data, error } = await supabase
         .from('questions')
         .select('source_exam')
@@ -504,10 +527,22 @@ export function usePastExamsHierarchy(courseIds: string[]) {
       // Get unique exam names and parse them
       const uniqueExams = [...new Set(data?.map(q => q.source_exam).filter(Boolean))] as string[];
       
+      // Filter to only show published exams
+      const publishedExams = uniqueExams.filter(examName => {
+        // Normalize the exam name for matching
+        const normalized = examName.toLowerCase();
+        // Check if this exam matches any published job pattern
+        return Array.from(publishedExamPatterns).some(pattern => {
+          // Match key parts: semester, year, and exam type
+          const patternParts = pattern.split(' ');
+          return patternParts.every(part => normalized.includes(part));
+        });
+      });
+      
       // Group by exam type (Midterm 1, 2, 3, Final)
       const examTypeMap: Map<string, ExamTypeGroup> = new Map();
       
-      uniqueExams.forEach(examName => {
+      publishedExams.forEach(examName => {
         // Parse exam name like "Spring 2024 - Midterm 1" or "Fall 2023 Final"
         const yearMatch = examName.match(/20\d{2}/);
         const year = yearMatch ? yearMatch[0] : 'Unknown';
