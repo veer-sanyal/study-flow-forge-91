@@ -7,6 +7,8 @@ import { PlayerControls } from "./PlayerControls";
 import { AnswerFeedback } from "./AnswerFeedback";
 import { ConfidenceTaps } from "./ConfidenceTaps";
 import { GuideMePlayer } from "./GuideMePlayer";
+import { QuestionCategoryBadge } from "./QuestionCategoryBadge";
+import { WhySelectedChip } from "./WhySelectedChip";
 import { Button } from "@/components/ui/button";
 import { ArrowRight } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
@@ -137,6 +139,18 @@ export function QuestionPlayer({
 
   const questionContent = (
     <div className="space-y-6">
+      {/* Category badge and why selected */}
+      {(question.category || question.whySelected) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          {question.category && (
+            <QuestionCategoryBadge category={question.category} />
+          )}
+          {question.whySelected && (
+            <WhySelectedChip reason={question.whySelected} />
+          )}
+        </div>
+      )}
+
       {/* Question prompt */}
       <QuestionPrompt
         prompt={question.prompt}
