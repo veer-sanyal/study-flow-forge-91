@@ -39,6 +39,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
       if (!user) throw new Error('User not authenticated');
 
       // Call the recommendation algorithm function with filter parameters
+      // Note: p_topic_ids is now uuid[] type in the database
       const { data: recommended, error: recError } = await supabase
         .rpc('get_recommended_questions', {
           p_user_id: user.id,
@@ -50,7 +51,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           p_exam_name: examName || undefined,
           p_topic_ids: topicIds.length > 0 ? topicIds : undefined,
           p_question_type_id: questionTypeId || undefined,
-        });
+        } as any);
 
       if (recError) {
         console.error('Recommendation error:', recError);
