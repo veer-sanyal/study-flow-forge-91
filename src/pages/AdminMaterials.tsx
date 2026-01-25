@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useCoursePacks } from "@/hooks/use-admin";
-import { useAllCourseMaterials, useDeleteMaterial, useAnalyzeMaterial } from "@/hooks/use-materials";
+import { useAllCourseMaterials, useDeleteMaterial, useAnalyzeMaterial, useUploadMaterial, useCheckDuplicate, computeSha256 } from "@/hooks/use-materials";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,20 +10,24 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Upload, FileText, Trash2, Play, Eye, Sparkles, MoreHorizontal } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
+import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus, type MaterialType } from "@/types/materials";
 import { MaterialUploadDialog } from "@/components/admin/MaterialUploadDialog";
 import { MaterialDetailDrawer } from "@/components/admin/MaterialDetailDrawer";
+import { MaterialDropZone } from "@/components/admin/MaterialDropZone";
 import { format } from "date-fns";
 
 export default function AdminMaterials() {
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [selectedMaterialId, setSelectedMaterialId] = useState<string | null>(null);
+  const [isQuickUploading, setIsQuickUploading] = useState(false);
   
   const { data: coursePacks, isLoading: loadingCourses } = useCoursePacks();
   const { data: materials, isLoading: loadingMaterials } = useAllCourseMaterials();
   const deleteMaterial = useDeleteMaterial();
   const analyzeMaterial = useAnalyzeMaterial();
+  const uploadMaterial = useUploadMaterial();
+  const checkDuplicate = useCheckDuplicate();
   const { toast } = useToast();
   
   // Filter materials by selected course
@@ -51,6 +55,68 @@ export default function AdminMaterials() {
       toast({ title: "Analysis failed", description: String(error), variant: "destructive" });
     }
   };
+
+  // Quick upload via drag-and-drop (uses first/selected course)
+  const handleQuickUpload = useCallback(async (files: File[]) => {
+    // Must have a course selected for quick upload
+    const targetCourseId = selectedCourseId || (coursePacks && coursePacks.length === 1 ? coursePacks[0].id : null);
+    
+    if (!targetCourseId) {
+      toast({ 
+        title: "Select a course first", 
+        description: "Choose a course from the filter to enable drag-and-drop upload.",
+        variant: "destructive" 
+      });
+      return;
+    }
+
+    setIsQuickUploading(true);
+    let successCount = 0;
+    let duplicateCount = 0;
+
+    try {
+      for (const file of files) {
+        // Compute hash and check for duplicates
+        const sha256 = await computeSha256(file);
+        const duplicate = await checkDuplicate.mutateAsync({ coursePackId: targetCourseId, sha256 });
+        
+        if (duplicate) {
+          duplicateCount++;
+          continue;
+        }
+
+        // Determine material type from extension
+        const ext = file.name.split('.').pop()?.toLowerCase();
+        const materialType: MaterialType = ext === 'pptx' ? 'lecture_pptx' : 'lecture_pdf';
+        
+        // Title from filename (without extension)
+        const title = file.name.replace(/\.[^.]+$/, '');
+
+        await uploadMaterial.mutateAsync({
+          file,
+          coursePackId: targetCourseId,
+          materialType,
+          title,
+          sha256,
+        });
+        successCount++;
+      }
+
+      if (successCount > 0) {
+        toast({ title: `Uploaded ${successCount} file${successCount > 1 ? 's' : ''}` });
+      }
+      if (duplicateCount > 0) {
+        toast({ 
+          title: `${duplicateCount} duplicate${duplicateCount > 1 ? 's' : ''} skipped`,
+          variant: "default" 
+        });
+      }
+    } catch (error) {
+      toast({ title: "Upload failed", description: String(error), variant: "destructive" });
+    } finally {
+      setIsQuickUploading(false);
+    }
+  }, [selectedCourseId, coursePacks, checkDuplicate, uploadMaterial, toast]);
   
   const getStatusBadge = (status: MaterialStatus) => {
     const config = MATERIAL_STATUS_CONFIG[status];
@@ -75,6 +141,26 @@ export default function AdminMaterials() {
           Upload Material
         </Button>
       </div>
+
+      {/* Drag-and-Drop Upload Zone */}
+      <Card>
+        <CardContent className="pt-6">
+          <MaterialDropZone 
+            onFilesSelected={handleQuickUpload}
+            isUploading={isQuickUploading}
+          />
+          {!selectedCourseId && coursePacks && coursePacks.length > 1 && (
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Select a course below to enable drag-and-drop upload
+            </p>
+          )}
+          {selectedCourseId && (
+            <p className="text-xs text-muted-foreground text-center mt-2">
+              Files will be uploaded to: <span className="font-medium">{coursePacks?.find(c => c.id === selectedCourseId)?.title}</span>
+            </p>
+          )}
+        </CardContent>
+      </Card>
       
       {/* Filters */}
       <Card>
