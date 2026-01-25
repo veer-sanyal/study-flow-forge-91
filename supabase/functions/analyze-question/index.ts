@@ -6,6 +6,36 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Build answer_spec based on question format and correct answer
+function buildAnswerSpec(format: string, correctAnswer: string, choices: any[] | null): Record<string, unknown> {
+  if (format === 'multiple_choice') {
+    return { correct_choice_ids: [correctAnswer.toLowerCase()] };
+  }
+  if (format === 'multi_select') {
+    // Parse comma-separated answers
+    const ids = correctAnswer.split(',').map(a => a.trim().toLowerCase());
+    return { correct_choice_ids: ids };
+  }
+  if (format === 'numeric') {
+    const num = parseFloat(correctAnswer);
+    return { value: isNaN(num) ? null : num, unit: null };
+  }
+  // For short_answer, expression, free_response
+  return { model_answer: correctAnswer };
+}
+
+// Build grading_spec based on question format
+function buildGradingSpec(format: string): Record<string, unknown> {
+  if (format === 'multiple_choice' || format === 'multi_select') {
+    return { partial_credit: false };
+  }
+  if (format === 'numeric') {
+    return { tolerance_abs: 0.01, tolerance_rel: 0.05, sig_figs: null, units_required: false };
+  }
+  // For short_answer, expression, free_response
+  return { must_simplify: false, case_sensitive: false, rubric_points: [], keywords_required: [] };
+}
+
 interface GuideHint {
   tier: number;
   text: string;
@@ -838,6 +868,12 @@ Now generate the analysis and return using analyze_question.`;
 
     console.log(`Updating question: format=${questionFormat}, subparts=${updatedSubparts?.length || 0}`);
 
+    // Build answer_spec based on question format
+    const answerSpec = buildAnswerSpec(questionFormat, analysis.correctAnswer, question.choices);
+    
+    // Build grading_spec based on question format
+    const gradingSpec = buildGradingSpec(questionFormat);
+
     // Update the question (no more unmapped_topic_suggestions - always force best match)
     const { error: updateError } = await supabase
       .from("questions")
@@ -845,6 +881,8 @@ Now generate the analysis and return using analyze_question.`;
         choices: updatedChoices,
         subparts: updatedSubparts,
         correct_answer: analysis.correctAnswer,
+        answer_spec: answerSpec,
+        grading_spec: gradingSpec,
         solution_steps: analysis.detailedSolution ? [analysis.detailedSolution] : null,
         guide_me_steps: guideData,
         difficulty: analysis.difficulty || 3,

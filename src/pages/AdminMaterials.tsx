@@ -229,7 +229,7 @@ export default function AdminMaterials() {
                   <TableHead>Topics</TableHead>
                   <TableHead>Questions</TableHead>
                   <TableHead>Uploaded</TableHead>
-                  <TableHead className="w-[100px]">Actions</TableHead>
+                  <TableHead className="w-[140px]">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -260,41 +260,57 @@ export default function AdminMaterials() {
                       {format(new Date(material.created_at), 'MMM d, yyyy')}
                     </TableCell>
                     <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setSelectedMaterialId(material.id)}>
-                            <Eye className="h-4 w-4 mr-2" />
-                            View Details
-                          </DropdownMenuItem>
-                          {(material.status === 'uploaded' || material.status === 'failed') && (
-                            <DropdownMenuItem 
-                              onClick={() => handleAnalyze(material.id)}
-                              disabled={analyzeMaterial.isPending}
-                            >
-                              <Play className="h-4 w-4 mr-2" />
-                              Analyze
-                            </DropdownMenuItem>
-                          )}
-                          {material.status === 'analyzed' && (
-                            <DropdownMenuItem onClick={() => setSelectedMaterialId(material.id)}>
-                              <Sparkles className="h-4 w-4 mr-2" />
-                              Generate Questions
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuItem 
-                            className="text-destructive"
-                            onClick={() => handleDelete(material.id, material.storage_path)}
+                      <div className="flex items-center gap-1">
+                        {/* Primary action: Analyze button - always visible for uploaded/failed materials */}
+                        {(material.status === 'uploaded' || material.status === 'failed') && (
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => handleAnalyze(material.id)}
+                            disabled={analyzeMaterial.isPending}
+                            className="gap-1"
                           >
-                            <Trash2 className="h-4 w-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                            <Play className="h-3.5 w-3.5" />
+                            Analyze
+                          </Button>
+                        )}
+                        {material.status === 'analyzed' && (
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => setSelectedMaterialId(material.id)}
+                            className="gap-1"
+                          >
+                            <Sparkles className="h-3.5 w-3.5" />
+                            Generate
+                          </Button>
+                        )}
+                        {material.status === 'analyzing' && (
+                          <Badge variant="outline" className="animate-pulse">
+                            Analyzing...
+                          </Badge>
+                        )}
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => setSelectedMaterialId(material.id)}>
+                              <Eye className="h-4 w-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            <DropdownMenuItem 
+                              className="text-destructive"
+                              onClick={() => handleDelete(material.id, material.storage_path)}
+                            >
+                              <Trash2 className="h-4 w-4 mr-2" />
+                              Delete
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}

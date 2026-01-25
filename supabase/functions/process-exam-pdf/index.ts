@@ -10,11 +10,19 @@ interface ExtractedSubpart {
   id: string;      // "a", "b", "c", "d"
   prompt: string;
   points?: number;
+  answerFormatEnum?: string;
+  answerSpec?: Record<string, unknown>;
+  gradingSpec?: Record<string, unknown>;
 }
 
 interface ExtractedQuestion {
   prompt: string;
-  questionFormat: 'multiple_choice' | 'short_answer' | 'numeric';
+  questionFormat: 'multiple_choice' | 'short_answer' | 'numeric' | 'multi_select';
+  answerFormatEnum?: string;
+  answerSpec?: Record<string, unknown>;
+  gradingSpec?: Record<string, unknown>;
+  sourceLocator?: { page?: number; questionNumber?: number };
+  extractedRawText?: string;
   choices?: { id: string; text: string }[];  // Only for MCQ
   subparts?: ExtractedSubpart[];             // For multi-part questions
   questionOrder: number;
@@ -119,7 +127,8 @@ Extract ALL questions with precise LaTeX formatting that renders correctly in a 
 
 OUTPUT REQUIREMENTS:
 - Return JSON via extract_questions only (no extra commentary).
-- Each question has: questionOrder (1..N), questionFormat, prompt, and either choices (for MCQ) or subparts (for multi-part short answer).
+- Each question has: questionOrder, questionFormat, prompt, and either choices (for MCQ) or subparts (for multi-part short answer).
+- Include structured answer_spec and grading_spec for each question.
 
 EXAM METADATA EXTRACTION (CRITICAL):
 From the cover page or header, extract these SEPARATE fields:
@@ -128,17 +137,39 @@ From the cover page or header, extract these SEPARATE fields:
 - examType: Simple value representing the exam type. Use exactly one of: "1", "2", "3" (for Midterm 1, 2, 3) or "f" (for Final).
   Examples: First midterm exam → "1", Second midterm → "2", Final exam → "f"
 
-QUESTION FORMAT DETECTION (CRITICAL - NEW):
+QUESTION FORMAT DETECTION (CRITICAL):
 Determine the question format based on these rules:
 1. "multiple_choice": Question has labeled answer choices (A, B, C, D, E) to SELECT from
 2. "short_answer": Question requires written explanation, proof, derivation, or free-form response
 3. "numeric": Question asks for a specific numerical answer to be calculated (no choices, single number expected)
+4. "multi_select": Question has choices but multiple can be correct ("select all that apply")
 
-DISTINGUISHING MCQ FROM SHORT-ANSWER:
-- If a question has (A), (B), (C), (D), (E) as OPTIONS TO CHOOSE FROM → this is "multiple_choice"
-- If a question has (a), (b), (c), (d) as SEPARATE PARTS TO ANSWER → this is "short_answer" with subparts
-- If a question says "find", "compute", "evaluate", "what is the value" with NO choices → "short_answer" or "numeric"
-- If a question says "show that", "prove", "explain", "derive" → "short_answer"
+ANSWER FORMAT ENUM (for answer_spec):
+Based on the question format, set answer_format_enum to one of:
+- "mcq": Single correct choice from A-E
+- "multi_select": Multiple correct choices
+- "numeric": Single number with optional unit
+- "expression": Mathematical expression answer
+- "short_text": Brief text answer
+- "free_response": Long form written response
+
+ANSWER_SPEC STRUCTURE (output for each question):
+- For MCQ: { "correct_choice_ids": ["c"] }
+- For multi_select: { "correct_choice_ids": ["b", "d"] }
+- For numeric: { "value": null, "unit": null } (to be filled during analysis)
+- For expression: { "canonical": null, "alt": [] } (to be filled during analysis)
+- For short_text/free_response: { "model_answer": null } (to be filled during analysis)
+
+GRADING_SPEC STRUCTURE (output for each question):
+- For numeric: { "tolerance_abs": 0.01, "tolerance_rel": 0.05, "sig_figs": null, "units_required": false }
+- For expression: { "must_simplify": false, "case_sensitive": false }
+- For MCQ/multi_select: { "partial_credit": false }
+- For short_text/free_response: { "rubric_points": [], "keywords_required": [] }
+
+SOURCE LOCATOR (for each question):
+Extract position information:
+- page: Page number where question starts (1-indexed)
+- questionNumber: The original question number in the PDF
 
 SUBPART EXTRACTION (FOR SHORT-ANSWER QUESTIONS):
 When a short-answer question has labeled subparts like (a), (b), (c), (d) that each require SEPARATE answers:
@@ -147,25 +178,10 @@ When a short-answer question has labeled subparts like (a), (b), (c), (d) that e
   - id: The subpart letter ("a", "b", "c", etc.) - exactly one lowercase letter
   - prompt: The specific question for that subpart
   - points: Point value if shown (e.g., "(2 points)" → 2, "(3 pts)" → 3)
+  - answer_format_enum: Format for this subpart (numeric, expression, short_text, etc.)
+  - answer_spec: Typed answer structure for this subpart
+  - grading_spec: Grading rules for this subpart
 - Do NOT include choices array for short-answer questions
-- Example:
-  PDF shows:
-  "5. (12 points) Let X be a random variable with PDF f(x) = 2x for 0 ≤ x ≤ 1.
-   (a) (3 points) Find E[X].
-   (b) (4 points) Find Var(X).
-   (c) (5 points) Find P(X > 0.5)."
-  
-  Output:
-  {
-    "questionOrder": 5,
-    "questionFormat": "short_answer",
-    "prompt": "Let X be a random variable with PDF $f(x) = 2x$ for $0 \\le x \\le 1$.",
-    "subparts": [
-      { "id": "a", "prompt": "Find $E[X]$.", "points": 3 },
-      { "id": "b", "prompt": "Find $\\text{Var}(X)$.", "points": 4 },
-      { "id": "c", "prompt": "Find $P(X > 0.5)$.", "points": 5 }
-    ]
-  }
 
 QUESTION NUMBER & POINTS REMOVAL (MANDATORY):
 - Strip the question number (e.g., "8.", "1.", "12.") from the beginning of the prompt.
@@ -187,26 +203,10 @@ PROMPT LAYOUT (CRITICAL):
 
 - Do NOT use \\[ \\] or \\(...\\) because the renderer won't parse them.
 
-NOTES AND REMARKS:
-- Keep notes like "Note: Partial credit is possible for this question." as plain text.
-- These should be on their own line at the end of the prompt (before choices/subparts).
-
-PUNCTUATION:
-- If punctuation belongs to the sentence, keep it outside math delimiters.
-- If punctuation is printed as part of a standalone centered math line, keep it inside that $$...$$ block.
-
 CHOICE ID RULES (FOR MCQ ONLY - STRICT ENFORCEMENT):
 - The choice "id" field MUST be EXACTLY one lowercase letter: a, b, c, d, or e.
 - Do NOT include ANY additional text, words, watermarks, or characters in the id field.
-- If you see text like "PARADOX", "PARADIGM", "VERSION", "FORM", or similar near choices, this is a WATERMARK or exam branding - COMPLETELY IGNORE IT.
-- Only include choices array for multiple_choice questions.
-
-CHOICE TEXT RULES (FOR MCQ):
-- If a choice is purely mathematical, wrap the ENTIRE choice in $...$.
-- If a choice mixes words + math, only wrap the math parts in $...$.
-- For integral-heavy or fraction-heavy pure-math choices, use display sizing:
-  wrap as "$\\displaystyle ...$".
-- Do not use $$...$$ inside choices unless absolutely necessary.
+- If you see text like "PARADOX", "PARADIGM", "VERSION", "FORM", or similar near choices, this is a WATERMARK - COMPLETELY IGNORE IT.
 
 LATEX NORMALIZATION:
 - Fractions: \\frac{...}{...}
@@ -216,25 +216,20 @@ LATEX NORMALIZATION:
 - Spacing: \\quad only when needed
 - Parentheses grouping: \\left( ... \\right) for tall expressions
 - Use \\pi for pi, and convert unicode minus (−) to "-".
-- Vectors: use \\mathbf{v}, \\mathbf{w}, \\mathbf{i}, \\mathbf{j}, \\mathbf{k}
 
 PDF ARTIFACT REPAIR (REQUIRED):
-Repair these common extraction errors before finalizing LaTeX:
-- "Z" used as an integral sign → convert patterns like "Z b a f dx" into "\\int_{a}^{b} f \\, dx".
-- "p" used as a sqrt sign → convert "p expression" into "\\sqrt{expression}".
-- Exponents split across lines (e.g., "x" then "3") → reconstruct as "x^{3}".
-- Fractions split across lines (numerator/denominator on separate lines) → reconstruct using \\frac{...}{...}.
-- Join broken math tokens across line breaks when they clearly form one expression.
-- Vector glyphs like "~ı", "~" → map to \\mathbf{i}, \\mathbf{j} (and \\mathbf{k}).
+- "Z" used as an integral sign → convert to "\\int_{a}^{b} f \\, dx".
+- "p" used as a sqrt sign → convert to "\\sqrt{expression}".
+- Exponents split across lines → reconstruct as "x^{3}".
+- Fractions split across lines → reconstruct using \\frac{...}{...}.
 
-QUALITY CHECKS (DO THESE):
-- After formatting, re-read each prompt and ensure the display-math lines are centered via $$ block form.
+QUALITY CHECKS:
 - Ensure every choice obeys the math delimiter rules.
 - Ensure the question order matches the PDF numbering sequence.
 - Verify that question numbers and point values are REMOVED from prompts.
 - VERIFY that questionFormat is correctly determined for each question.
-- VERIFY that short-answer questions with subparts have subparts extracted, NOT choices.
-- Do NOT solve problems or infer correct answers.
+- VERIFY answer_format_enum matches the question format.
+- Do NOT solve problems or infer correct answers (leave answer_spec values as null where appropriate).
 
 Return your response using the extract_questions function.`;
 
@@ -266,7 +261,7 @@ Return your response using the extract_questions function.`;
             functionDeclarations: [
               {
                 name: "extract_questions",
-                description: "Extract questions from an exam PDF with proper LaTeX math delimiters and structured exam metadata",
+                description: "Extract questions from an exam PDF with structured answer specs and grading rules",
                 parameters: {
                   type: "object",
                   properties: {
@@ -289,17 +284,56 @@ Return your response using the extract_questions function.`;
                         properties: {
                           prompt: {
                             type: "string",
-                            description:
-                              "Question text (main context/setup). Use $$...$$ for display math, $...$ for inline math.",
+                            description: "Question text. Use $$...$$ for display math, $...$ for inline math.",
                           },
                           questionFormat: {
                             type: "string",
-                            enum: ["multiple_choice", "short_answer", "numeric"],
-                            description: "The format of the question: 'multiple_choice' (has choices A-E), 'short_answer' (free response/proof), or 'numeric' (single number answer)",
+                            enum: ["multiple_choice", "short_answer", "numeric", "multi_select"],
+                            description: "The format of the question",
+                          },
+                          answerFormatEnum: {
+                            type: "string",
+                            enum: ["mcq", "multi_select", "numeric", "expression", "short_text", "free_response"],
+                            description: "The answer format type for grading",
+                          },
+                          answerSpec: {
+                            type: "object",
+                            description: "Typed answer specification based on format",
+                            properties: {
+                              correct_choice_ids: { type: "array", items: { type: "string" } },
+                              value: { type: "number" },
+                              unit: { type: "string" },
+                              canonical: { type: "string" },
+                              alt: { type: "array", items: { type: "string" } },
+                              model_answer: { type: "string" },
+                            },
+                          },
+                          gradingSpec: {
+                            type: "object",
+                            description: "Grading rules for this question",
+                            properties: {
+                              tolerance_abs: { type: "number" },
+                              tolerance_rel: { type: "number" },
+                              sig_figs: { type: "number" },
+                              units_required: { type: "boolean" },
+                              must_simplify: { type: "boolean" },
+                              case_sensitive: { type: "boolean" },
+                              partial_credit: { type: "boolean" },
+                              rubric_points: { type: "array", items: { type: "string" } },
+                              keywords_required: { type: "array", items: { type: "string" } },
+                            },
+                          },
+                          sourceLocator: {
+                            type: "object",
+                            description: "Location in the source PDF",
+                            properties: {
+                              page: { type: "number", description: "Page number (1-indexed)" },
+                              questionNumber: { type: "number", description: "Original question number in PDF" },
+                            },
                           },
                           choices: {
                             type: "array",
-                            description: "Answer choices - ONLY include for multiple_choice questions",
+                            description: "Answer choices - ONLY for multiple_choice/multi_select",
                             items: {
                               type: "object",
                               properties: {
@@ -308,16 +342,13 @@ Return your response using the extract_questions function.`;
                                   description: "EXACTLY one lowercase letter: a, b, c, d, or e.",
                                   enum: ["a", "b", "c", "d", "e"]
                                 },
-                                text: {
-                                  type: "string",
-                                  description: "Choice text with math wrapped in $...$",
-                                },
+                                text: { type: "string", description: "Choice text with math wrapped in $...$" },
                               },
                             },
                           },
                           subparts: {
                             type: "array",
-                            description: "For multi-part short-answer questions, each subpart that requires a separate answer",
+                            description: "For multi-part questions, each subpart with its own answer spec",
                             items: {
                               type: "object",
                               properties: {
@@ -326,13 +357,32 @@ Return your response using the extract_questions function.`;
                                   description: "Subpart letter: a, b, c, d, etc.",
                                   enum: ["a", "b", "c", "d", "e", "f", "g", "h"]
                                 },
-                                prompt: {
+                                prompt: { type: "string", description: "The specific question for this subpart" },
+                                points: { type: "number", description: "Point value for this subpart" },
+                                answerFormatEnum: {
                                   type: "string",
-                                  description: "The specific question for this subpart",
+                                  enum: ["numeric", "expression", "short_text", "free_response"],
+                                  description: "Answer format for this subpart",
                                 },
-                                points: {
-                                  type: "number",
-                                  description: "Point value for this subpart if shown",
+                                answerSpec: {
+                                  type: "object",
+                                  description: "Answer spec for this subpart",
+                                  properties: {
+                                    value: { type: "number" },
+                                    unit: { type: "string" },
+                                    canonical: { type: "string" },
+                                    model_answer: { type: "string" },
+                                  },
+                                },
+                                gradingSpec: {
+                                  type: "object",
+                                  description: "Grading spec for this subpart",
+                                  properties: {
+                                    tolerance_abs: { type: "number" },
+                                    tolerance_rel: { type: "number" },
+                                    sig_figs: { type: "number" },
+                                    units_required: { type: "boolean" },
+                                  },
                                 },
                               },
                             },
@@ -340,6 +390,10 @@ Return your response using the extract_questions function.`;
                           questionOrder: {
                             type: "number",
                             description: "The order of this question in the exam",
+                          },
+                          extractedRawText: {
+                            type: "string",
+                            description: "The raw text extracted from the PDF before any formatting",
                           },
                         },
                       },
@@ -519,21 +573,30 @@ Return your response using the extract_questions function.`;
     // Determine question format (default to multiple_choice for backwards compatibility)
     const questionFormat = q.questionFormat || (q.choices && q.choices.length > 0 ? 'multiple_choice' : 'short_answer');
     
+    // Determine answer format enum
+    const answerFormatEnum = q.answerFormatEnum || 
+      (questionFormat === 'multiple_choice' ? 'mcq' : 
+       questionFormat === 'multi_select' ? 'multi_select' :
+       questionFormat === 'numeric' ? 'numeric' : 'free_response');
+    
     // Format choices with normalized IDs (only for MCQ)
-    const formattedChoices = questionFormat === 'multiple_choice' && q.choices
+    const formattedChoices = (questionFormat === 'multiple_choice' || questionFormat === 'multi_select') && q.choices
       ? q.choices.map((c) => ({
-          id: normalizeChoiceId(c.id), // Normalize to single lowercase letter
+          id: normalizeChoiceId(c.id),
           text: c.text,
           isCorrect: false, // Will be updated during analysis
         }))
       : null;
 
-    // Format subparts (for short-answer questions)
+    // Format subparts with their own answer specs (for short-answer questions)
     const formattedSubparts = q.subparts && q.subparts.length > 0
       ? q.subparts.map((sp) => ({
           id: sp.id.toLowerCase().trim(),
           prompt: sp.prompt,
           points: sp.points || null,
+          answer_format_enum: sp.answerFormatEnum || 'free_response',
+          answer_spec: sp.answerSpec || null,
+          grading_spec: sp.gradingSpec || null,
           correctAnswer: null,    // Will be set during analysis
           solutionSteps: null,    // Will be set during analysis
         }))
@@ -542,11 +605,22 @@ Return your response using the extract_questions function.`;
     // Get answer from answer key if available (primarily for MCQ)
     const answerKeyAnswer = answerKeyMap.get(q.questionOrder) || null;
 
-    console.log(`Inserting question ${q.questionOrder}: format=${questionFormat}, choices=${formattedChoices?.length || 0}, subparts=${formattedSubparts?.length || 0}`);
+    // Build source locator
+    const sourceLocator = {
+      page: q.sourceLocator?.page || null,
+      questionNumber: q.questionOrder || null,
+    };
+
+    console.log(`Inserting question ${q.questionOrder}: format=${questionFormat}, answerFormat=${answerFormatEnum}, choices=${formattedChoices?.length || 0}, subparts=${formattedSubparts?.length || 0}`);
 
     const { error: insertError } = await supabase.from("questions").insert({
       prompt: q.prompt,
       question_format: questionFormat,
+      answer_format_enum: answerFormatEnum,
+      answer_spec: q.answerSpec || null,
+      grading_spec: q.gradingSpec || null,
+      source_locator: sourceLocator,
+      extracted_raw_text: q.extractedRawText || null,
       choices: formattedChoices,
       subparts: formattedSubparts,
       correct_answer: null, // Will be set during analysis

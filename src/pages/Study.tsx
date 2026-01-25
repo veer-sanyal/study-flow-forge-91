@@ -13,6 +13,7 @@ import { ContinueSessionCard } from "@/components/study/ContinueSessionCard";
 import { StudyFocusBar } from "@/components/study/StudyFocusBar";
 import { RecommendationCards } from "@/components/study/RecommendationCards";
 import { StatsStrip } from "@/components/study/StatsStrip";
+import { QuestionNav } from "@/components/study/QuestionNav";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
 import { useStudyDashboard, PracticeRecommendation } from "@/hooks/use-study-dashboard";
@@ -34,6 +35,7 @@ export default function Study() {
   const [studyState, setStudyState] = useState<StudyState>("home");
   const [studyPhase, setStudyPhase] = useState<StudyPhase>("today_plan");
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [completedIndices, setCompletedIndices] = useState<number[]>([]);
   const [sessionResults, setSessionResults] = useState<{
     correct: number;
     total: number;
@@ -144,6 +146,11 @@ export default function Study() {
         total: sessionResults.total + 1,
       };
       setSessionResults(newResults);
+      
+      // Mark current question as completed
+      setCompletedIndices(prev => 
+        prev.includes(currentIndex) ? prev : [...prev, currentIndex]
+      );
 
       if (currentIndex < questions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
@@ -219,6 +226,7 @@ export default function Study() {
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
+    setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
     setStudyState("playing");
     questionStartTime.current = Date.now();
@@ -232,6 +240,7 @@ export default function Study() {
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
+    setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
     setStudyState("playing");
     questionStartTime.current = Date.now();
@@ -242,6 +251,7 @@ export default function Study() {
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
+    setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
     setStudyState("playing");
     questionStartTime.current = Date.now();
@@ -251,6 +261,7 @@ export default function Study() {
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
+    setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
     setStudyState("playing");
     questionStartTime.current = Date.now();
@@ -260,11 +271,20 @@ export default function Study() {
     setStudyState("home");
     setStudyPhase("today_plan");
     setCurrentIndex(0);
+    setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
     clearFilters();
     queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     queryClient.invalidateQueries({ queryKey: ['today-plan-stats'] });
   }, [queryClient, clearFilters]);
+
+  // Navigate to specific question index
+  const handleNavigateQuestion = useCallback((index: number) => {
+    if (index >= 0 && questions && index < questions.length) {
+      setCurrentIndex(index);
+      questionStartTime.current = Date.now();
+    }
+  }, [questions]);
 
   const handleSimilar = useCallback(() => {
     console.log("Similar clicked");
@@ -507,6 +527,18 @@ export default function Study() {
             Question {currentIndex + 1}{showTotalProgress ? ` of ${questions.length}` : ""}
           </span>
         </div>
+
+        {/* Question navigation - allows jumping to any question */}
+        {questions.length > 1 && (
+          <div className="px-4 border-b">
+            <QuestionNav
+              totalQuestions={questions.length}
+              currentIndex={currentIndex}
+              completedIndices={completedIndices}
+              onNavigate={handleNavigateQuestion}
+            />
+          </div>
+        )}
 
         <PageTransition className="flex-1 space-y-6 p-4">
           <AnimatePresence mode="wait">
