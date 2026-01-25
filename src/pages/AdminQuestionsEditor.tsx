@@ -107,6 +107,10 @@ interface Question {
   answer_mismatch?: boolean;
   question_format?: string | null;
   subparts?: Subpart[] | null;
+  // New fields for question status/publishing
+  status?: string | null;
+  is_published?: boolean | null;
+  source?: string | null;
 }
 
 // Hooks
@@ -151,6 +155,9 @@ function useQuestionsForExam(courseId: string, sourceExam: string) {
         subparts: Array.isArray(q.subparts)
           ? (q.subparts as unknown as Subpart[])
           : null,
+        status: q.status || 'approved',
+        is_published: q.is_published ?? true,
+        source: q.source || 'exam',
       })) as Question[];
     },
     enabled: !!courseId && !!sourceExam,
@@ -469,6 +476,9 @@ function QuestionCard({
   onAnalyze,
   onUploadImage,
   onRemoveImage,
+  onApprove,
+  onReject,
+  onPublish,
   isAnalyzing,
 }: { 
   question: Question;
@@ -481,6 +491,9 @@ function QuestionCard({
   onAnalyze: () => void;
   onUploadImage: (file: File) => void;
   onRemoveImage: () => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onPublish: () => void;
   isAnalyzing: boolean;
 }) {
   const navigate = useNavigate();
@@ -606,10 +619,77 @@ function QuestionCard({
                     Needs Analysis
                   </Badge>
                 )}
+                {/* Status badges for generated questions */}
+                {question.source === 'generated' && (
+                  <Badge variant="outline" className="gap-1 bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                    <Sparkles className="h-3 w-3" />
+                    Generated
+                  </Badge>
+                )}
+                {question.status === 'draft' && (
+                  <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
+                    Draft
+                  </Badge>
+                )}
+                {question.status === 'rejected' && (
+                  <Badge variant="destructive" className="gap-1">
+                    Rejected
+                  </Badge>
+                )}
+                {question.status === 'approved' && question.is_published === false && (
+                  <Badge variant="outline" className="gap-1">
+                    <EyeOff className="h-3 w-3" />
+                    Unpublished
+                  </Badge>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
+              {/* Approve/Reject buttons for draft questions */}
+              {question.status === 'draft' && (
+                <>
+                  <Button 
+                    variant="default" 
+                    size="sm" 
+                    className="gap-1 bg-green-600 hover:bg-green-700"
+                    onClick={onApprove}
+                  >
+                    <Check className="h-4 w-4" />
+                    Approve
+                  </Button>
+                  <Button 
+                    variant="destructive" 
+                    size="sm" 
+                    className="gap-1"
+                    onClick={onReject}
+                  >
+                    <X className="h-4 w-4" />
+                    Reject
+                  </Button>
+                </>
+              )}
+              {/* Publish button for approved questions */}
+              {question.status === 'approved' && (
+                <Button 
+                  variant={question.is_published ? "outline" : "default"} 
+                  size="sm" 
+                  className="gap-1"
+                  onClick={onPublish}
+                >
+                  {question.is_published ? (
+                    <>
+                      <EyeOff className="h-4 w-4" />
+                      Unpublish
+                    </>
+                  ) : (
+                    <>
+                      <Globe className="h-4 w-4" />
+                      Publish
+                    </>
+                  )}
+                </Button>
+              )}
               <Button 
                 variant={needsAnalysis ? "default" : "outline"} 
                 size="sm" 
@@ -1328,6 +1408,32 @@ export default function AdminQuestionsEditor() {
     }
   };
 
+  // Approve a draft question
+  const handleApprove = (questionId: string) => {
+    updateQuestion.mutate({ 
+      id: questionId, 
+      status: 'approved',
+      needs_review: false
+    });
+  };
+
+  // Reject a draft question
+  const handleReject = (questionId: string) => {
+    updateQuestion.mutate({ 
+      id: questionId, 
+      status: 'rejected',
+      needs_review: false
+    });
+  };
+
+  // Publish an approved question
+  const handlePublishQuestion = (questionId: string, currentlyPublished: boolean) => {
+    updateQuestion.mutate({ 
+      id: questionId, 
+      is_published: !currentlyPublished
+    });
+  };
+
   const handleTogglePublish = async () => {
     if (ingestionJob) {
       // Existing ingestion job - toggle its publish state
@@ -1502,6 +1608,9 @@ export default function AdminQuestionsEditor() {
                   onAnalyze={() => handleAnalyze(question.id)}
                   onUploadImage={(file) => handleUploadImage(question.id, file)}
                   onRemoveImage={() => handleRemoveImage(question.id)}
+                  onApprove={() => handleApprove(question.id)}
+                  onReject={() => handleReject(question.id)}
+                  onPublish={() => handlePublishQuestion(question.id, question.is_published ?? true)}
                   isAnalyzing={analyzingQuestionId === question.id}
                 />
               ))}
