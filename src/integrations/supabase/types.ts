@@ -549,7 +549,10 @@ export type Database = {
       }
       topic_mastery: {
         Row: {
+          consecutive_correct: number
+          consecutive_incorrect: number
           created_at: string
+          effective_difficulty_level: number
           id: string
           last_practiced_at: string | null
           mastery_0_1: number
@@ -562,7 +565,10 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          consecutive_correct?: number
+          consecutive_incorrect?: number
           created_at?: string
+          effective_difficulty_level?: number
           id?: string
           last_practiced_at?: string | null
           mastery_0_1?: number
@@ -575,7 +581,10 @@ export type Database = {
           user_id: string
         }
         Update: {
+          consecutive_correct?: number
+          consecutive_incorrect?: number
           created_at?: string
+          effective_difficulty_level?: number
           id?: string
           last_practiced_at?: string | null
           mastery_0_1?: number
@@ -706,6 +715,22 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      build_daily_plan: {
+        Args: {
+          p_course_id?: string
+          p_current_week?: number
+          p_limit?: number
+          p_pace_offset?: number
+          p_user_id: string
+        }
+        Returns: Database["public"]["CompositeTypes"]["daily_plan_question"][]
+        SetofOptions: {
+          from: "*"
+          to: "daily_plan_question"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       compute_quality_score: {
         Args: {
           p_confidence: string
@@ -782,7 +807,21 @@ export type Database = {
       app_role: "admin" | "student"
     }
     CompositeTypes: {
-      [_ in never]: never
+      daily_plan_question: {
+        question_id: string | null
+        prompt: string | null
+        choices: Json | null
+        correct_answer: string | null
+        hint: string | null
+        solution_steps: Json | null
+        difficulty: number | null
+        source_exam: string | null
+        topic_ids: string[] | null
+        question_type_id: string | null
+        category: string | null
+        why_selected: string | null
+        priority_score: number | null
+      }
     }
   }
 }

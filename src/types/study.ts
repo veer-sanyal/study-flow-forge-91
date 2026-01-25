@@ -16,6 +16,9 @@ export interface QuestionChoice {
   imageUrl?: string;
 }
 
+// Question category from build_daily_plan
+export type QuestionCategory = 'review' | 'current' | 'bridge' | 'stretch';
+
 // Enriched question for the player (with topic info joined)
 export interface StudyQuestion {
   id: string;
@@ -31,6 +34,9 @@ export interface StudyQuestion {
   questionType: string;
   imageUrl: string | null;
   guideMeSteps: GuideMe | null;
+  // Optional fields from daily plan
+  category?: QuestionCategory;
+  whySelected?: string;
 }
 
 // Map database question to study question format
