@@ -82,17 +82,24 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
       const topicMap = new Map<string, DbTopic>();
       topics?.forEach(topic => topicMap.set(topic.id, topic));
 
-      // Fetch full question data to include guide_me_steps
+      // Fetch full question data to include guide_me_steps, subparts, question_format
       const questionIds = (recommended || []).map((q: any) => q.question_id);
       const { data: fullQuestions } = await supabase
         .from('questions')
-        .select('id, guide_me_steps, image_url')
+        .select('id, guide_me_steps, image_url, question_format, subparts')
         .in('id', questionIds);
       
-      const questionExtras = new Map<string, { guide_me_steps: any; image_url: string | null }>();
+      const questionExtras = new Map<string, { 
+        guide_me_steps: any; 
+        image_url: string | null;
+        question_format: string | null;
+        subparts: any;
+      }>();
       fullQuestions?.forEach(q => questionExtras.set(q.id, { 
         guide_me_steps: q.guide_me_steps, 
-        image_url: q.image_url 
+        image_url: q.image_url,
+        question_format: q.question_format,
+        subparts: q.subparts,
       }));
 
       // Map recommended questions to StudyQuestion format
@@ -112,6 +119,8 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           questionType: 'multiple_choice', // Default for now
           imageUrl: extras?.image_url || null,
           guideMeSteps: extras?.guide_me_steps || null,
+          questionFormat: (extras?.question_format || 'multiple_choice') as 'multiple_choice' | 'short_answer' | 'numeric',
+          subparts: extras?.subparts || null,
           // Include scoring metadata for debugging
           _score: q.score,
           _dueUrgency: q.due_urgency,
@@ -132,6 +141,8 @@ interface SubmitAttemptParams {
   hintUsed: boolean;
   guideUsed: boolean;
   timeSpentMs?: number;
+  subpartId?: string;        // For multi-part questions
+  answerText?: string;       // For free response
 }
 
 export function useSubmitAttempt() {
@@ -153,6 +164,8 @@ export function useSubmitAttempt() {
           hint_used: params.hintUsed,
           guide_used: params.guideUsed,
           time_spent_ms: params.timeSpentMs,
+          subpart_id: params.subpartId,
+          answer_text: params.answerText,
         });
 
       if (error) throw error;

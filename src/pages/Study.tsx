@@ -5,6 +5,7 @@ import { Loader2, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
+import { MultiPartQuestionPlayer } from "@/components/study/MultiPartQuestionPlayer";
 import { TodayPlanCard } from "@/components/study/TodayPlanCard";
 import { FocusBar } from "@/components/study/FocusBar";
 import { CompletionCard } from "@/components/study/CompletionCard";
@@ -19,6 +20,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSidebar } from "@/hooks/use-sidebar";
+import { SubpartResult } from "@/types/study";
 
 type StudyPhase = "today_plan" | "keep_practicing";
 type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
@@ -120,6 +122,55 @@ export default function Study() {
 
       const newResults = {
         correct: sessionResults.correct + (result.isCorrect ? 1 : 0),
+        total: sessionResults.total + 1,
+      };
+      setSessionResults(newResults);
+
+      if (currentIndex < questions.length - 1) {
+        setCurrentIndex((prev) => prev + 1);
+        questionStartTime.current = Date.now();
+      } else {
+        if (studyPhase === "today_plan") {
+          setTodayPlanResults(newResults);
+          setStudyState("plan_complete");
+        } else {
+          setStudyState("session_pause");
+        }
+      }
+    },
+    [currentIndex, questions, submitAttempt, studyPhase, sessionResults]
+  );
+
+  // Handle multi-part question completion
+  const handleMultiPartComplete = useCallback(
+    async (results: SubpartResult[]) => {
+      if (!questions) return;
+
+      const currentQuestion = questions[currentIndex];
+      const timeSpentMs = Date.now() - questionStartTime.current;
+
+      // Submit attempt for each subpart
+      for (const result of results) {
+        if (!result.skipped) {
+          submitAttempt.mutate({
+            questionId: currentQuestion.id,
+            subpartId: result.subpartId,
+            selectedChoiceId: result.selectedChoiceId || null,
+            isCorrect: result.isCorrect,
+            confidence: result.confidence,
+            hintUsed: result.hintsUsed,
+            guideUsed: result.guideUsed,
+            timeSpentMs: Math.floor(timeSpentMs / results.length), // Approximate per subpart
+          });
+        }
+      }
+
+      // Calculate overall correctness (all subparts correct = question correct)
+      const allCorrect = results.every(r => r.isCorrect);
+      const correctCount = results.filter(r => r.isCorrect).length;
+      
+      const newResults = {
+        correct: sessionResults.correct + (allCorrect ? 1 : 0),
         total: sessionResults.total + 1,
       };
       setSessionResults(newResults);
@@ -435,14 +486,26 @@ export default function Study() {
 
         <PageTransition className="flex-1 space-y-6 p-4">
           <AnimatePresence mode="wait">
-            <QuestionPlayer
-              key={currentQuestion.id}
-              question={currentQuestion}
-              questionNumber={currentIndex + 1}
-              totalQuestions={showTotalProgress ? questions.length : undefined}
-              onComplete={handleQuestionComplete}
-              onSimilar={handleSimilar}
-            />
+            {/* Route to MultiPartQuestionPlayer for questions with subparts */}
+            {currentQuestion.subparts && currentQuestion.subparts.length > 0 ? (
+              <MultiPartQuestionPlayer
+                key={`multi-${currentQuestion.id}`}
+                question={currentQuestion}
+                questionNumber={currentIndex + 1}
+                totalQuestions={showTotalProgress ? questions.length : undefined}
+                onComplete={handleMultiPartComplete}
+                onSimilar={handleSimilar}
+              />
+            ) : (
+              <QuestionPlayer
+                key={currentQuestion.id}
+                question={currentQuestion}
+                questionNumber={currentIndex + 1}
+                totalQuestions={showTotalProgress ? questions.length : undefined}
+                onComplete={handleQuestionComplete}
+                onSimilar={handleSimilar}
+              />
+            )}
           </AnimatePresence>
         </PageTransition>
       </div>
