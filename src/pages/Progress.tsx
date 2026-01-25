@@ -4,6 +4,7 @@ import { Progress as ProgressBar } from "@/components/ui/progress";
 import { motion } from "framer-motion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { useTopicMastery, useTopics } from "@/hooks/use-study";
+import { useEnrollments } from "@/hooks/use-enrollments";
 import { useAuth } from "@/hooks/use-auth";
 import { TrendingUp, Brain, Clock, Target, Loader2, AlertTriangle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -24,10 +25,11 @@ function getRetentionStatus(retention: number): { label: string; color: string; 
 export default function Progress() {
   const prefersReducedMotion = useReducedMotion();
   const { user } = useAuth();
-  const { data: masteryData, isLoading: masteryLoading } = useTopicMastery();
-  const { data: allTopics, isLoading: topicsLoading } = useTopics();
+  const { enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
+  const { data: masteryData, isLoading: masteryLoading } = useTopicMastery(enrolledCourseIdsArray);
+  const { data: allTopics, isLoading: topicsLoading } = useTopics(enrolledCourseIdsArray);
 
-  const isLoading = masteryLoading || topicsLoading;
+  const isLoading = masteryLoading || topicsLoading || isLoadingEnrollments;
 
   // Calculate stats
   const totalQuestions = masteryData?.reduce((sum, tm) => sum + tm.questions_attempted, 0) || 0;

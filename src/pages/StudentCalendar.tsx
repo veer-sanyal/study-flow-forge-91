@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Calendar, Clock, MapPin, GraduationCap, Filter } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { PageTransition } from '@/components/motion/PageTransition';
 import { useStudentCalendarEvents, useUpcomingExams, groupEventsByWeek, getEventTypeColor } from '@/hooks/use-calendar';
+import { useEnrollments } from '@/hooks/use-enrollments';
 import { useCourses } from '@/hooks/use-focus';
 import { fadeSlideUp, stagger, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -28,17 +29,32 @@ const timeRangeOptions = [
 ];
 
 export default function StudentCalendar() {
+  const { enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
+  
+  // Default to enrolled courses if user has enrollments
   const [selectedCourseIds, setSelectedCourseIds] = useState<string[]>([]);
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>([]);
   const [timeRange, setTimeRange] = useState<'this_week' | 'next_2_weeks' | 'this_month' | 'all'>('this_month');
 
+  // Set default selected courses to enrolled courses
+  useEffect(() => {
+    if (!isLoadingEnrollments && enrolledCourseIdsArray.length > 0 && selectedCourseIds.length === 0) {
+      setSelectedCourseIds(enrolledCourseIdsArray);
+    }
+  }, [enrolledCourseIdsArray, isLoadingEnrollments, selectedCourseIds.length]);
+
   const { data: courses = [] } = useCourses();
+  // Filter courses to show only enrolled courses, or show enrolled filter as default
+  const effectiveCourseIds = selectedCourseIds.length > 0 
+    ? selectedCourseIds 
+    : enrolledCourseIdsArray;
+    
   const { data: events = [], isLoading } = useStudentCalendarEvents({
-    courseIds: selectedCourseIds,
+    courseIds: effectiveCourseIds,
     eventTypes: selectedEventTypes,
     timeRange,
   });
-  const { data: upcomingExams = [] } = useUpcomingExams(selectedCourseIds);
+  const { data: upcomingExams = [] } = useUpcomingExams(effectiveCourseIds);
 
   const weekGroups = groupEventsByWeek(events);
 
@@ -82,17 +98,34 @@ export default function StudentCalendar() {
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <GraduationCap className="h-4 w-4" />
-                  {selectedCourseIds.length === 0
-                    ? 'All courses'
+                  {selectedCourseIds.length === 0 || 
+                   (selectedCourseIds.length === enrolledCourseIdsArray.length && 
+                    selectedCourseIds.every(id => enrolledCourseIdsArray.includes(id)))
+                    ? 'My courses'
                     : `${selectedCourseIds.length} course${selectedCourseIds.length > 1 ? 's' : ''}`}
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-64 p-2" align="start">
                 <div className="space-y-1">
-                  {courses.map(course => (
+                  {/* Show enrolled courses first, with indicator */}
+                  {courses.filter(c => enrolledCourseIdsArray.includes(c.id)).map(course => (
                     <label
                       key={course.id}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer"
+                    >
+                      <Checkbox
+                        checked={selectedCourseIds.includes(course.id)}
+                        onCheckedChange={() => toggleCourse(course.id)}
+                      />
+                      <span className="text-sm truncate">{course.title}</span>
+                      <Badge variant="secondary" className="text-xs ml-auto">enrolled</Badge>
+                    </label>
+                  ))}
+                  {/* Show non-enrolled courses */}
+                  {courses.filter(c => !enrolledCourseIdsArray.includes(c.id)).map(course => (
+                    <label
+                      key={course.id}
+                      className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-muted cursor-pointer opacity-60"
                     >
                       <Checkbox
                         checked={selectedCourseIds.includes(course.id)}

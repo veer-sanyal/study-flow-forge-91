@@ -16,6 +16,7 @@ import { StatsStrip } from "@/components/study/StatsStrip";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
 import { useStudyDashboard, PracticeRecommendation } from "@/hooks/use-study-dashboard";
+import { useEnrollments } from "@/hooks/use-enrollments";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -45,6 +46,7 @@ export default function Study() {
 
   const { user } = useAuth();
   const { settings } = useUserSettings();
+  const { enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
   const queryClient = useQueryClient();
   const { collapse, expand } = useSidebar();
 
@@ -81,14 +83,26 @@ export default function Study() {
   }, [studyState, collapse, expand]);
 
   // Convert focus filters to study query params
-  const studyQueryParams = useMemo(() => ({
-    limit: studyPhase === "today_plan" ? dailyGoal : KEEP_PRACTICING_BATCH,
-    paceOffset: settings.pace_offset,
-    courseId: filters.courseIds.length === 1 ? filters.courseIds[0] : null,
-    examName: filters.examNames.length === 1 ? filters.examNames[0] : null,
-    topicIds: filters.topicIds,
-    questionTypeId: filters.questionTypeId,
-  }), [studyPhase, dailyGoal, settings.pace_offset, filters]);
+  // Use enrolled courses as default if no specific course filter is set
+  const studyQueryParams = useMemo(() => {
+    // Determine course filter: use focus filter if set, otherwise use first enrolled course
+    const effectiveCourseId = filters.courseIds.length === 1 
+      ? filters.courseIds[0] 
+      : enrolledCourseIdsArray.length === 1 
+        ? enrolledCourseIdsArray[0] 
+        : null;
+    
+    return {
+      limit: studyPhase === "today_plan" ? dailyGoal : KEEP_PRACTICING_BATCH,
+      paceOffset: settings.pace_offset,
+      courseId: effectiveCourseId,
+      examName: filters.examNames.length === 1 ? filters.examNames[0] : null,
+      topicIds: filters.topicIds,
+      questionTypeId: filters.questionTypeId,
+      // Pass enrolled courses for broader filtering when no single course selected
+      enrolledCourseIds: enrolledCourseIdsArray,
+    };
+  }, [studyPhase, dailyGoal, settings.pace_offset, filters, enrolledCourseIdsArray]);
 
   // Fetch questions based on current phase and filters
   const { data: questions, isLoading, error, refetch } = useStudyQuestions(studyQueryParams);

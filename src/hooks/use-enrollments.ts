@@ -106,12 +106,16 @@ export function useEnrollments() {
     enrollmentsQuery.data?.map(e => e.course_pack_id) || []
   );
 
+  // Get as array for queries
+  const enrolledCourseIdsArray = Array.from(enrolledCourseIds);
+
   return {
     enrollments: enrollmentsQuery.data || [],
     isLoadingEnrollments: enrollmentsQuery.isLoading,
     coursePacks: coursePacksQuery.data || [],
     isLoadingCoursePacks: coursePacksQuery.isLoading,
     enrolledCourseIds,
+    enrolledCourseIdsArray,
     enroll: enrollMutation.mutate,
     unenroll: unenrollMutation.mutate,
     isEnrolling: enrollMutation.isPending,
