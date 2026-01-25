@@ -602,8 +602,10 @@ export type Database = {
       }
       questions: {
         Row: {
+          answer_format_enum: string | null
           answer_key_answer: string | null
           answer_mismatch: boolean | null
+          answer_spec: Json | null
           choices: Json | null
           common_mistakes: Json | null
           correct_answer: string | null
@@ -611,7 +613,12 @@ export type Database = {
           course_pack_id: string | null
           created_at: string
           difficulty: number | null
+          edit_reason: string | null
+          edited_at: string | null
+          edited_by: string | null
+          extracted_raw_text: string | null
           full_solution: string | null
+          grading_spec: Json | null
           guide_me_steps: Json | null
           hint: string | null
           id: string
@@ -620,15 +627,18 @@ export type Database = {
           midterm_number: number | null
           needs_review: boolean
           objective_id: string | null
+          parent_question_id: string | null
           prompt: string
           quality_flags: Json | null
           quality_score: number | null
           question_format: string | null
           question_order: number | null
           question_type_id: string | null
+          render_blocks: Json | null
           solution_steps: Json | null
           source: string | null
           source_exam: string | null
+          source_locator: Json | null
           source_material_id: string | null
           status: string | null
           subparts: Json | null
@@ -636,10 +646,13 @@ export type Database = {
           topic_ids: string[]
           unmapped_topic_suggestions: string[] | null
           updated_at: string
+          version: number | null
         }
         Insert: {
+          answer_format_enum?: string | null
           answer_key_answer?: string | null
           answer_mismatch?: boolean | null
+          answer_spec?: Json | null
           choices?: Json | null
           common_mistakes?: Json | null
           correct_answer?: string | null
@@ -647,7 +660,12 @@ export type Database = {
           course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
+          edit_reason?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
+          extracted_raw_text?: string | null
           full_solution?: string | null
+          grading_spec?: Json | null
           guide_me_steps?: Json | null
           hint?: string | null
           id?: string
@@ -656,15 +674,18 @@ export type Database = {
           midterm_number?: number | null
           needs_review?: boolean
           objective_id?: string | null
+          parent_question_id?: string | null
           prompt: string
           quality_flags?: Json | null
           quality_score?: number | null
           question_format?: string | null
           question_order?: number | null
           question_type_id?: string | null
+          render_blocks?: Json | null
           solution_steps?: Json | null
           source?: string | null
           source_exam?: string | null
+          source_locator?: Json | null
           source_material_id?: string | null
           status?: string | null
           subparts?: Json | null
@@ -672,10 +693,13 @@ export type Database = {
           topic_ids?: string[]
           unmapped_topic_suggestions?: string[] | null
           updated_at?: string
+          version?: number | null
         }
         Update: {
+          answer_format_enum?: string | null
           answer_key_answer?: string | null
           answer_mismatch?: boolean | null
+          answer_spec?: Json | null
           choices?: Json | null
           common_mistakes?: Json | null
           correct_answer?: string | null
@@ -683,7 +707,12 @@ export type Database = {
           course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
+          edit_reason?: string | null
+          edited_at?: string | null
+          edited_by?: string | null
+          extracted_raw_text?: string | null
           full_solution?: string | null
+          grading_spec?: Json | null
           guide_me_steps?: Json | null
           hint?: string | null
           id?: string
@@ -692,15 +721,18 @@ export type Database = {
           midterm_number?: number | null
           needs_review?: boolean
           objective_id?: string | null
+          parent_question_id?: string | null
           prompt?: string
           quality_flags?: Json | null
           quality_score?: number | null
           question_format?: string | null
           question_order?: number | null
           question_type_id?: string | null
+          render_blocks?: Json | null
           solution_steps?: Json | null
           source?: string | null
           source_exam?: string | null
+          source_locator?: Json | null
           source_material_id?: string | null
           status?: string | null
           subparts?: Json | null
@@ -708,6 +740,7 @@ export type Database = {
           topic_ids?: string[]
           unmapped_topic_suggestions?: string[] | null
           updated_at?: string
+          version?: number | null
         }
         Relationships: [
           {
@@ -722,6 +755,13 @@ export type Database = {
             columns: ["objective_id"]
             isOneToOne: false
             referencedRelation: "objectives"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_parent_question_id_fkey"
+            columns: ["parent_question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
             referencedColumns: ["id"]
           },
           {
@@ -1063,6 +1103,15 @@ export type Database = {
       }
     }
     Enums: {
+      answer_format:
+        | "mcq"
+        | "multi_select"
+        | "numeric"
+        | "expression"
+        | "short_text"
+        | "free_response"
+        | "matching"
+        | "ordering"
       app_role: "admin" | "student"
     }
     CompositeTypes: {
@@ -1205,6 +1254,16 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      answer_format: [
+        "mcq",
+        "multi_select",
+        "numeric",
+        "expression",
+        "short_text",
+        "free_response",
+        "matching",
+        "ordering",
+      ],
       app_role: ["admin", "student"],
     },
   },
