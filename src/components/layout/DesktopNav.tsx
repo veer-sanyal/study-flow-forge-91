@@ -15,7 +15,7 @@ const navItems = [
 ];
 
 const adminNavItems = [
-  { to: "/admin/calendar", label: "Calendar", icon: Calendar },
+  { to: "/admin/calendar", label: "Courses", icon: Calendar },
   { to: "/admin/ingestion", label: "Ingestion", icon: Upload },
   { to: "/admin/materials", label: "Materials", icon: FileText },
   { to: "/admin/questions", label: "Questions", icon: FileQuestion },
