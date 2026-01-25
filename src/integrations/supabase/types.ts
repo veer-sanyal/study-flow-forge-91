@@ -223,6 +223,125 @@ export type Database = {
           },
         ]
       }
+      course_editions: {
+        Row: {
+          course_pack_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          instructor: string | null
+          is_active: boolean
+          section: string | null
+          term: string | null
+          updated_at: string
+        }
+        Insert: {
+          course_pack_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          instructor?: string | null
+          is_active?: boolean
+          section?: string | null
+          term?: string | null
+          updated_at?: string
+        }
+        Update: {
+          course_pack_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          instructor?: string | null
+          is_active?: boolean
+          section?: string | null
+          term?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_editions_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      course_materials: {
+        Row: {
+          analysis_json: Json | null
+          content_fingerprint: string | null
+          course_pack_id: string
+          created_at: string
+          created_by: string | null
+          edition_id: string | null
+          error_message: string | null
+          file_name: string
+          id: string
+          material_type: string
+          questions_generated_count: number | null
+          sha256: string
+          status: string
+          storage_path: string
+          title: string
+          topics_extracted_count: number | null
+          updated_at: string
+        }
+        Insert: {
+          analysis_json?: Json | null
+          content_fingerprint?: string | null
+          course_pack_id: string
+          created_at?: string
+          created_by?: string | null
+          edition_id?: string | null
+          error_message?: string | null
+          file_name: string
+          id?: string
+          material_type: string
+          questions_generated_count?: number | null
+          sha256: string
+          status?: string
+          storage_path: string
+          title: string
+          topics_extracted_count?: number | null
+          updated_at?: string
+        }
+        Update: {
+          analysis_json?: Json | null
+          content_fingerprint?: string | null
+          course_pack_id?: string
+          created_at?: string
+          created_by?: string | null
+          edition_id?: string | null
+          error_message?: string | null
+          file_name?: string
+          id?: string
+          material_type?: string
+          questions_generated_count?: number | null
+          sha256?: string
+          status?: string
+          storage_path?: string
+          title?: string
+          topics_extracted_count?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "course_materials_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "course_materials_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "course_editions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       course_packs: {
         Row: {
           created_at: string
@@ -339,6 +458,83 @@ export type Database = {
           },
         ]
       }
+      material_chunks: {
+        Row: {
+          chunk_index: number
+          chunk_type: string
+          created_at: string
+          id: string
+          material_id: string
+          text: string
+          title_hint: string | null
+        }
+        Insert: {
+          chunk_index: number
+          chunk_type: string
+          created_at?: string
+          id?: string
+          material_id: string
+          text: string
+          title_hint?: string | null
+        }
+        Update: {
+          chunk_index?: number
+          chunk_type?: string
+          created_at?: string
+          id?: string
+          material_id?: string
+          text?: string
+          title_hint?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "material_chunks_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "course_materials"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      objectives: {
+        Row: {
+          created_at: string
+          id: string
+          objective_text: string
+          source_material_id: string | null
+          topic_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          objective_text: string
+          source_material_id?: string | null
+          topic_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          objective_text?: string
+          source_material_id?: string | null
+          topic_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "objectives_source_material_id_fkey"
+            columns: ["source_material_id"]
+            isOneToOne: false
+            referencedRelation: "course_materials"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "objectives_topic_id_fkey"
+            columns: ["topic_id"]
+            isOneToOne: false
+            referencedRelation: "topics"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -409,24 +605,34 @@ export type Database = {
           answer_key_answer: string | null
           answer_mismatch: boolean | null
           choices: Json | null
+          common_mistakes: Json | null
           correct_answer: string | null
           corresponds_to_exam: string | null
           course_pack_id: string | null
           created_at: string
           difficulty: number | null
+          full_solution: string | null
           guide_me_steps: Json | null
           hint: string | null
           id: string
           image_url: string | null
+          is_published: boolean | null
           midterm_number: number | null
           needs_review: boolean
+          objective_id: string | null
           prompt: string
+          quality_flags: Json | null
+          quality_score: number | null
           question_format: string | null
           question_order: number | null
           question_type_id: string | null
           solution_steps: Json | null
+          source: string | null
           source_exam: string | null
+          source_material_id: string | null
+          status: string | null
           subparts: Json | null
+          tags: Json | null
           topic_ids: string[]
           unmapped_topic_suggestions: string[] | null
           updated_at: string
@@ -435,24 +641,34 @@ export type Database = {
           answer_key_answer?: string | null
           answer_mismatch?: boolean | null
           choices?: Json | null
+          common_mistakes?: Json | null
           correct_answer?: string | null
           corresponds_to_exam?: string | null
           course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
+          full_solution?: string | null
           guide_me_steps?: Json | null
           hint?: string | null
           id?: string
           image_url?: string | null
+          is_published?: boolean | null
           midterm_number?: number | null
           needs_review?: boolean
+          objective_id?: string | null
           prompt: string
+          quality_flags?: Json | null
+          quality_score?: number | null
           question_format?: string | null
           question_order?: number | null
           question_type_id?: string | null
           solution_steps?: Json | null
+          source?: string | null
           source_exam?: string | null
+          source_material_id?: string | null
+          status?: string | null
           subparts?: Json | null
+          tags?: Json | null
           topic_ids?: string[]
           unmapped_topic_suggestions?: string[] | null
           updated_at?: string
@@ -461,24 +677,34 @@ export type Database = {
           answer_key_answer?: string | null
           answer_mismatch?: boolean | null
           choices?: Json | null
+          common_mistakes?: Json | null
           correct_answer?: string | null
           corresponds_to_exam?: string | null
           course_pack_id?: string | null
           created_at?: string
           difficulty?: number | null
+          full_solution?: string | null
           guide_me_steps?: Json | null
           hint?: string | null
           id?: string
           image_url?: string | null
+          is_published?: boolean | null
           midterm_number?: number | null
           needs_review?: boolean
+          objective_id?: string | null
           prompt?: string
+          quality_flags?: Json | null
+          quality_score?: number | null
           question_format?: string | null
           question_order?: number | null
           question_type_id?: string | null
           solution_steps?: Json | null
+          source?: string | null
           source_exam?: string | null
+          source_material_id?: string | null
+          status?: string | null
           subparts?: Json | null
+          tags?: Json | null
           topic_ids?: string[]
           unmapped_topic_suggestions?: string[] | null
           updated_at?: string
@@ -492,10 +718,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "questions_objective_id_fkey"
+            columns: ["objective_id"]
+            isOneToOne: false
+            referencedRelation: "objectives"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "questions_question_type_id_fkey"
             columns: ["question_type_id"]
             isOneToOne: false
             referencedRelation: "question_types"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "questions_source_material_id_fkey"
+            columns: ["source_material_id"]
+            isOneToOne: false
+            referencedRelation: "course_materials"
             referencedColumns: ["id"]
           },
         ]
@@ -611,33 +851,42 @@ export type Database = {
           course_pack_id: string | null
           created_at: string
           description: string | null
+          edition_id: string | null
           id: string
           midterm_coverage: number | null
           prerequisite_topic_ids: string[] | null
           scheduled_week: number | null
+          source: string | null
           title: string
+          topic_code: string | null
           updated_at: string
         }
         Insert: {
           course_pack_id?: string | null
           created_at?: string
           description?: string | null
+          edition_id?: string | null
           id?: string
           midterm_coverage?: number | null
           prerequisite_topic_ids?: string[] | null
           scheduled_week?: number | null
+          source?: string | null
           title: string
+          topic_code?: string | null
           updated_at?: string
         }
         Update: {
           course_pack_id?: string | null
           created_at?: string
           description?: string | null
+          edition_id?: string | null
           id?: string
           midterm_coverage?: number | null
           prerequisite_topic_ids?: string[] | null
           scheduled_week?: number | null
+          source?: string | null
           title?: string
+          topic_code?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -646,6 +895,13 @@ export type Database = {
             columns: ["course_pack_id"]
             isOneToOne: false
             referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "topics_edition_id_fkey"
+            columns: ["edition_id"]
+            isOneToOne: false
+            referencedRelation: "course_editions"
             referencedColumns: ["id"]
           },
         ]
