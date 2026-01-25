@@ -123,6 +123,11 @@ export default function Study() {
       const timeSpentMs = Date.now() - questionStartTime.current;
 
       if (!result.skipped) {
+        console.log('[Study] Submitting attempt for question:', currentQuestion.id, {
+          isCorrect: result.isCorrect,
+          selectedChoiceId: result.selectedChoiceId,
+          studyPhase,
+        });
         submitAttempt.mutate({
           questionId: currentQuestion.id,
           selectedChoiceId: result.selectedChoiceId,
@@ -166,6 +171,11 @@ export default function Study() {
       // Submit attempt for each subpart
       for (const result of results) {
         if (!result.skipped) {
+          console.log('[Study] Submitting multi-part attempt:', {
+            questionId: currentQuestion.id,
+            subpartId: result.subpartId,
+            isCorrect: result.isCorrect,
+          });
           submitAttempt.mutate({
             questionId: currentQuestion.id,
             subpartId: result.subpartId,

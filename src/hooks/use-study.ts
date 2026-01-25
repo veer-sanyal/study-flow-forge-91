@@ -165,7 +165,13 @@ export function useSubmitAttempt() {
     mutationFn: async (params: SubmitAttemptParams) => {
       if (!user) throw new Error('User not authenticated');
 
-      const { error } = await supabase
+      console.log('[useSubmitAttempt] Submitting attempt:', {
+        questionId: params.questionId,
+        isCorrect: params.isCorrect,
+        userId: user.id,
+      });
+
+      const { data, error } = await supabase
         .from('attempts')
         .insert({
           user_id: user.id,
@@ -178,14 +184,25 @@ export function useSubmitAttempt() {
           time_spent_ms: params.timeSpentMs,
           subpart_id: params.subpartId,
           answer_text: params.answerText,
-        });
+        })
+        .select();
 
-      if (error) throw error;
+      if (error) {
+        console.error('[useSubmitAttempt] Error saving attempt:', error);
+        throw error;
+      }
+
+      console.log('[useSubmitAttempt] Attempt saved successfully:', data);
+      return data;
     },
     onSuccess: () => {
       // Invalidate related queries to refresh data
       queryClient.invalidateQueries({ queryKey: ['topic-mastery'] });
       queryClient.invalidateQueries({ queryKey: ['srs-state'] });
+      queryClient.invalidateQueries({ queryKey: ['study-dashboard'] });
+    },
+    onError: (error) => {
+      console.error('[useSubmitAttempt] Mutation error:', error);
     },
   });
 }
