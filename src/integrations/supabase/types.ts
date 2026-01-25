@@ -650,6 +650,35 @@ export type Database = {
           },
         ]
       }
+      user_enrollments: {
+        Row: {
+          course_pack_id: string
+          enrolled_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          course_pack_id: string
+          enrolled_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          course_pack_id?: string
+          enrolled_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_enrollments_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           created_at: string

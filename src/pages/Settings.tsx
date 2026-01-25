@@ -6,6 +6,7 @@ import { Switch } from "@/components/ui/switch";
 import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EnrollmentCard } from "@/components/settings/EnrollmentCard";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
@@ -18,7 +19,6 @@ import {
   Gauge, 
   Target,
   Bell,
-  BookOpen,
   Loader2
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -316,21 +316,9 @@ export default function Settings() {
             </Card>
           </motion.div>
 
-          {/* Enrollment Placeholder */}
+          {/* Enrollment */}
           <motion.div variants={itemVariants}>
-            <Card>
-              <CardHeader className="pb-3">
-                <CardTitle className="text-lg">Enrollment</CardTitle>
-                <CardDescription>Your course packs</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="flex flex-col items-center justify-center py-6 text-center text-muted-foreground rounded-lg border border-dashed">
-                  <BookOpen className="h-8 w-8 mb-3 opacity-50" />
-                  <p className="text-sm">Course enrollment coming soon</p>
-                  <p className="text-xs mt-1">You'll be able to join course packs here</p>
-                </div>
-              </CardContent>
-            </Card>
+            <EnrollmentCard />
           </motion.div>
         </motion.div>
       </div>
