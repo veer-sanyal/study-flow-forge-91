@@ -16,8 +16,23 @@ export interface QuestionChoice {
   imageUrl?: string;
 }
 
+// Subpart type for multi-part questions
+export interface StudySubpart {
+  id: string;               // "a", "b", "c", etc.
+  prompt: string;           // Subpart-specific question
+  points: number;           // Point value
+  correctAnswer?: string;   // For short answer/numeric
+  solutionSteps?: string[]; // Solution steps for this subpart
+  imageUrl?: string;        // Optional image for subpart
+  modelAnswer?: string;     // Model answer for free response
+  gradingRubric?: string;   // Grading rubric
+}
+
 // Question category from build_daily_plan
 export type QuestionCategory = 'review' | 'current' | 'bridge' | 'stretch';
+
+// Question format type
+export type QuestionFormat = 'multiple_choice' | 'short_answer' | 'numeric';
 
 // Enriched question for the player (with topic info joined)
 export interface StudyQuestion {
@@ -34,6 +49,9 @@ export interface StudyQuestion {
   questionType: string;
   imageUrl: string | null;
   guideMeSteps: GuideMe | null;
+  // Multi-part question support
+  questionFormat: QuestionFormat;
+  subparts: StudySubpart[] | null;
   // Optional fields from daily plan
   category?: QuestionCategory;
   whySelected?: string;
@@ -56,6 +74,12 @@ export function mapDbQuestionToStudy(
     .map(id => topics.get(id)?.title || 'Unknown Topic')
     .filter(Boolean);
 
+  // Parse subparts from JSONB
+  const rawSubparts = dbQuestion.subparts;
+  const subparts: StudySubpart[] | null = Array.isArray(rawSubparts)
+    ? (rawSubparts as unknown as StudySubpart[])
+    : null;
+
   return {
     id: dbQuestion.id,
     prompt: dbQuestion.prompt,
@@ -70,6 +94,8 @@ export function mapDbQuestionToStudy(
     questionType: questionTypeName,
     imageUrl: dbQuestion.image_url,
     guideMeSteps: dbQuestion.guide_me_steps as unknown as GuideMe | null,
+    questionFormat: (dbQuestion.question_format || 'multiple_choice') as QuestionFormat,
+    subparts,
   };
 }
 
@@ -84,4 +110,18 @@ export function mapConfidenceToDb(confidence: number | null): ConfidenceLevel | 
     case 3: return 'knew_it';
     default: return null;
   }
+}
+
+// Result type for subpart completion
+export interface SubpartResult {
+  subpartId: string;
+  isCorrect: boolean;
+  confidence: number | null;
+  hintsUsed: boolean;
+  guideUsed: boolean;
+  skipped: boolean;
+  answerText?: string;
+  selectedChoiceId?: string | null;
+  pointsEarned?: number;
+  maxPoints?: number;
 }
