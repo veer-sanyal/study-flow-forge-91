@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useUserSettings } from '@/hooks/use-settings';
+import { useEnrollments } from '@/hooks/use-enrollments';
 import { FocusPreset } from '@/contexts/FocusContext';
 
 // ============================================
@@ -62,11 +63,12 @@ export interface StudyDashboardData {
 export function useStudyDashboard() {
   const { user } = useAuth();
   const { settings } = useUserSettings();
+  const { enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
   const dailyGoal = settings?.daily_goal || 10;
   const dailyPlanMode = settings?.daily_plan_mode || 'single_course';
 
   return useQuery({
-    queryKey: ['study-dashboard', user?.id, dailyGoal, dailyPlanMode],
+    queryKey: ['study-dashboard', user?.id, dailyGoal, dailyPlanMode, enrolledCourseIdsArray],
     queryFn: async (): Promise<StudyDashboardData> => {
       if (!user) {
         return {
@@ -115,39 +117,50 @@ export function useStudyDashboard() {
           .eq('user_id', user.id)
           .gte('created_at', today.toISOString()),
         
-        // Published courses
+        // Published courses (filter to enrolled only)
         supabase
           .from('course_packs')
           .select('id, title')
-          .eq('is_published', true),
+          .eq('is_published', true)
+          .in('id', enrolledCourseIdsArray.length > 0 ? enrolledCourseIdsArray : ['00000000-0000-0000-0000-000000000000']),
         
-        // Upcoming exams
-        supabase
-          .from('calendar_events')
-          .select('id, title, event_date, course_pack_id')
-          .eq('event_type', 'exam')
-          .gte('event_date', today.toISOString())
-          .order('event_date', { ascending: true })
-          .limit(5),
+        // Upcoming exams (filter to enrolled courses)
+        enrolledCourseIdsArray.length > 0 
+          ? supabase
+              .from('calendar_events')
+              .select('id, title, event_date, course_pack_id')
+              .eq('event_type', 'exam')
+              .in('course_pack_id', enrolledCourseIdsArray)
+              .gte('event_date', today.toISOString())
+              .order('event_date', { ascending: true })
+              .limit(5)
+          : Promise.resolve({ data: [], error: null }),
         
-        // Overdue SRS reviews
+        // Overdue SRS reviews (filter to enrolled courses via question)
         supabase
           .from('srs_state')
-          .select('question_id')
-          .eq('user_id', user.id)
-          .lt('due_at', new Date().toISOString()),
-        
-        // Weak topics (low mastery)
-        supabase
-          .from('topic_mastery')
           .select(`
-            topic_id,
-            mastery_0_1,
-            topics!inner(id, title, course_pack_id)
+            question_id,
+            questions!inner(course_pack_id)
           `)
           .eq('user_id', user.id)
-          .order('mastery_0_1', { ascending: true })
-          .limit(5),
+          .lt('due_at', new Date().toISOString())
+          .in('questions.course_pack_id', enrolledCourseIdsArray.length > 0 ? enrolledCourseIdsArray : ['00000000-0000-0000-0000-000000000000']),
+        
+        // Weak topics (low mastery, filter to enrolled courses)
+        enrolledCourseIdsArray.length > 0
+          ? supabase
+              .from('topic_mastery')
+              .select(`
+                topic_id,
+                mastery_0_1,
+                topics!inner(id, title, course_pack_id)
+              `)
+              .eq('user_id', user.id)
+              .in('topics.course_pack_id', enrolledCourseIdsArray)
+              .order('mastery_0_1', { ascending: true })
+              .limit(5)
+          : Promise.resolve({ data: [], error: null }),
         
         // Last session (most recent attempt)
         supabase
@@ -360,7 +373,7 @@ export function useStudyDashboard() {
         },
       };
     },
-    enabled: !!user,
+    enabled: !!user && !isLoadingEnrollments,
     staleTime: 30 * 1000, // 30 seconds
   });
 }

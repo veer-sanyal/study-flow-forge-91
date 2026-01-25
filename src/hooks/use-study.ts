@@ -18,6 +18,8 @@ interface RecommendationParams {
   examName?: string | null;
   topicIds?: string[];
   questionTypeId?: string | null;
+  // Enrolled courses for filtering
+  enrolledCourseIds?: string[];
 }
 
 export function useStudyQuestions(params: RecommendationParams = {}) {
@@ -31,12 +33,22 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
     examName = null,
     topicIds = [],
     questionTypeId = null,
+    enrolledCourseIds = [],
   } = params;
 
+  // Determine effective course filter
+  // If specific courseId is set, use it. Otherwise, use first enrolled course for single-course mode
+  const effectiveCourseId = courseId || (enrolledCourseIds.length === 1 ? enrolledCourseIds[0] : null);
+
   return useQuery({
-    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty, courseId, examName, topicIds, questionTypeId],
+    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty, effectiveCourseId, examName, topicIds, questionTypeId, enrolledCourseIds],
     queryFn: async (): Promise<StudyQuestion[]> => {
       if (!user) throw new Error('User not authenticated');
+
+      // If user has enrollments but none match current filter, return empty
+      if (enrolledCourseIds.length > 0 && effectiveCourseId && !enrolledCourseIds.includes(effectiveCourseId)) {
+        return [];
+      }
 
       // Call the recommendation algorithm function with filter parameters
       // Note: p_topic_ids is now uuid[] type in the database
@@ -47,7 +59,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           p_current_week: currentWeek,
           p_pace_offset: paceOffset,
           p_target_difficulty: targetDifficulty,
-          p_course_id: courseId || undefined,
+          p_course_id: effectiveCourseId || undefined,
           p_exam_name: examName || undefined,
           p_topic_ids: topicIds.length > 0 ? topicIds : undefined,
           p_question_type_id: questionTypeId || undefined,
@@ -178,24 +190,31 @@ export function useSubmitAttempt() {
   });
 }
 
-export function useTopicMastery() {
+export function useTopicMastery(enrolledCourseIds?: string[]) {
   const { user } = useAuth();
 
   return useQuery({
-    queryKey: ['topic-mastery', user?.id],
+    queryKey: ['topic-mastery', user?.id, enrolledCourseIds],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('topic_mastery')
         .select(`
           *,
-          topics (
+          topics!inner (
             id,
             title,
-            description
+            description,
+            course_pack_id
           )
         `)
         .eq('user_id', user!.id);
 
+      // Filter by enrolled courses if provided
+      if (enrolledCourseIds && enrolledCourseIds.length > 0) {
+        query = query.in('topics.course_pack_id', enrolledCourseIds);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
@@ -203,15 +222,21 @@ export function useTopicMastery() {
   });
 }
 
-export function useTopics() {
+export function useTopics(enrolledCourseIds?: string[]) {
   return useQuery({
-    queryKey: ['topics'],
+    queryKey: ['topics', enrolledCourseIds],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('topics')
         .select('*')
         .order('scheduled_week', { ascending: true });
 
+      // Filter by enrolled courses if provided
+      if (enrolledCourseIds && enrolledCourseIds.length > 0) {
+        query = query.in('course_pack_id', enrolledCourseIds);
+      }
+
+      const { data, error } = await query;
       if (error) throw error;
       return data;
     },
