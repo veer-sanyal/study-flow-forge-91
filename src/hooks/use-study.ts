@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { useToast } from '@/hooks/use-toast';
 import { StudyQuestion, mapDbQuestionToStudy, mapConfidenceToDb } from '@/types/study';
 import { Tables } from '@/integrations/supabase/types';
 
@@ -160,6 +161,7 @@ interface SubmitAttemptParams {
 export function useSubmitAttempt() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   return useMutation({
     mutationFn: async (params: SubmitAttemptParams) => {
@@ -203,6 +205,11 @@ export function useSubmitAttempt() {
     },
     onError: (error) => {
       console.error('[useSubmitAttempt] Mutation error:', error);
+      toast({
+        title: "Failed to save progress",
+        description: "Your answer wasn't recorded. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 }
