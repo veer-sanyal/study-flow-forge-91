@@ -166,7 +166,7 @@ Deno.serve(async (req) => {
     };
 
     // Generate questions using Gemini
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`;
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`;
 
     const topicsContext = topics
       .map((t) => {

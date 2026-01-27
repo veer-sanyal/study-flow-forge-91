@@ -515,6 +515,14 @@ export default function Study() {
   if (studyState === "playing" && questions && questions.length > 0) {
     const currentQuestion = questions[currentIndex];
     const showTotalProgress = studyPhase === "today_plan";
+    const hasSubparts = currentQuestion.subparts && Array.isArray(currentQuestion.subparts) && currentQuestion.subparts.length > 0;
+    
+    console.log('[Study] Current question:', {
+      id: currentQuestion.id,
+      format: currentQuestion.questionFormat,
+      hasSubparts,
+      subpartCount: currentQuestion.subparts?.length || 0,
+    });
 
     return (
       <div className="flex flex-col h-full">
@@ -551,7 +559,7 @@ export default function Study() {
         <PageTransition className="flex-1 space-y-6 p-4">
           <AnimatePresence mode="wait">
             {/* Route to MultiPartQuestionPlayer for questions with subparts */}
-            {currentQuestion.subparts && currentQuestion.subparts.length > 0 ? (
+            {hasSubparts ? (
               <MultiPartQuestionPlayer
                 key={`multi-${currentQuestion.id}`}
                 question={currentQuestion}
