@@ -21,6 +21,8 @@ interface RecommendationParams {
   questionTypeId?: string | null;
   // Enrolled courses for filtering
   enrolledCourseIds?: string[];
+  // When true, ignores topic coverage and difficulty constraints (for custom focus)
+  ignoreConstraints?: boolean;
 }
 
 export function useStudyQuestions(params: RecommendationParams = {}) {
@@ -35,6 +37,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
     topicIds = [],
     questionTypeId = null,
     enrolledCourseIds = [],
+    ignoreConstraints = false,
   } = params;
 
   // Determine effective course filter
@@ -42,7 +45,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
   const effectiveCourseId = courseId || (enrolledCourseIds.length === 1 ? enrolledCourseIds[0] : null);
 
   return useQuery({
-    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty, effectiveCourseId, examName, topicIds, questionTypeId, enrolledCourseIds],
+    queryKey: ['study-questions', user?.id, limit, currentWeek, paceOffset, targetDifficulty, effectiveCourseId, examName, topicIds, questionTypeId, enrolledCourseIds, ignoreConstraints],
     queryFn: async (): Promise<StudyQuestion[]> => {
       if (!user) throw new Error('User not authenticated');
 
@@ -64,6 +67,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           p_exam_name: examName || undefined,
           p_topic_ids: topicIds.length > 0 ? topicIds : undefined,
           p_question_type_id: questionTypeId || undefined,
+          p_ignore_constraints: ignoreConstraints,
         } as any);
 
       if (recError) {

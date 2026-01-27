@@ -155,8 +155,8 @@ Deno.serve(async (req) => {
 
     console.log(`File loaded, size: ${arrayBuffer.byteLength} bytes, type: ${mimeType}`);
 
-    // Call Gemini for analysis
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${geminiApiKey}`;
+    // Call Gemini for analysis - use gemini-2.0-flash-exp model
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`;
     
     const analysisPrompt = `You are analyzing course lecture material to extract topics and learning objectives.
 

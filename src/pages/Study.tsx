@@ -94,8 +94,14 @@ export default function Study() {
         ? enrolledCourseIdsArray[0] 
         : null;
     
+    // Check if user has active custom focus filters
+    const hasCustomFilters = filters.examNames.length > 0 || 
+                              filters.topicIds.length > 0 || 
+                              filters.questionTypeId !== null ||
+                              filters.midtermNumber !== null;
+    
     return {
-      limit: studyPhase === "today_plan" ? dailyGoal : KEEP_PRACTICING_BATCH,
+      limit: studyPhase === "today_plan" ? dailyGoal : (hasCustomFilters ? 100 : KEEP_PRACTICING_BATCH),
       paceOffset: settings.pace_offset,
       courseId: effectiveCourseId,
       examName: filters.examNames.length === 1 ? filters.examNames[0] : null,
@@ -103,6 +109,8 @@ export default function Study() {
       questionTypeId: filters.questionTypeId,
       // Pass enrolled courses for broader filtering when no single course selected
       enrolledCourseIds: enrolledCourseIdsArray,
+      // Ignore topic coverage & difficulty constraints when custom filters are active
+      ignoreConstraints: hasCustomFilters,
     };
   }, [studyPhase, dailyGoal, settings.pace_offset, filters, enrolledCourseIdsArray]);
 
