@@ -11,12 +11,12 @@ import { cn } from '@/lib/utils';
 import { PageTransition } from '@/components/motion/PageTransition';
 import { useFocusContext, FocusPreset, NarrowByOption } from '@/contexts/FocusContext';
 import {
-  useCourses,
   useTopicsGroupedByMidterm,
   useUpcomingExams,
   usePastExamsHierarchy,
   useQuestionTypesForCourses,
 } from '@/hooks/use-focus';
+import { useEnrollments } from '@/hooks/use-enrollments';
 import { useRecommendedPresets } from '@/hooks/use-study-recommendations';
 import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { getCourseCardColor } from '@/lib/examUtils';
@@ -37,7 +37,19 @@ export default function StudyFocus() {
     hasActiveFilters,
   } = useFocusContext();
 
-  const { data: courses = [] } = useCourses();
+  // Use enrolled courses instead of all published courses
+  const { enrollments, isLoadingEnrollments } = useEnrollments();
+  
+  // Map enrollments to course format for display
+  const courses = useMemo(() => {
+    return enrollments
+      .filter(e => e.course_packs)
+      .map(e => ({
+        id: e.course_pack_id,
+        title: (e.course_packs as any)?.title || 'Unknown Course',
+      }));
+  }, [enrollments]);
+  
   const { data: upcomingExams = [] } = useUpcomingExams(filters.courseIds);
   const { data: topicGroups = [] } = useTopicsGroupedByMidterm(filters.courseIds);
   const { data: pastExams = [] } = usePastExamsHierarchy(filters.courseIds);
