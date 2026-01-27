@@ -120,8 +120,19 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
       }));
 
       // Map recommended questions to StudyQuestion format
-      return (recommended || []).map((q: any) => {
+      const studyQuestions = (recommended || []).map((q: any) => {
         const extras = questionExtras.get(q.question_id);
+        const hasSubparts = extras?.subparts && Array.isArray(extras.subparts) && extras.subparts.length > 0;
+        
+        // Log questions with subparts for debugging
+        if (hasSubparts) {
+          console.log('[useStudyQuestions] Multi-part question found:', {
+            id: q.question_id,
+            subpartCount: extras.subparts.length,
+            format: extras.question_format,
+          });
+        }
+        
         return {
           id: q.question_id,
           prompt: q.prompt,
@@ -133,7 +144,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           topicNames: (q.topic_ids || []).map((id: string) => topicMap.get(id)?.title || 'Unknown Topic'),
           sourceExam: q.source_exam,
           solutionSteps: q.solution_steps as string[] | null,
-          questionType: 'multiple_choice', // Default for now
+          questionType: extras?.question_format || 'multiple_choice',
           imageUrl: extras?.image_url || null,
           guideMeSteps: extras?.guide_me_steps || null,
           questionFormat: (extras?.question_format || 'multiple_choice') as 'multiple_choice' | 'short_answer' | 'numeric',
@@ -144,6 +155,13 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           _knowledgeGap: q.knowledge_gap,
         };
       });
+      
+      console.log('[useStudyQuestions] Returned questions:', {
+        total: studyQuestions.length,
+        withSubparts: studyQuestions.filter(q => q.subparts && q.subparts.length > 0).length,
+      });
+      
+      return studyQuestions;
     },
     enabled: !!user,
     staleTime: 2 * 60 * 1000, // Cache for 2 minutes (shorter since recommendations change)
