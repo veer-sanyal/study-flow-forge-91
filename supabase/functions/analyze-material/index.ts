@@ -135,9 +135,18 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Convert to base64 for Gemini
+    // Convert to base64 for Gemini using chunked approach to avoid stack overflow
     const arrayBuffer = await fileData.arrayBuffer();
-    const base64 = btoa(String.fromCharCode(...new Uint8Array(arrayBuffer)));
+    const uint8Array = new Uint8Array(arrayBuffer);
+    
+    // Process in chunks to avoid "Maximum call stack size exceeded" error
+    const CHUNK_SIZE = 32768; // 32KB chunks
+    let base64 = '';
+    for (let i = 0; i < uint8Array.length; i += CHUNK_SIZE) {
+      const chunk = uint8Array.slice(i, i + CHUNK_SIZE);
+      base64 += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    base64 = btoa(base64);
     
     // Determine MIME type
     const mimeType = material.material_type === 'lecture_pdf' || material.material_type === 'exam_pdf'
