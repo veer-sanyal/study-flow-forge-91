@@ -165,8 +165,8 @@ Deno.serve(async (req) => {
       }>;
     };
 
-    // Generate questions using Gemini
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`;
+    // Generate questions using Gemini (using gemini-3-flash-preview for consistency)
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`;
 
     const topicsContext = topics
       .map((t) => {
@@ -179,34 +179,24 @@ ${[...topicObjectives, ...(analysedTopic?.objectives || [])].map((o) => `- ${o}`
       })
       .join("\n\n");
 
-    const generationPrompt = `You are a course question generator. Generate practice questions based on the following topics and learning objectives.
+    const generationPrompt = `You are a course question generator. Generate ${quantityPerBucket} practice questions per topic.
 
-TOPICS AND OBJECTIVES:
+TOPICS:
 ${topicsContext}
 
-REQUIREMENTS:
-1. Generate ${quantityPerBucket} questions per topic
-2. Difficulty range: ${difficultyRange[0]} to ${difficultyRange[1]} (1=easy, 5=hard)
-3. Question types to include: ${typesList}
-4. Each question must have:
-   - Clear, unambiguous stem
-   - 4 choices for MCQ (A, B, C, D)
-   - Step-by-step solution
-   - 3 progressive hints
-   - 2+ common mistakes students make
-   - Relevant tags
+RULES:
+- Difficulty: ${difficultyRange[0]}-${difficultyRange[1]} (1=easy, 5=hard)
+- Types: ${typesList}
+- Each question needs: stem, 4 MCQ choices (A-D), correct answer letter, solution, 3 hints, 2 common mistakes, tags, difficulty
+- Keep solutions concise (under 100 words each)
+- Keep hints short (one sentence each)
 
-5. Questions should:
-   - Test understanding, not just recall
-   - Be appropriate for the difficulty level
-   - Have plausible distractors for MCQ
-   - Reference specific concepts from the objectives
+CRITICAL: Your response MUST be complete valid JSON. Do not truncate. End with proper closing brackets.
 
-OUTPUT FORMAT:
-Return ONLY valid JSON matching this schema:
-${QUESTION_SCHEMA}
+Return this exact JSON structure:
+{"questions":[{"stem":"question text","answer_format":"mcq","choices":["A) opt1","B) opt2","C) opt3","D) opt4"],"correct_answer":"A","full_solution":"brief solution","hints":["hint1","hint2","hint3"],"common_mistakes":["mistake1","mistake2"],"tags":["tag1"],"difficulty":3}]}`;
 
-Generate the questions now:`;
+    console.log(`Generating questions with prompt length: ${generationPrompt.length}`);
 
     const geminiResponse = await fetch(geminiUrl, {
       method: "POST",
@@ -218,8 +208,8 @@ Generate the questions now:`;
           },
         ],
         generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 16384,
+          temperature: 0.6,
+          maxOutputTokens: 32768, // Increased to prevent truncation
           response_mime_type: "application/json",
         },
       }),

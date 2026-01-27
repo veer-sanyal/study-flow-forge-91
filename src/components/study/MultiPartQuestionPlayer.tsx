@@ -31,7 +31,24 @@ export function MultiPartQuestionPlayer({
   onSimilar,
 }: MultiPartQuestionPlayerProps) {
   const prefersReducedMotion = useReducedMotion();
-  const subparts = question.subparts || [];
+  
+  // Normalize subparts - ensure they have required fields
+  const subparts = (question.subparts || []).map((sp, idx) => ({
+    id: sp.id || String.fromCharCode(97 + idx), // 'a', 'b', 'c'...
+    prompt: sp.prompt || `Part ${String.fromCharCode(97 + idx)}`,
+    points: sp.points ?? 1,
+    correctAnswer: sp.correctAnswer,
+    solutionSteps: sp.solutionSteps,
+    imageUrl: sp.imageUrl,
+    modelAnswer: sp.modelAnswer,
+    gradingRubric: sp.gradingRubric,
+  }));
+  
+  // Debug log
+  console.log('[MultiPartQuestionPlayer] Subparts:', {
+    count: subparts.length,
+    subparts: subparts.map(s => ({ id: s.id, promptLength: s.prompt?.length })),
+  });
   
   // State for current subpart
   const [currentPartIndex, setCurrentPartIndex] = useState(0);
@@ -52,8 +69,10 @@ export function MultiPartQuestionPlayer({
   const isLastPart = currentPartIndex === subparts.length - 1;
   const partLabel = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex] || String(currentPartIndex + 1);
   
-  // Determine if current subpart has choices (MCQ) or is free response
-  const isMCQ = question.choices && question.choices.length > 0 && currentPartIndex === 0;
+  // Determine if current subpart has its own choices (MCQ) or is free response
+  // Subparts are typically free response unless they have explicit choices
+  const subpartChoices = (currentSubpart as any)?.choices;
+  const isMCQ = Array.isArray(subpartChoices) && subpartChoices.length > 0;
   
   // Check if answer is correct (simplified for now - can be enhanced with AI grading)
   const checkAnswer = useCallback(() => {
@@ -197,34 +216,35 @@ export function MultiPartQuestionPlayer({
       />
       
       {/* Current subpart */}
-      <motion.div
-        key={currentPartIndex}
-        className="space-y-4"
-        {...subpartVariants}
-      >
-        {/* Subpart prompt */}
-        <div className="p-4 rounded-lg border-2 border-primary/20 bg-card shadow-sm">
-          <div className="flex items-start gap-3">
-            <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
-              {partLabel}
-            </div>
-            <div className="flex-1 space-y-3">
-              <div className="text-base leading-relaxed">
-                <MathRenderer content={currentSubpart.prompt} />
+      {currentSubpart ? (
+        <motion.div
+          key={currentPartIndex}
+          className="space-y-4"
+          {...subpartVariants}
+        >
+          {/* Subpart prompt */}
+          <div className="p-4 rounded-lg border-2 border-primary/20 bg-card shadow-sm">
+            <div className="flex items-start gap-3">
+              <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
+                {partLabel}
               </div>
-              
-              {/* Points indicator */}
-              <div className="text-xs text-muted-foreground">
-                {currentSubpart.points} point{currentSubpart.points !== 1 ? 's' : ''}
+              <div className="flex-1 space-y-3">
+                <div className="text-base leading-relaxed">
+                  <MathRenderer content={currentSubpart.prompt} />
+                </div>
+                
+                {/* Points indicator */}
+                <div className="text-xs text-muted-foreground">
+                  {currentSubpart.points} point{currentSubpart.points !== 1 ? 's' : ''}
+                </div>
+                
+                {/* Subpart image */}
+                {currentSubpart.imageUrl && (
+                  <QuestionImage src={currentSubpart.imageUrl} alt={`Part ${partLabel} diagram`} />
+                )}
               </div>
-              
-              {/* Subpart image */}
-              {currentSubpart.imageUrl && (
-                <QuestionImage src={currentSubpart.imageUrl} alt={`Part ${partLabel} diagram`} />
-              )}
             </div>
           </div>
-        </div>
         
         {/* Hint panel */}
         {showHint && question.hint && (
@@ -310,8 +330,14 @@ export function MultiPartQuestionPlayer({
               <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
-        )}
-      </motion.div>
+          )}
+        </motion.div>
+      ) : (
+        <div className="p-4 text-center text-muted-foreground">
+          <p>Error: No subpart data found for this question.</p>
+          <p className="text-sm mt-2">Question ID: {question.id}</p>
+        </div>
+      )}
     </motion.div>
   );
 }
