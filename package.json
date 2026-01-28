@@ -10,7 +10,10 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "doctor": "tsx scripts/doctor.ts",
+    "hash-file": "tsx scripts/ingest/hash-file.ts",
+    "check-dedupe": "tsx scripts/ingest/check-dedupe.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -72,6 +75,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.32.0",
+    "dotenv": "^16.4.5",
+    "tsx": "^4.19.1",
     "@tailwindcss/typography": "^0.5.16",
     "@testing-library/jest-dom": "^6.6.0",
     "@testing-library/react": "^16.0.0",
