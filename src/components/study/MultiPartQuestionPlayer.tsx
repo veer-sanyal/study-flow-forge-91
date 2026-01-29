@@ -160,20 +160,21 @@ export function MultiPartQuestionPlayer({
     setShowHint(prev => !prev);
   }, [hintUsed]);
   
-  // Animation variants
+  // Animation variants — opacity is intentionally omitted here because
+  // PageTransition already animates opacity 0→1. Nesting two opacity
+  // animations causes multiplicative dimming (outer × inner), making
+  // the content look extremely faded / translucent.
   const containerVariants = prefersReducedMotion
     ? {}
     : {
-        initial: { opacity: 0, y: 12 },
-        animate: { opacity: 1, y: 0 },
-        exit: { opacity: 0, y: -12 },
+        initial: { y: 12 },
+        animate: { y: 0 },
+        exit: { y: -12 },
         transition: { duration: 0.22, ease: "easeOut" },
       };
-  
-  // Only use x-axis slide for subpart transitions.
-  // Opacity is handled by the container motion.div — nesting two
-  // opacity-0 → opacity-1 animations causes the inner content to
-  // appear at (outer × inner) opacity, looking extremely faded.
+
+  // Only use x-axis slide for subpart transitions (same reasoning —
+  // no opacity here to avoid multiplicative dimming).
   const subpartVariants = prefersReducedMotion
     ? {}
     : {
