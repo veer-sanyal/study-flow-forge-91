@@ -1,5 +1,5 @@
 import { useState, useCallback, useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -170,12 +170,16 @@ export function MultiPartQuestionPlayer({
         transition: { duration: 0.22, ease: "easeOut" },
       };
   
+  // Only use x-axis slide for subpart transitions.
+  // Opacity is handled by the container motion.div — nesting two
+  // opacity-0 → opacity-1 animations causes the inner content to
+  // appear at (outer × inner) opacity, looking extremely faded.
   const subpartVariants = prefersReducedMotion
     ? {}
     : {
-        initial: { opacity: 0, x: 20 },
-        animate: { opacity: 1, x: 0 },
-        exit: { opacity: 0, x: -20 },
+        initial: { x: 20 },
+        animate: { x: 0 },
+        exit: { x: -20 },
         transition: { duration: 0.2, ease: "easeOut" },
       };
 
@@ -216,6 +220,7 @@ export function MultiPartQuestionPlayer({
       />
       
       {/* Current subpart */}
+      <AnimatePresence mode="wait">
       {currentSubpart ? (
         <motion.div
           key={currentPartIndex}
@@ -333,11 +338,12 @@ export function MultiPartQuestionPlayer({
           )}
         </motion.div>
       ) : (
-        <div className="p-4 text-center text-muted-foreground">
+        <motion.div key="no-subpart" className="p-4 text-center text-muted-foreground">
           <p>Error: No subpart data found for this question.</p>
           <p className="text-sm mt-2">Question ID: {question.id}</p>
-        </div>
+        </motion.div>
       )}
+      </AnimatePresence>
     </motion.div>
   );
 }
