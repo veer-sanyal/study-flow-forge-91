@@ -5,6 +5,7 @@ interface SubpartProgressProps {
   totalParts: number;
   currentPartIndex: number;
   completedParts: boolean[];
+  frontierIndex?: number;
   onPartSelect?: (index: number) => void;
 }
 
@@ -12,6 +13,7 @@ export function SubpartProgress({
   totalParts,
   currentPartIndex,
   completedParts,
+  frontierIndex = 0,
   onPartSelect,
 }: SubpartProgressProps) {
   const partLabels = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
@@ -21,7 +23,7 @@ export function SubpartProgress({
       {Array.from({ length: totalParts }).map((_, index) => {
         const isCompleted = completedParts[index];
         const isCurrent = index === currentPartIndex;
-        const isNavigable = onPartSelect && (isCompleted || isCurrent);
+        const isNavigable = onPartSelect && (isCompleted || isCurrent || index <= frontierIndex);
         const label = partLabels[index] || String(index + 1);
 
         return (

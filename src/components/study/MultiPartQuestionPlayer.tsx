@@ -13,7 +13,8 @@ import { ConfidenceTaps } from "./ConfidenceTaps";
 import { HintPanel } from "./HintPanel";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { StudyQuestion, StudySubpart, SubpartResult } from "@/types/study";
-import { ChevronRight, SkipForward, Lightbulb } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+import { ChevronRight, SkipForward, Lightbulb, Loader2 } from "lucide-react";
 
 interface MultiPartQuestionPlayerProps {
   question: StudyQuestion;
@@ -65,55 +66,127 @@ export function MultiPartQuestionPlayer({
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [isGrading, setIsGrading] = useState(false);
+  const [gradingFeedback, setGradingFeedback] = useState<string | null>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
   const [hintUsed, setHintUsed] = useState(false);
   const [showHint, setShowHint] = useState(false);
-  
+
   const currentSubpart = subparts[currentPartIndex];
   const isLastPart = currentPartIndex === subparts.length - 1;
   const partLabel = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex] || String(currentPartIndex + 1);
-  
+
   // Determine if current subpart has its own choices (MCQ) or is free response
   // Subparts are typically free response unless they have explicit choices
   const subpartChoices = (currentSubpart as any)?.choices;
   const isMCQ = Array.isArray(subpartChoices) && subpartChoices.length > 0;
-  
-  // Check if answer is correct (simplified for now - can be enhanced with AI grading)
-  const checkAnswer = useCallback(() => {
-    if (isMCQ && selectedChoice) {
+
+  // Check MCQ answer locally
+  const checkMCQAnswer = useCallback(() => {
+    if (selectedChoice) {
       const choice = question.choices?.find(c => c.id === selectedChoice);
       return choice?.isCorrect || false;
     }
-    // For free response, we'll mark as correct if they provided an answer
-    // Real grading would happen via AI
-    return answerText.trim().length > 0;
-  }, [isMCQ, selectedChoice, answerText, question.choices]);
-  
-  const handleSubmit = useCallback(() => {
-    const isCorrect = checkAnswer();
-    setIsSubmitted(true);
-    
-    // Record result for this subpart
-    const result: SubpartResult = {
-      subpartId: currentSubpart.id,
-      isCorrect,
-      confidence,
-      hintsUsed: hintUsed,
-      guideUsed: false,
-      skipped: false,
-      answerText: answerText || undefined,
-      selectedChoiceId: selectedChoice,
-      pointsEarned: isCorrect ? currentSubpart.points : 0,
-      maxPoints: currentSubpart.points,
-    };
-    
-    setPartResults(prev => [...prev, result]);
-    setCompletedParts(prev => {
-      const updated = [...prev];
-      updated[currentPartIndex] = true;
-      return updated;
-    });
-  }, [checkAnswer, currentSubpart, confidence, hintUsed, answerText, selectedChoice, currentPartIndex]);
+    return false;
+  }, [selectedChoice, question.choices]);
+
+  const handleSubmit = useCallback(async () => {
+    if (isMCQ) {
+      // MCQ: grade locally
+      const isCorrect = checkMCQAnswer();
+      setIsSubmitted(true);
+
+      const result: SubpartResult = {
+        subpartId: currentSubpart.id,
+        isCorrect,
+        confidence,
+        hintsUsed: hintUsed,
+        guideUsed: false,
+        skipped: false,
+        answerText: answerText || undefined,
+        selectedChoiceId: selectedChoice,
+        pointsEarned: isCorrect ? currentSubpart.points : 0,
+        maxPoints: currentSubpart.points,
+      };
+
+      setPartResults(prev => [...prev, result]);
+      setCompletedParts(prev => {
+        const updated = [...prev];
+        updated[currentPartIndex] = true;
+        return updated;
+      });
+    } else {
+      // Free response: grade with AI
+      setIsGrading(true);
+
+      try {
+        const { data, error } = await supabase.functions.invoke("grade-answer", {
+          body: {
+            questionPrompt: question.prompt,
+            subpartPrompt: currentSubpart.prompt,
+            studentAnswer: answerText,
+            correctAnswer: currentSubpart.correctAnswer,
+            modelAnswer: currentSubpart.modelAnswer,
+            gradingRubric: currentSubpart.gradingRubric,
+            solutionSteps: currentSubpart.solutionSteps || question.solutionSteps,
+            maxPoints: currentSubpart.points,
+          },
+        });
+
+        if (error) throw error;
+
+        const isCorrect = data?.isCorrect ?? false;
+        const pointsEarned = data?.score ?? 0;
+        setGradingFeedback(data?.feedback ?? null);
+        setIsGrading(false);
+        setIsSubmitted(true);
+
+        const result: SubpartResult = {
+          subpartId: currentSubpart.id,
+          isCorrect,
+          confidence,
+          hintsUsed: hintUsed,
+          guideUsed: false,
+          skipped: false,
+          answerText,
+          pointsEarned,
+          maxPoints: currentSubpart.points,
+        };
+
+        setPartResults(prev => [...prev, result]);
+        setCompletedParts(prev => {
+          const updated = [...prev];
+          updated[currentPartIndex] = true;
+          return updated;
+        });
+      } catch (err) {
+        console.error("AI grading failed, falling back:", err);
+        // Fallback: mark as needs review
+        setIsGrading(false);
+        setIsSubmitted(true);
+        setGradingFeedback("Could not grade automatically. Your answer has been recorded.");
+
+        const result: SubpartResult = {
+          subpartId: currentSubpart.id,
+          isCorrect: false,
+          confidence,
+          hintsUsed: hintUsed,
+          guideUsed: false,
+          skipped: false,
+          answerText,
+          pointsEarned: 0,
+          maxPoints: currentSubpart.points,
+        };
+
+        setPartResults(prev => [...prev, result]);
+        setCompletedParts(prev => {
+          const updated = [...prev];
+          updated[currentPartIndex] = true;
+          return updated;
+        });
+      }
+    }
+  }, [isMCQ, checkMCQAnswer, currentSubpart, question, confidence, hintUsed, answerText, selectedChoice, currentPartIndex]);
   
   const handleSkip = useCallback(() => {
     const result: SubpartResult = {
@@ -149,6 +222,8 @@ export function MultiPartQuestionPlayer({
     setSelectedChoice(null);
     setAnswerText("");
     setIsSubmitted(false);
+    setIsGrading(false);
+    setGradingFeedback(null);
     setConfidence(null);
     setHintUsed(false);
     setShowHint(false);
@@ -164,6 +239,8 @@ export function MultiPartQuestionPlayer({
       // Show saved result in review mode
       setIsReviewing(true);
       setIsSubmitted(true);
+      setIsGrading(false);
+      setGradingFeedback(null);
       const savedResult = partResults.find(r => r.subpartId === subparts[targetIndex]?.id);
       setSelectedChoice(savedResult?.selectedChoiceId ?? null);
       setAnswerText(savedResult?.answerText ?? "");
@@ -175,6 +252,8 @@ export function MultiPartQuestionPlayer({
       setSelectedChoice(null);
       setAnswerText("");
       setIsSubmitted(false);
+      setIsGrading(false);
+      setGradingFeedback(null);
       setConfidence(null);
       setHintUsed(false);
     }
@@ -255,6 +334,7 @@ export function MultiPartQuestionPlayer({
         totalParts={subparts.length}
         currentPartIndex={currentPartIndex}
         completedParts={completedParts}
+        frontierIndex={frontierIndex}
         onPartSelect={goToPart}
       />
       
@@ -302,7 +382,13 @@ export function MultiPartQuestionPlayer({
         )}
         
         {/* Answer input area */}
-        {!isSubmitted ? (
+        {isGrading ? (
+          /* Grading in progress */
+          <div className="flex flex-col items-center gap-3 py-8">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <p className="text-sm text-muted-foreground">Grading your answer...</p>
+          </div>
+        ) : !isSubmitted ? (
           <div className="space-y-4">
             {/* For MCQ subparts - show choices */}
             {isMCQ && question.choices ? (
@@ -322,7 +408,7 @@ export function MultiPartQuestionPlayer({
                 className="min-h-[100px] text-base"
               />
             )}
-            
+
             {/* Action buttons */}
             <div className="flex items-center gap-3">
               <Button
@@ -333,7 +419,7 @@ export function MultiPartQuestionPlayer({
                 Submit Part {partLabel.toUpperCase()}
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
-              
+
               {question.hint && (
                 <Button
                   variant="outline"
@@ -344,7 +430,7 @@ export function MultiPartQuestionPlayer({
                   <Lightbulb className="h-4 w-4" />
                 </Button>
               )}
-              
+
               <Button
                 variant="ghost"
                 size="icon"
@@ -364,13 +450,20 @@ export function MultiPartQuestionPlayer({
               solutionRevealed={true}
               solution={currentSubpart.solutionSteps || question.solutionSteps}
             />
-            
+
+            {/* AI grading feedback */}
+            {gradingFeedback && (
+              <div className="p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
+                {gradingFeedback}
+              </div>
+            )}
+
             {/* Confidence taps */}
             <ConfidenceTaps
               selectedConfidence={confidence}
               onSelect={setConfidence}
             />
-            
+
             {/* Next button */}
             <Button
               onClick={handleNext}

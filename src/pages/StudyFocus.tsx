@@ -18,7 +18,7 @@ import {
 } from '@/hooks/use-focus';
 import { useEnrollments } from '@/hooks/use-enrollments';
 import { useRecommendedPresets } from '@/hooks/use-study-recommendations';
-import { fadeSlideUp, duration, easing } from '@/lib/motion';
+import { fadeSlideUp, duration, easing, distance, stagger } from '@/lib/motion';
 import { getCourseCardColor } from '@/lib/examUtils';
 
 export default function StudyFocus() {
@@ -161,10 +161,27 @@ export default function StudyFocus() {
 
       {/* Content */}
       <ScrollArea className="flex-1">
-        <div className="p-4 sm:p-6 max-w-3xl mx-auto space-y-8 pb-32">
+        <motion.div
+          className="p-4 sm:p-6 max-w-3xl mx-auto space-y-8 pb-32"
+          initial="hidden"
+          animate="visible"
+          variants={{
+            hidden: {},
+            visible: {
+              transition: { staggerChildren: stagger.normal, delayChildren: 0.15 },
+            },
+          }}
+        >
           {/* Recommended Presets */}
           {recommendedPresets.length > 0 && (
-            <section className="space-y-4">
+            <motion.section
+              layout
+              variants={{
+                hidden: { opacity: 0, y: distance.sm },
+                visible: { opacity: 1, y: 0, transition: { duration: duration.normal, ease: easing.easeOut } },
+              }}
+              className="space-y-4"
+            >
               <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                 <Star className="h-4 w-4 text-primary" />
                 Recommended
@@ -194,11 +211,18 @@ export default function StudyFocus() {
                   </Button>
                 ))}
               </div>
-            </section>
+            </motion.section>
           )}
 
           {/* Courses - Bigger, more visual cards */}
-          <section className="space-y-4">
+          <motion.section
+            layout
+            variants={{
+              hidden: { opacity: 0, y: distance.sm },
+              visible: { opacity: 1, y: 0, transition: { duration: duration.normal, ease: easing.easeOut } },
+            }}
+            className="space-y-4"
+          >
             <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
               Select Course
             </h2>
@@ -241,12 +265,13 @@ export default function StudyFocus() {
                 );
               })}
             </div>
-          </section>
+          </motion.section>
 
           {/* Upcoming Midterms - Show automatically when courses are selected */}
           <AnimatePresence>
             {hasCoursesSelected && upcomingMidterms.length > 0 && (
               <motion.section
+                layout
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
@@ -301,6 +326,7 @@ export default function StudyFocus() {
           <AnimatePresence>
             {hasCoursesSelected && (
               <motion.section
+                layout
                 initial={{ opacity: 0, y: 12 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -8 }}
@@ -545,7 +571,7 @@ export default function StudyFocus() {
               </motion.section>
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
       </ScrollArea>
 
       {/* Footer */}

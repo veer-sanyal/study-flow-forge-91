@@ -231,17 +231,18 @@ export default function Study() {
   );
 
   const handleStartTodayPlan = useCallback(async () => {
+    setStudyState("playing");
     setStudyPhase("today_plan");
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
-    setStudyState("playing");
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
 
   const handleStartPractice = useCallback(async (preset?: FocusPreset) => {
+    setStudyState("playing");
     if (preset) {
       applyPreset(preset);
     }
@@ -251,28 +252,27 @@ export default function Study() {
     setCurrentIndex(0);
     setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
-    setStudyState("playing");
     questionStartTime.current = Date.now();
   }, [queryClient, refetch, applyPreset]);
 
   const handleKeepPracticing = useCallback(async () => {
+    setStudyState("playing");
     setStudyPhase("keep_practicing");
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
-    setStudyState("playing");
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
 
   const handleContinuePracticing = useCallback(async () => {
+    setStudyState("playing");
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
     setSessionResults({ correct: 0, total: 0 });
-    setStudyState("playing");
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
 

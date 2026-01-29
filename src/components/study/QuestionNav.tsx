@@ -1,6 +1,5 @@
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { Check, Circle, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface QuestionNavProps {
@@ -33,8 +32,8 @@ export function QuestionNav({
       </Button>
 
       {/* Question pills */}
-      <ScrollArea className="flex-1">
-        <div className="flex gap-1.5 px-1">
+      <div className="flex-1 overflow-x-auto overflow-y-visible">
+        <div className="flex gap-1.5 px-1 py-1">
           {Array.from({ length: totalQuestions }, (_, i) => {
             const isCompleted = completedIndices.includes(i);
             const isCurrent = i === currentIndex;
@@ -61,8 +60,7 @@ export function QuestionNav({
             );
           })}
         </div>
-        <ScrollBar orientation="horizontal" className="h-1.5" />
-      </ScrollArea>
+      </div>
 
       {/* Next button */}
       <Button
