@@ -160,6 +160,7 @@ export function QuestionPlayer({
         questionNumber={questionNumber}
         totalQuestions={totalQuestions}
         imageUrl={question.imageUrl}
+        sourceExam={question.sourceExam}
       />
 
 

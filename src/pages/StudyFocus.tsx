@@ -208,18 +208,17 @@ export default function StudyFocus() {
                 const { gradient } = getCourseCardColor(course.title, index);
                 
                 return (
-                  <motion.button
+                  <button
                     key={course.id}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
                     onClick={() => handleCourseToggle(course.id)}
                     className={cn(
-                      "relative p-6 rounded-xl text-left transition-all overflow-hidden",
-                      "bg-gradient-to-br",
+                      "relative p-6 rounded-xl text-left overflow-hidden",
+                      "bg-gradient-to-br transition-all duration-200 ease-out",
+                      "active:scale-[0.98]",
                       gradient,
-                      isSelected 
-                        ? "ring-2 ring-primary ring-offset-2 ring-offset-background" 
-                        : "opacity-80 hover:opacity-100"
+                      isSelected
+                        ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-100"
+                        : "opacity-80 hover:opacity-100 hover:scale-[1.02]"
                     )}
                   >
                     {/* Selected indicator */}
@@ -238,7 +237,7 @@ export default function StudyFocus() {
                     <h3 className="font-semibold text-white text-lg leading-tight line-clamp-2">
                       {course.title}
                     </h3>
-                  </motion.button>
+                  </button>
                 );
               })}
             </div>
@@ -248,11 +247,11 @@ export default function StudyFocus() {
           <AnimatePresence>
             {hasCoursesSelected && upcomingMidterms.length > 0 && (
               <motion.section
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: duration.normal, ease: easing.easeOut }}
-                className="space-y-4 overflow-hidden"
+                className="space-y-4"
               >
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-2">
                   <Calendar className="h-4 w-4 text-primary" />
@@ -302,11 +301,11 @@ export default function StudyFocus() {
           <AnimatePresence>
             {hasCoursesSelected && (
               <motion.section
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.05 }}
-                className="space-y-4 overflow-hidden"
+                className="space-y-4"
               >
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
                   Filter by (optional)
@@ -549,11 +548,9 @@ export default function StudyFocus() {
         </div>
       </ScrollArea>
 
-      {/* Footer with animation */}
-      <motion.footer
-        layout
-        transition={{ duration: duration.normal, ease: easing.easeOut }}
-        className="border-t bg-card px-4 py-4 flex gap-3"
+      {/* Footer */}
+      <footer
+        className="border-t bg-card px-4 py-4 flex gap-3 transition-all duration-200"
       >
         {hasActiveFilters && (
           <Button
@@ -571,7 +568,7 @@ export default function StudyFocus() {
           Start Practice
           <ChevronRight className="h-4 w-4 ml-1" />
         </Button>
-      </motion.footer>
+      </footer>
     </PageTransition>
   );
 }

@@ -56,7 +56,11 @@ export function MultiPartQuestionPlayer({
   const [completedParts, setCompletedParts] = useState<boolean[]>(
     new Array(subparts.length).fill(false)
   );
-  
+  // Track the frontier — the furthest uncompleted part index
+  const [frontierIndex, setFrontierIndex] = useState(0);
+  // Whether we're reviewing a previously completed part
+  const [isReviewing, setIsReviewing] = useState(false);
+
   // State for current subpart interaction
   const [selectedChoice, setSelectedChoice] = useState<string | null>(null);
   const [answerText, setAnswerText] = useState("");
@@ -138,22 +142,56 @@ export function MultiPartQuestionPlayer({
   }, [currentSubpart, hintUsed, isLastPart, partResults, onComplete, currentPartIndex]);
   
   const handleNext = useCallback(() => {
+    if (isReviewing) {
+      // Return to the frontier (current active part)
+      goToPart(frontierIndex);
+      return;
+    }
     if (isLastPart) {
       onComplete(partResults);
     } else {
       advanceToNextPart();
     }
-  }, [isLastPart, partResults, onComplete]);
+  }, [isReviewing, isLastPart, partResults, onComplete, advanceToNextPart, goToPart, frontierIndex]);
   
   const advanceToNextPart = useCallback(() => {
-    setCurrentPartIndex(prev => prev + 1);
+    const nextIndex = currentPartIndex + 1;
+    setCurrentPartIndex(nextIndex);
+    setFrontierIndex(prev => Math.max(prev, nextIndex));
+    setIsReviewing(false);
     setSelectedChoice(null);
     setAnswerText("");
     setIsSubmitted(false);
     setConfidence(null);
     setHintUsed(false);
     setShowHint(false);
-  }, []);
+  }, [currentPartIndex]);
+
+  const goToPart = useCallback((targetIndex: number) => {
+    if (targetIndex === currentPartIndex) return;
+    const isTargetCompleted = completedParts[targetIndex];
+    setCurrentPartIndex(targetIndex);
+    setShowHint(false);
+
+    if (isTargetCompleted) {
+      // Show saved result in review mode
+      setIsReviewing(true);
+      setIsSubmitted(true);
+      const savedResult = partResults.find(r => r.subpartId === subparts[targetIndex]?.id);
+      setSelectedChoice(savedResult?.selectedChoiceId ?? null);
+      setAnswerText(savedResult?.answerText ?? "");
+      setConfidence(savedResult?.confidence ?? null);
+      setHintUsed(savedResult?.hintsUsed ?? false);
+    } else {
+      // Navigate to the frontier (current active part)
+      setIsReviewing(false);
+      setSelectedChoice(null);
+      setAnswerText("");
+      setIsSubmitted(false);
+      setConfidence(null);
+      setHintUsed(false);
+    }
+  }, [currentPartIndex, completedParts, partResults, subparts]);
   
   const handleHintToggle = useCallback(() => {
     if (!hintUsed) setHintUsed(true);
@@ -191,7 +229,12 @@ export function MultiPartQuestionPlayer({
     >
       {/* Meta info */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {question.sourceExam && (
+            <Badge variant="default" className="text-xs">
+              {question.sourceExam}
+            </Badge>
+          )}
           <Badge variant="secondary" className="text-xs">
             {question.topicNames[0] || "Topic"}
           </Badge>
@@ -202,16 +245,17 @@ export function MultiPartQuestionPlayer({
             Part {partLabel} of {subparts.length}
           </Badge>
         </div>
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-muted-foreground shrink-0 ml-2">
           {totalQuestions ? `Q${questionNumber} / ${totalQuestions}` : `#${questionNumber}`}
         </span>
       </div>
       
-      {/* Subpart progress indicator */}
+      {/* Subpart progress indicator — clickable */}
       <SubpartProgress
         totalParts={subparts.length}
         currentPartIndex={currentPartIndex}
         completedParts={completedParts}
+        onPartSelect={goToPart}
       />
       
       {/* Parent context - always visible */}
@@ -332,7 +376,12 @@ export function MultiPartQuestionPlayer({
               onClick={handleNext}
               className="w-full"
             >
-              {isLastPart ? "Complete Question" : `Next: Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex + 1] || currentPartIndex + 2}`}
+              {isReviewing
+                ? `Back to Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][frontierIndex] || frontierIndex + 1}`
+                : isLastPart
+                  ? "Complete Question"
+                  : `Next: Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex + 1] || currentPartIndex + 2}`
+              }
               <ChevronRight className="ml-2 h-4 w-4" />
             </Button>
           </div>

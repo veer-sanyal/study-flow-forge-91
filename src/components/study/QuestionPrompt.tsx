@@ -10,6 +10,7 @@ interface QuestionPromptProps {
   questionNumber: number;
   totalQuestions?: number; // Optional for infinite mode
   imageUrl?: string | null;
+  sourceExam?: string | null;
 }
 
 export function QuestionPrompt({
@@ -20,12 +21,18 @@ export function QuestionPrompt({
   questionNumber,
   totalQuestions,
   imageUrl,
+  sourceExam,
 }: QuestionPromptProps) {
   return (
     <div className="space-y-5">
       {/* Meta info */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {sourceExam && (
+            <Badge variant="default" className="text-xs">
+              {sourceExam}
+            </Badge>
+          )}
           <Badge variant="secondary" className="text-xs">
             {topicName}
           </Badge>
@@ -33,7 +40,7 @@ export function QuestionPrompt({
             {questionType}
           </Badge>
         </div>
-        <span className="text-sm text-muted-foreground">
+        <span className="text-sm text-muted-foreground shrink-0 ml-2">
           {totalQuestions ? `${questionNumber} / ${totalQuestions}` : `#${questionNumber}`}
         </span>
       </div>

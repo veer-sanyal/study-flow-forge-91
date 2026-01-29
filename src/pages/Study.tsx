@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AnimatePresence } from "framer-motion";
-import { Loader2, ArrowLeft } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
+import { StudyLoadingScreen } from "@/components/study/StudyLoadingScreen";
 import { Button } from "@/components/ui/button";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { QuestionPlayer } from "@/components/study/QuestionPlayer";
@@ -446,7 +447,7 @@ export default function Study() {
     );
   }
 
-  // Loading state for PLAYING
+  // Loading state for PLAYING — animated loading screen
   if (isLoading && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
@@ -454,10 +455,10 @@ export default function Study() {
           <Button variant="ghost" size="icon" onClick={handleGoHome}>
             <ArrowLeft className="h-5 w-5" />
           </Button>
-          <span className="text-sm text-muted-foreground">Loading...</span>
+          <span className="text-sm text-muted-foreground">Loading session...</span>
         </div>
-        <PageTransition className="flex-1 flex items-center justify-center py-20">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <PageTransition className="flex-1">
+          <StudyLoadingScreen />
         </PageTransition>
       </div>
     );

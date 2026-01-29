@@ -4,34 +4,45 @@ import { cn } from "@/lib/utils";
 interface SubpartProgressProps {
   totalParts: number;
   currentPartIndex: number;
-  completedParts: boolean[];  // Array of completion status per part
+  completedParts: boolean[];
+  onPartSelect?: (index: number) => void;
 }
 
-export function SubpartProgress({ 
-  totalParts, 
-  currentPartIndex, 
-  completedParts 
+export function SubpartProgress({
+  totalParts,
+  currentPartIndex,
+  completedParts,
+  onPartSelect,
 }: SubpartProgressProps) {
   const partLabels = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-  
+
   return (
     <div className="flex items-center justify-center gap-2">
       {Array.from({ length: totalParts }).map((_, index) => {
         const isCompleted = completedParts[index];
         const isCurrent = index === currentPartIndex;
+        const isNavigable = onPartSelect && (isCompleted || isCurrent);
         const label = partLabels[index] || String(index + 1);
-        
+
         return (
-          <div 
-            key={index} 
-            className="flex flex-col items-center gap-1"
+          <button
+            key={index}
+            type="button"
+            disabled={!isNavigable}
+            onClick={() => isNavigable && onPartSelect(index)}
+            className={cn(
+              "flex flex-col items-center gap-1",
+              isNavigable && "cursor-pointer",
+              !isNavigable && "cursor-default"
+            )}
           >
             <div
               className={cn(
                 "w-8 h-8 rounded-full flex items-center justify-center text-xs font-medium transition-all duration-200",
                 isCompleted && "bg-primary text-primary-foreground",
                 isCurrent && !isCompleted && "bg-primary/20 text-primary ring-2 ring-primary ring-offset-2 ring-offset-background",
-                !isCompleted && !isCurrent && "bg-muted text-muted-foreground"
+                !isCompleted && !isCurrent && "bg-muted text-muted-foreground",
+                isNavigable && !isCurrent && "hover:ring-2 hover:ring-primary/50 hover:ring-offset-2 hover:ring-offset-background",
               )}
             >
               {isCompleted ? (
@@ -40,7 +51,7 @@ export function SubpartProgress({
                 label
               )}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

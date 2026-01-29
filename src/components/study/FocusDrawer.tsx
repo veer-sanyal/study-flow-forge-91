@@ -29,7 +29,7 @@ import {
   useQuestionTypesForCourses,
 } from '@/hooks/use-focus';
 import { useRecommendedPresets } from '@/hooks/use-study-recommendations';
-import { fadeSlideUp, duration } from '@/lib/motion';
+import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { getCourseCardColor } from '@/lib/examUtils';
 
 interface FocusDrawerProps {
@@ -203,10 +203,10 @@ export function FocusDrawer({
             <AnimatePresence>
               {hasCoursesSelected && upcomingMidterms.length > 0 && (
                 <motion.section
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: 'auto' }}
-                  exit={{ opacity: 0, height: 0 }}
-                  transition={{ duration: duration.fast }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: duration.normal, ease: easing.easeOut }}
                   className="space-y-3"
                 >
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5">
@@ -247,10 +247,10 @@ export function FocusDrawer({
             <AnimatePresence>
               {hasCoursesSelected && (
                 <motion.section
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: duration.fast }}
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -6 }}
+                  transition={{ duration: duration.normal, ease: easing.easeOut }}
                   className="space-y-3"
                 >
                   <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
