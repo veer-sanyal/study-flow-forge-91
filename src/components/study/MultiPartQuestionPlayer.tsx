@@ -141,19 +141,6 @@ export function MultiPartQuestionPlayer({
     }
   }, [currentSubpart, hintUsed, isLastPart, partResults, onComplete, currentPartIndex]);
   
-  const handleNext = useCallback(() => {
-    if (isReviewing) {
-      // Return to the frontier (current active part)
-      goToPart(frontierIndex);
-      return;
-    }
-    if (isLastPart) {
-      onComplete(partResults);
-    } else {
-      advanceToNextPart();
-    }
-  }, [isReviewing, isLastPart, partResults, onComplete, advanceToNextPart, goToPart, frontierIndex]);
-  
   const advanceToNextPart = useCallback(() => {
     const nextIndex = currentPartIndex + 1;
     setCurrentPartIndex(nextIndex);
@@ -192,6 +179,19 @@ export function MultiPartQuestionPlayer({
       setHintUsed(false);
     }
   }, [currentPartIndex, completedParts, partResults, subparts]);
+
+  const handleNext = useCallback(() => {
+    if (isReviewing) {
+      // Return to the frontier (current active part)
+      goToPart(frontierIndex);
+      return;
+    }
+    if (isLastPart) {
+      onComplete(partResults);
+    } else {
+      advanceToNextPart();
+    }
+  }, [isReviewing, isLastPart, partResults, onComplete, advanceToNextPart, goToPart, frontierIndex]);
   
   const handleHintToggle = useCallback(() => {
     if (!hintUsed) setHintUsed(true);
