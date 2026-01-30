@@ -212,20 +212,21 @@ function useExamsForCourse(courseId: string) {
         }
       });
 
-      // Fetch material titles for the material IDs
-      let materialGroups: { materialId: string; title: string; count: number; needsReview: number }[] = [];
+      // Fetch material titles and storage paths for the material IDs
+      let materialGroups: { materialId: string; title: string; storagePath: string; count: number; needsReview: number }[] = [];
       if (materialIds.size > 0) {
         const { data: materials } = await supabase
           .from("course_materials")
-          .select("id, title")
+          .select("id, title, storage_path")
           .in("id", Array.from(materialIds));
 
-        const materialTitleMap = new Map<string, string>();
-        materials?.forEach((m: any) => materialTitleMap.set(m.id, m.title));
+        const materialDataMap = new Map<string, { title: string; storagePath: string }>();
+        materials?.forEach((m: any) => materialDataMap.set(m.id, { title: m.title, storagePath: m.storage_path }));
 
         materialGroups = Array.from(materialQuestionsByMaterial.entries()).map(([materialId, stats]) => ({
           materialId,
-          title: materialTitleMap.get(materialId) || "Unknown Material",
+          title: materialDataMap.get(materialId)?.title || "Unknown Material",
+          storagePath: materialDataMap.get(materialId)?.storagePath || "",
           count: stats.count,
           needsReview: stats.needsReview,
         }));
@@ -628,6 +629,75 @@ function ExamCard({
   );
 }
 
+function MaterialCard({
+  material,
+  courseId,
+  onDelete,
+}: {
+  material: { materialId: string; title: string; storagePath: string; count: number; needsReview: number };
+  courseId: string;
+  onDelete: (id: string, title: string, storagePath: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [isHovered, setIsHovered] = useState(false);
+  const canHover = useCanHover();
+  const showActions = !canHover || isHovered;
+
+  const handleClick = () => {
+    const encodedMaterial = encodeURIComponent(`material:${material.materialId}`);
+    navigate(`/admin/questions/${courseId}/${encodedMaterial}`);
+  };
+
+  return (
+    <Card
+      className={cn(
+        "transition-colors cursor-pointer",
+        isHovered && "border-primary/50"
+      )}
+      onClick={handleClick}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <CardContent className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="p-2 rounded-lg bg-muted">
+            <BookOpen className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium truncate">{material.title}</h3>
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span>{material.count} questions</span>
+              {material.needsReview > 0 && (
+                <Badge variant="destructive" className="h-5 gap-1 text-xs">
+                  <AlertCircle className="h-3 w-3" />
+                  {material.needsReview} need review
+                </Badge>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {showActions && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="text-destructive hover:text-destructive hover:bg-destructive/10"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(material.materialId, material.title, material.storagePath);
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          )}
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExamListSkeleton() {
   return (
     <div className="space-y-6">
@@ -970,6 +1040,7 @@ export default function AdminExamsList() {
   const yearGroups = examsData?.yearGroups;
   const materialGroups = examsData?.materialGroups || [];
   const deleteExam = useDeleteExamQuestions();
+  const deleteMaterial = useDeleteMaterial();
   const updateCourse = useUpdateCourseName();
   const updateExamDetails = useUpdateExamDetails();
   const { queueExamsForAnalysis, isProcessing, totalQueued, runningJob } = useAnalysisQueue();
@@ -978,6 +1049,7 @@ export default function AdminExamsList() {
   const [viewMode, setViewMode] = useState<ViewMode>("exams");
 
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
+  const [materialToDelete, setMaterialToDelete] = useState<{ id: string; title: string; storagePath: string } | null>(null);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [addExamOpen, setAddExamOpen] = useState(false);
   const [addMaterialOpen, setAddMaterialOpen] = useState(false);
@@ -1069,6 +1141,21 @@ export default function AdminExamsList() {
     if (examToDelete && courseId) {
       deleteExam.mutate({ courseId, sourceExam: examToDelete });
       setExamToDelete(null);
+    }
+  };
+
+  const handleConfirmDeleteMaterial = async () => {
+    if (materialToDelete) {
+      try {
+        await deleteMaterial.mutateAsync({
+          materialId: materialToDelete.id,
+          storagePath: materialToDelete.storagePath
+        });
+        toast.success("Material deleted successfully");
+      } catch (error) {
+        toast.error("Failed to delete material");
+      }
+      setMaterialToDelete(null);
     }
   };
 
@@ -1293,35 +1380,12 @@ export default function AdminExamsList() {
             </div>
             <div className="space-y-2 pl-2 border-l-2 border-muted">
               {materialGroups.map((group) => (
-                <Card
+                <MaterialCard
                   key={group.materialId}
-                  className="transition-colors cursor-pointer hover:border-primary/50"
-                  onClick={() => {
-                    const encodedMaterial = encodeURIComponent(`material:${group.materialId}`);
-                    navigate(`/admin/questions/${courseId}/${encodedMaterial}`);
-                  }}
-                >
-                  <CardContent className="p-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="p-2 rounded-lg bg-muted">
-                        <BookOpen className="h-5 w-5 text-muted-foreground" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium truncate">{group.title}</h3>
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                          <span>{group.count} questions</span>
-                          {group.needsReview > 0 && (
-                            <Badge variant="destructive" className="h-5 gap-1 text-xs">
-                              <AlertCircle className="h-3 w-3" />
-                              {group.needsReview} need review
-                            </Badge>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                  </CardContent>
-                </Card>
+                  material={group}
+                  courseId={courseId!}
+                  onDelete={(id, title, storagePath) => setMaterialToDelete({ id, title, storagePath })}
+                />
               ))}
             </div>
           </div>
@@ -1366,13 +1430,13 @@ export default function AdminExamsList() {
           onClose={() => setMaterialDetailId(null)}
         />
 
-        {/* Delete Confirmation Dialog */}
+        {/* Delete Confirmation Dialog for Exams */}
         <AlertDialog open={!!examToDelete} onOpenChange={() => setExamToDelete(null)}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle>Delete All Questions from Exam?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will permanently delete all questions from "{examToDelete}". 
+                This will permanently delete all questions from "{examToDelete}".
                 This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
@@ -1383,6 +1447,28 @@ export default function AdminExamsList() {
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 Delete All
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Delete Confirmation Dialog for Materials */}
+        <AlertDialog open={!!materialToDelete} onOpenChange={() => setMaterialToDelete(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Material?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete the material "{materialToDelete?.title}" and all its associated questions.
+                This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmDeleteMaterial}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete Material
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
