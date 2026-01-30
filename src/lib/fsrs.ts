@@ -34,6 +34,7 @@ export function dbRowToCard(row: DbSrsRow): Card {
     elapsed_days: row.elapsed_days,
     scheduled_days: row.scheduled_days,
     lapses: row.lapses,
+    learning_steps: row.learning_steps,
     state: row.state as State,
   };
 }
