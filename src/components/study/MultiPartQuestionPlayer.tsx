@@ -375,6 +375,11 @@ export function MultiPartQuestionPlayer({
       {/* Meta info */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
+          {question.courseName && (
+            <Badge variant="outline" className="text-xs bg-primary/5 border-primary/30">
+              {question.courseName}
+            </Badge>
+          )}
           {question.sourceExam && (
             <Badge variant="default" className="text-xs">
               {question.sourceExam}

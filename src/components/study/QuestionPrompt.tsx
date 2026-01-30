@@ -11,6 +11,7 @@ interface QuestionPromptProps {
   totalQuestions?: number; // Optional for infinite mode
   imageUrl?: string | null;
   sourceExam?: string | null;
+  courseName?: string | null;
 }
 
 export function QuestionPrompt({
@@ -22,12 +23,18 @@ export function QuestionPrompt({
   totalQuestions,
   imageUrl,
   sourceExam,
+  courseName,
 }: QuestionPromptProps) {
   return (
     <div className="space-y-5">
       {/* Meta info */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 flex-wrap">
+          {courseName && (
+            <Badge variant="outline" className="text-xs bg-primary/5 border-primary/30">
+              {courseName}
+            </Badge>
+          )}
           {sourceExam && (
             <Badge variant="default" className="text-xs">
               {sourceExam}

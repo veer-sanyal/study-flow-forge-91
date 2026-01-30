@@ -1,16 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useMaterialById, useMaterialChunks, useObjectivesForMaterial, useAnalyzeMaterial, useGenerateQuestions } from "@/hooks/use-materials";
+import { useMaterialById, useMaterialChunks, useObjectivesForMaterial, useAnalyzeMaterial, useGenerateQuestions, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage } from "@/hooks/use-materials";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus, type MaterialAnalysis } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Sparkles, FileText, Target, BookOpen, AlertCircle } from "lucide-react";
+import { Play, Sparkles, FileText, Target, BookOpen, AlertCircle, Save, Trash2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface MaterialDetailDrawerProps {
@@ -24,8 +27,51 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const { data: objectives } = useObjectivesForMaterial(materialId);
   const analyzeMaterial = useAnalyzeMaterial();
   const generateQuestions = useGenerateQuestions();
+  const updateMaterial = useUpdateMaterial();
+  const deleteMaterialQuestions = useDeleteMaterialQuestions();
+  const cleanupStorage = useCleanupMaterialStorage();
   const { toast } = useToast();
-  
+
+  // Editable fields
+  const [editTitle, setEditTitle] = useState("");
+  const [editWeek, setEditWeek] = useState<string>("");
+  const [editMidterm, setEditMidterm] = useState<string>("unassigned");
+
+  // Sync editable fields when material loads
+  useEffect(() => {
+    if (material) {
+      setEditTitle(material.title || "");
+      setEditWeek((material as any).scheduled_week?.toString() || "");
+      const mt = (material as any).corresponds_to_midterm;
+      setEditMidterm(mt != null ? String(mt) : "unassigned");
+    }
+  }, [material]);
+
+  const handleSaveMetadata = async () => {
+    if (!materialId) return;
+    try {
+      await updateMaterial.mutateAsync({
+        materialId,
+        title: editTitle || undefined,
+        scheduledWeek: editWeek ? parseInt(editWeek, 10) : null,
+        correspondsToMidterm: editMidterm !== "unassigned" ? parseInt(editMidterm, 10) : null,
+      });
+      toast({ title: "Material updated" });
+    } catch (error) {
+      toast({ title: "Update failed", description: String(error), variant: "destructive" });
+    }
+  };
+
+  const handleDeleteQuestions = async () => {
+    if (!materialId) return;
+    try {
+      await deleteMaterialQuestions.mutateAsync(materialId);
+      toast({ title: "Questions deleted" });
+    } catch (error) {
+      toast({ title: "Delete failed", description: String(error), variant: "destructive" });
+    }
+  };
+
   const handleAnalyze = async () => {
     if (!materialId) return;
     try {
@@ -36,13 +82,19 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
       toast({ title: "Analysis failed", description: String(error), variant: "destructive" });
     }
   };
-  
+
   const handleGenerateQuestions = async () => {
     if (!materialId) return;
     try {
       toast({ title: "Generating questions..." });
       await generateQuestions.mutateAsync({ materialId });
       toast({ title: "Questions generated!" });
+      // Auto-cleanup PDF storage after generation
+      try {
+        await cleanupStorage.mutateAsync(materialId);
+      } catch {
+        // Non-fatal: PDF cleanup is best-effort
+      }
     } catch (error) {
       toast({ title: "Generation failed", description: String(error), variant: "destructive" });
     }
@@ -112,6 +164,70 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                 )}
               </div>
               
+              {/* Editable Metadata */}
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Edit Material</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="space-y-1">
+                    <Label className="text-xs">Title</Label>
+                    <Input
+                      value={editTitle}
+                      onChange={(e) => setEditTitle(e.target.value)}
+                      placeholder="Material title"
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Week Number</Label>
+                      <Input
+                        type="number"
+                        value={editWeek}
+                        onChange={(e) => setEditWeek(e.target.value)}
+                        placeholder="e.g., 3"
+                        min={1}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Midterm Assignment</Label>
+                      <Select value={editMidterm} onValueChange={setEditMidterm}>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="unassigned">Unassigned</SelectItem>
+                          <SelectItem value="1">Midterm 1</SelectItem>
+                          <SelectItem value="2">Midterm 2</SelectItem>
+                          <SelectItem value="3">Midterm 3</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={handleSaveMetadata}
+                      disabled={updateMaterial.isPending}
+                    >
+                      <Save className="h-3.5 w-3.5 mr-1" />
+                      {updateMaterial.isPending ? "Saving..." : "Save"}
+                    </Button>
+                    {material.questions_generated_count > 0 && (
+                      <Button
+                        size="sm"
+                        variant="destructive"
+                        onClick={handleDeleteQuestions}
+                        disabled={deleteMaterialQuestions.isPending}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 mr-1" />
+                        {deleteMaterialQuestions.isPending ? "Deleting..." : "Delete Questions"}
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Error Message */}
               {material.error_message && (
                 <Card className="border-destructive">

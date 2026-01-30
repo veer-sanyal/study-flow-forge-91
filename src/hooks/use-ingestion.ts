@@ -512,26 +512,41 @@ function extractBaseTopicName(title: string): string {
 
 // Helper to parse midterm number from exam title
 function parseMidtermNumber(title: string): number | null {
-  const match = title.match(/midterm\s*(\d)/i);
+  const match = title.match(/(?:midterm|exam)\s*(\d)/i);
   if (match) return parseInt(match[1], 10);
   return null;
 }
 
-// Calculate which midterm a topic belongs to based on its date relative to exam dates
+// Calculate which midterm a topic belongs to based on its week or date relative to exam dates
 function calculateMidtermCoverage(
   topicDate: string | null,
-  examDates: { midtermNumber: number; date: string }[]
+  examDates: { midtermNumber: number; date: string; weekNumber?: number }[],
+  topicWeek?: number | null
 ): number | null {
-  if (!topicDate || examDates.length === 0) return null;
-  
-  // Find the first exam whose date is AFTER or on the topic date
-  // Topics taught BEFORE an exam are covered ON that exam
+  if (examDates.length === 0) return null;
+
+  // Prefer week-based comparison when both topic week and exam weeks are available
+  if (topicWeek != null) {
+    const examsWithWeek = examDates.filter(e => e.weekNumber != null);
+    if (examsWithWeek.length > 0) {
+      for (const exam of examsWithWeek) {
+        if (topicWeek <= exam.weekNumber!) {
+          return exam.midtermNumber;
+        }
+      }
+      // Topic is after all midterms = Finals topic (null)
+      return null;
+    }
+  }
+
+  // Fall back to date-based comparison
+  if (!topicDate) return null;
   for (const exam of examDates) {
     if (topicDate <= exam.date) {
       return exam.midtermNumber;
     }
   }
-  
+
   // Topic is after all midterms = Finals topic (null)
   return null;
 }
@@ -553,13 +568,13 @@ export function useGenerateTopicsFromEvents() {
 
       if (eventsError) throw eventsError;
 
-      // Fetch exam events to determine midterm coverage
+      // Fetch exam events to determine midterm coverage (include week_number)
       const { data: examEvents, error: examError } = await supabase
         .from("calendar_events")
-        .select("title, event_date")
+        .select("title, event_date, week_number")
         .eq("course_pack_id", coursePackId)
         .eq("event_type", "exam")
-        .not("event_date", "is", null)
+        .order("week_number", { ascending: true })
         .order("event_date", { ascending: true });
 
       if (examError) throw examError;
@@ -569,11 +584,10 @@ export function useGenerateTopicsFromEvents() {
         .map(e => ({
           midtermNumber: parseMidtermNumber(e.title),
           date: e.event_date as string,
+          weekNumber: e.week_number as number | undefined,
         }))
-        .filter((e): e is { midtermNumber: number; date: string } => 
-          e.midtermNumber !== null && e.date !== null
-        )
-        .sort((a, b) => a.date.localeCompare(b.date));
+        .filter(e => e.midtermNumber !== null) as { midtermNumber: number; date: string; weekNumber?: number }[];
+      examDates.sort((a, b) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0) || a.date.localeCompare(b.date));
 
       // Fetch existing topics to avoid duplicates
       const { data: existingTopics, error: topicsError } = await supabase
@@ -637,7 +651,7 @@ export function useGenerateTopicsFromEvents() {
         return { created: 0, message: "No new topics to create" };
       }
 
-      // Insert topics with calculated midterm_coverage
+      // Insert topics with calculated midterm_coverage (prefer week-based)
       const { error: insertError } = await supabase
         .from("topics")
         .insert(topicsToCreate.map(t => ({
@@ -645,7 +659,7 @@ export function useGenerateTopicsFromEvents() {
           title: t.title,
           description: t.description || null,
           scheduled_week: t.scheduled_week,
-          midterm_coverage: calculateMidtermCoverage(t.event_date, examDates),
+          midterm_coverage: calculateMidtermCoverage(t.event_date, examDates, t.scheduled_week),
         })));
 
       if (insertError) throw insertError;
@@ -654,6 +668,84 @@ export function useGenerateTopicsFromEvents() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["topics"] });
+    },
+  });
+}
+
+// Re-run week-based midterm assignment for all topics in a course
+export function useRecalculateTopicMidterms() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (coursePackId: string) => {
+      // Fetch exam events with week numbers
+      const { data: examEvents, error: examError } = await supabase
+        .from("calendar_events")
+        .select("title, event_date, week_number")
+        .eq("course_pack_id", coursePackId)
+        .eq("event_type", "exam")
+        .order("week_number", { ascending: true });
+
+      if (examError) throw examError;
+
+      const examDates = (examEvents || [])
+        .map(e => ({
+          midtermNumber: parseMidtermNumber(e.title),
+          date: e.event_date as string,
+          weekNumber: e.week_number as number | undefined,
+        }))
+        .filter(e => e.midtermNumber !== null) as { midtermNumber: number; date: string; weekNumber?: number }[];
+      examDates.sort((a, b) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0) || a.date.localeCompare(b.date));
+
+      if (examDates.length === 0) {
+        return { updated: 0, message: "No exam events found" };
+      }
+
+      // Fetch all topics for this course
+      const { data: topics, error: topicsError } = await supabase
+        .from("topics")
+        .select("id, scheduled_week, midterm_coverage")
+        .eq("course_pack_id", coursePackId);
+
+      if (topicsError) throw topicsError;
+
+      let updated = 0;
+      for (const topic of topics || []) {
+        const newCoverage = calculateMidtermCoverage(null, examDates, topic.scheduled_week);
+        if (newCoverage !== topic.midterm_coverage) {
+          const { error } = await supabase
+            .from("topics")
+            .update({ midterm_coverage: newCoverage })
+            .eq("id", topic.id);
+          if (!error) updated++;
+        }
+      }
+
+      return { updated };
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["topics-by-midterm"] });
+    },
+  });
+}
+
+// Manual single-topic midterm reassignment
+export function useUpdateTopicMidterm() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ topicId, midtermCoverage }: { topicId: string; midtermCoverage: number | null }) => {
+      const { error } = await supabase
+        .from("topics")
+        .update({ midterm_coverage: midtermCoverage })
+        .eq("id", topicId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["topics"] });
+      queryClient.invalidateQueries({ queryKey: ["topics-by-midterm"] });
     },
   });
 }

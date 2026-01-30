@@ -109,25 +109,40 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
       const topicMap = new Map<string, DbTopic>();
       topics?.forEach(topic => topicMap.set(topic.id, topic));
 
-      // Fetch full question data to include guide_me_steps, subparts, question_format
+      // Fetch full question data to include guide_me_steps, subparts, question_format, course_pack_id
       const questionIds = (recommended || []).map((q: any) => q.question_id);
       const { data: fullQuestions } = await supabase
         .from('questions')
-        .select('id, guide_me_steps, image_url, question_format, subparts')
+        .select('id, guide_me_steps, image_url, question_format, subparts, course_pack_id')
         .in('id', questionIds);
-      
-      const questionExtras = new Map<string, { 
-        guide_me_steps: any; 
+
+      const questionExtras = new Map<string, {
+        guide_me_steps: any;
         image_url: string | null;
         question_format: string | null;
         subparts: any;
+        course_pack_id: string | null;
       }>();
-      fullQuestions?.forEach(q => questionExtras.set(q.id, { 
-        guide_me_steps: q.guide_me_steps, 
+      fullQuestions?.forEach(q => questionExtras.set(q.id, {
+        guide_me_steps: q.guide_me_steps,
         image_url: q.image_url,
         question_format: q.question_format,
         subparts: q.subparts,
+        course_pack_id: q.course_pack_id,
       }));
+
+      // Fetch course names for all unique course_pack_ids
+      const courseIds = [...new Set(
+        (fullQuestions || []).map(q => q.course_pack_id).filter(Boolean)
+      )] as string[];
+      const courseNameMap = new Map<string, string>();
+      if (courseIds.length > 0) {
+        const { data: courses } = await supabase
+          .from('course_packs')
+          .select('id, title')
+          .in('id', courseIds);
+        courses?.forEach(c => courseNameMap.set(c.id, c.title));
+      }
 
       // Map recommended questions to StudyQuestion format
       const studyQuestions = (recommended || []).map((q: any) => {
@@ -143,6 +158,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           });
         }
         
+        const cpId = extras?.course_pack_id || null;
         return {
           id: q.question_id,
           prompt: q.prompt,
@@ -159,6 +175,8 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           guideMeSteps: extras?.guide_me_steps || null,
           questionFormat: (extras?.question_format || 'multiple_choice') as 'multiple_choice' | 'short_answer' | 'numeric',
           subparts: extras?.subparts || null,
+          coursePackId: cpId,
+          courseName: cpId ? (courseNameMap.get(cpId) || null) : null,
           // Include scoring metadata for debugging
           _score: q.score,
           _dueUrgency: q.due_urgency,

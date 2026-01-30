@@ -77,6 +77,7 @@ import { useCourseMaterials, useUploadMaterial, useDeleteMaterial, useAnalyzeMat
 import { MaterialUploadDialog } from "@/components/admin/MaterialUploadDialog";
 import { MaterialDetailDrawer } from "@/components/admin/MaterialDetailDrawer";
 import { TopicsGroupedView, TypesGroupedView } from "@/components/admin/GroupedQuestionViews";
+import type { CourseMaterial } from "@/types/materials";
 
 type ViewMode = "exams" | "topics" | "types";
 
@@ -698,6 +699,130 @@ function MaterialCard({
   );
 }
 
+// Group materials by midterm assignment then by week
+interface MaterialGroupedByMidterm {
+  midtermLabel: string;
+  midtermNumber: number | null;
+  weekGroups: {
+    week: number | null;
+    materials: (CourseMaterial & { questionCount?: number })[];
+  }[];
+}
+
+function groupMaterialsByMidterm(materials: CourseMaterial[]): MaterialGroupedByMidterm[] {
+  const midtermMap = new Map<number | null, Map<number | null, CourseMaterial[]>>();
+
+  for (const mat of materials) {
+    const mt = (mat as any).corresponds_to_midterm as number | null;
+    const week = (mat as any).scheduled_week as number | null;
+
+    if (!midtermMap.has(mt)) midtermMap.set(mt, new Map());
+    const weekMap = midtermMap.get(mt)!;
+    if (!weekMap.has(week)) weekMap.set(week, []);
+    weekMap.get(week)!.push(mat);
+  }
+
+  const groups: MaterialGroupedByMidterm[] = [];
+  // Sort: midterm 1, 2, 3, then null (unassigned) last
+  const sortedKeys = [...midtermMap.keys()].sort((a, b) => {
+    if (a === null) return 1;
+    if (b === null) return -1;
+    return a - b;
+  });
+
+  for (const mt of sortedKeys) {
+    const weekMap = midtermMap.get(mt)!;
+    const weekGroups = [...weekMap.entries()]
+      .sort(([a], [b]) => {
+        if (a === null) return 1;
+        if (b === null) return -1;
+        return a - b;
+      })
+      .map(([week, mats]) => ({ week, materials: mats }));
+
+    groups.push({
+      midtermLabel: mt != null ? `Midterm ${mt}` : "Unassigned",
+      midtermNumber: mt,
+      weekGroups,
+    });
+  }
+
+  return groups;
+}
+
+function AllMaterialCard({
+  material,
+  onEdit,
+  onDelete,
+}: {
+  material: CourseMaterial;
+  onEdit: (id: string) => void;
+  onDelete: (id: string, title: string, storagePath: string) => void;
+}) {
+  const [isHovered, setIsHovered] = useState(false);
+  const canHover = useCanHover();
+  const showActions = !canHover || isHovered;
+  const status = material.status;
+  const qCount = material.questions_generated_count || 0;
+
+  return (
+    <Card
+      className={cn(
+        "transition-colors cursor-pointer",
+        isHovered && "border-primary/50"
+      )}
+      onClick={() => onEdit(material.id)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <CardContent className="p-4 flex items-center justify-between">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <div className="p-2 rounded-lg bg-muted">
+            <BookOpen className="h-5 w-5 text-muted-foreground" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-medium truncate">{material.title}</h3>
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Badge variant="secondary" className="text-xs h-5">
+                {status}
+              </Badge>
+              {qCount > 0 && <span>{qCount} questions</span>}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          {showActions && (
+            <>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(material.id);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(material.id, material.title, material.storage_path);
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </>
+          )}
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ExamListSkeleton() {
   return (
     <div className="space-y-6">
@@ -1039,6 +1164,7 @@ export default function AdminExamsList() {
   const { data: examsData, isLoading: examsLoading } = useExamsForCourse(courseId!);
   const yearGroups = examsData?.yearGroups;
   const materialGroups = examsData?.materialGroups || [];
+  const { data: allMaterials, isLoading: materialsLoading } = useCourseMaterials(courseId!);
   const deleteExam = useDeleteExamQuestions();
   const deleteMaterial = useDeleteMaterial();
   const updateCourse = useUpdateCourseName();
@@ -1368,15 +1494,50 @@ export default function AdminExamsList() {
           </>
         )}
 
-        {/* Lecture Materials Section - questions generated from lecture notes */}
+        {/* Course Materials Section - grouped by Midterm then Week */}
+        {viewMode === "exams" && !isLoading && !materialsLoading && allMaterials && allMaterials.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-xl font-bold text-foreground">Class Materials</h2>
+              <Badge variant="secondary" className="text-xs">
+                {allMaterials.length} material{allMaterials.length !== 1 ? "s" : ""}
+              </Badge>
+            </div>
+            {groupMaterialsByMidterm(allMaterials).map((group) => (
+              <div key={group.midtermLabel} className="space-y-3">
+                <h3 className="text-base font-semibold text-muted-foreground flex items-center gap-2">
+                  <Tag className="h-4 w-4" />
+                  {group.midtermLabel}
+                </h3>
+                <div className="space-y-4 pl-2 border-l-2 border-muted">
+                  {group.weekGroups.map((wg) => (
+                    <div key={`wk-${wg.week}`} className="space-y-2 pl-4">
+                      {wg.week != null && (
+                        <p className="text-sm font-medium text-muted-foreground">Week {wg.week}</p>
+                      )}
+                      {wg.materials.map((mat) => (
+                        <AllMaterialCard
+                          key={mat.id}
+                          material={mat}
+                          onEdit={(id) => setMaterialDetailId(id)}
+                          onDelete={(id, title, storagePath) => setMaterialToDelete({ id, title, storagePath })}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Legacy Lecture Materials from questions (fallback for materials that only have questions) */}
         {viewMode === "exams" && !isLoading && hasMaterials && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
               <BookOpen className="h-5 w-5 text-muted-foreground" />
-              <h2 className="text-xl font-bold text-foreground">Lecture Materials</h2>
-              <Badge variant="secondary" className="text-xs">
-                {materialGroups.reduce((sum, g) => sum + g.count, 0)} questions
-              </Badge>
+              <h2 className="text-base font-semibold text-muted-foreground">Questions by Material Source</h2>
             </div>
             <div className="space-y-2 pl-2 border-l-2 border-muted">
               {materialGroups.map((group) => (

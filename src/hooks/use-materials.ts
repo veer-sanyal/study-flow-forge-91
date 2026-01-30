@@ -59,13 +59,15 @@ export function useCourseMaterials(coursePackId: string | null) {
     queryKey: ["course-materials", coursePackId],
     queryFn: async () => {
       if (!coursePackId) return [];
-      
+
       const { data, error } = await supabase
         .from("course_materials")
         .select("*")
         .eq("course_pack_id", coursePackId)
+        .order("corresponds_to_midterm", { ascending: true, nullsFirst: false })
+        .order("scheduled_week", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: false });
-      
+
       if (error) throw error;
       return (data || []) as unknown as CourseMaterial[];
     },
@@ -226,22 +228,117 @@ export function useUpdateMaterialStatus() {
 // Delete material
 export function useDeleteMaterial() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ materialId, storagePath }: { materialId: string; storagePath: string }) => {
-      // Delete from storage
-      await supabase.storage.from('course-materials').remove([storagePath]);
-      
+      // Delete from storage only if path exists
+      if (storagePath) {
+        await supabase.storage.from('course-materials').remove([storagePath]);
+      }
+
       // Delete record
       const { error } = await supabase
         .from("course_materials")
         .delete()
         .eq("id", materialId);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+    },
+  });
+}
+
+// Update material metadata
+export function useUpdateMaterial() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      materialId,
+      title,
+      scheduledWeek,
+      correspondsToMidterm,
+    }: {
+      materialId: string;
+      title?: string;
+      scheduledWeek?: number | null;
+      correspondsToMidterm?: number | null;
+    }) => {
+      const updates: Record<string, unknown> = {};
+      if (title !== undefined) updates.title = title;
+      if (scheduledWeek !== undefined) updates.scheduled_week = scheduledWeek;
+      if (correspondsToMidterm !== undefined) updates.corresponds_to_midterm = correspondsToMidterm;
+
+      const { data, error } = await supabase
+        .from("course_materials")
+        .update(updates)
+        .eq("id", materialId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as unknown as CourseMaterial;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["course-material"] });
+    },
+  });
+}
+
+// Delete all questions for a material
+export function useDeleteMaterialQuestions() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (materialId: string) => {
+      const { error } = await supabase
+        .from("questions")
+        .delete()
+        .eq("source_material_id", materialId);
+
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["exams-for-course"] });
+    },
+  });
+}
+
+// Cleanup storage for a material (delete PDF but keep record)
+export function useCleanupMaterialStorage() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (materialId: string) => {
+      // Fetch the material to get storage_path
+      const { data: material, error: fetchError } = await supabase
+        .from("course_materials")
+        .select("storage_path")
+        .eq("id", materialId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!material?.storage_path) return;
+
+      // Delete file from bucket
+      await supabase.storage.from('course-materials').remove([material.storage_path]);
+
+      // Clear storage_path on record (keep DB record for metadata)
+      const { error: updateError } = await supabase
+        .from("course_materials")
+        .update({ storage_path: '' })
+        .eq("id", materialId);
+
+      if (updateError) throw updateError;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["course-material"] });
     },
   });
 }

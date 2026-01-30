@@ -529,17 +529,29 @@ export function usePastExamsHierarchy(courseIds: string[]) {
       // Get unique exam names and parse them
       const uniqueExams = [...new Set(data?.map(q => q.source_exam).filter(Boolean))] as string[];
       
-      // Filter to only show published exams
-      const publishedExams = uniqueExams.filter(examName => {
-        // Normalize the exam name for matching
-        const normalized = examName.toLowerCase();
-        // Check if this exam matches any published job pattern
-        return Array.from(publishedExamPatterns).some(pattern => {
-          // Match key parts: semester, year, and exam type
-          const patternParts = pattern.split(' ');
-          return patternParts.every(part => normalized.includes(part));
+      // Filter to only show published exams, with fallback
+      let publishedExams: string[];
+
+      if (publishedExamPatterns.size > 0) {
+        // Primary path: match against published job patterns (loosened to 2+ parts)
+        publishedExams = uniqueExams.filter(examName => {
+          const normalized = examName.toLowerCase();
+          return Array.from(publishedExamPatterns).some(pattern => {
+            const patternParts = pattern.split(' ').filter(Boolean);
+            const matchCount = patternParts.filter(part => normalized.includes(part)).length;
+            // Require at least 2 parts to match (loosened from all parts)
+            return matchCount >= Math.min(2, patternParts.length);
+          });
         });
-      });
+
+        // If strict matching filtered out everything, fall back to showing all
+        if (publishedExams.length === 0) {
+          publishedExams = uniqueExams;
+        }
+      } else {
+        // Fallback: no published patterns exist, show ALL distinct source_exam values
+        publishedExams = uniqueExams;
+      }
       
       // Group by exam type (Midterm 1, 2, 3, Final)
       const examTypeMap: Map<string, ExamTypeGroup> = new Map();

@@ -166,6 +166,7 @@ export function QuestionPlayer({
         totalQuestions={totalQuestions}
         imageUrl={question.imageUrl}
         sourceExam={question.sourceExam}
+        courseName={question.courseName}
       />
 
       {/* Choices */}

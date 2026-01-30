@@ -57,6 +57,9 @@ export interface StudyQuestion {
   // Multi-part question support
   questionFormat: QuestionFormat;
   subparts: StudySubpart[] | null;
+  // Course info
+  coursePackId: string | null;
+  courseName: string | null;
   // Optional fields from daily plan
   category?: QuestionCategory;
   whySelected?: string;
@@ -101,6 +104,8 @@ export function mapDbQuestionToStudy(
     guideMeSteps: dbQuestion.guide_me_steps as unknown as GuideMe | null,
     questionFormat: (dbQuestion.question_format || 'multiple_choice') as QuestionFormat,
     subparts,
+    coursePackId: dbQuestion.course_pack_id || null,
+    courseName: null,
   };
 }
 
