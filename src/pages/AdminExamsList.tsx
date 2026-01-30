@@ -1435,66 +1435,7 @@ export default function AdminExamsList() {
           </Card>
         )}
 
-        {/* Exam List - Hierarchy: Year → Semester → Exam - Only show in exams view mode */}
-        {viewMode === "exams" && (
-          <>
-            {isLoading ? (
-              <ExamListSkeleton />
-            ) : !hasExams ? (
-              <Card className="p-8 text-center">
-                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No exams yet</h3>
-                <p className="text-muted-foreground">
-                  Upload exam PDFs to add questions to this course.
-                </p>
-              </Card>
-            ) : (
-              <div className="space-y-8">
-                {yearGroups?.map((yearGroup) => (
-                  <div key={yearGroup.year} className="space-y-6">
-                    {/* Year Header */}
-                    <h2 className="text-xl font-bold text-foreground">
-                      {yearGroup.year}
-                    </h2>
-                    
-                    {/* Semesters within the year */}
-                    <div className="space-y-6 pl-2 border-l-2 border-muted">
-                      {yearGroup.semesters?.map((semesterGroup) => (
-                        <div key={`${yearGroup.year}-${semesterGroup.semester}`} className="space-y-3 pl-4">
-                          {/* Semester Header */}
-                          <div className="flex items-center gap-2">
-                            <Calendar className="h-4 w-4 text-muted-foreground" />
-                            <h3 className="text-base font-semibold text-muted-foreground">
-                              {semesterGroup.semester}
-                            </h3>
-                          </div>
-                          
-                          {/* Exams within the semester */}
-                          <div className="space-y-2">
-                            {semesterGroup.exams?.map((exam: any) => (
-                              <ExamCard
-                                key={exam.sourceExam}
-                                exam={exam}
-                                courseId={courseId!}
-                                onDelete={setExamToDelete}
-                                onEdit={setExamToEdit}
-                                isSelectionMode={isSelectionMode}
-                                isSelected={selectedExams.has(exam.sourceExam)}
-                                onToggleSelect={handleToggleSelect}
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-
-        {/* Course Materials Section - grouped by Midterm then Week */}
+        {/* Course Materials Section - shown first when materials exist */}
         {viewMode === "exams" && !isLoading && !materialsLoading && allMaterials && allMaterials.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center gap-2">
@@ -1530,6 +1471,65 @@ export default function AdminExamsList() {
               </div>
             ))}
           </div>
+        )}
+
+        {/* Exam List - Hierarchy: Year → Semester → Exam */}
+        {viewMode === "exams" && (
+          <>
+            {isLoading ? (
+              <ExamListSkeleton />
+            ) : hasExams ? (
+              <div className="space-y-8">
+                {yearGroups?.map((yearGroup) => (
+                  <div key={yearGroup.year} className="space-y-6">
+                    {/* Year Header */}
+                    <h2 className="text-xl font-bold text-foreground">
+                      {yearGroup.year}
+                    </h2>
+
+                    {/* Semesters within the year */}
+                    <div className="space-y-6 pl-2 border-l-2 border-muted">
+                      {yearGroup.semesters?.map((semesterGroup) => (
+                        <div key={`${yearGroup.year}-${semesterGroup.semester}`} className="space-y-3 pl-4">
+                          {/* Semester Header */}
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-muted-foreground" />
+                            <h3 className="text-base font-semibold text-muted-foreground">
+                              {semesterGroup.semester}
+                            </h3>
+                          </div>
+
+                          {/* Exams within the semester */}
+                          <div className="space-y-2">
+                            {semesterGroup.exams?.map((exam: any) => (
+                              <ExamCard
+                                key={exam.sourceExam}
+                                exam={exam}
+                                courseId={courseId!}
+                                onDelete={setExamToDelete}
+                                onEdit={setExamToEdit}
+                                isSelectionMode={isSelectionMode}
+                                isSelected={selectedExams.has(exam.sourceExam)}
+                                onToggleSelect={handleToggleSelect}
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : !materialsLoading && (!allMaterials || allMaterials.length === 0) ? (
+              <Card className="p-8 text-center">
+                <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-semibold mb-2">No exams yet</h3>
+                <p className="text-muted-foreground">
+                  Upload exam PDFs to add questions to this course.
+                </p>
+              </Card>
+            ) : null}
+          </>
         )}
 
         {/* Legacy Lecture Materials from questions (fallback for materials that only have questions) */}
