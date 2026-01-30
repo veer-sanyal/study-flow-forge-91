@@ -64,8 +64,6 @@ export function useCourseMaterials(coursePackId: string | null) {
         .from("course_materials")
         .select("*")
         .eq("course_pack_id", coursePackId)
-        .order("corresponds_to_midterm", { ascending: true, nullsFirst: false })
-        .order("scheduled_week", { ascending: true, nullsFirst: false })
         .order("created_at", { ascending: false });
 
       if (error) throw error;

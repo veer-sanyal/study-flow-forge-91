@@ -234,20 +234,23 @@ export function useSubmitAttempt() {
         .eq('question_id', params.questionId)
         .maybeSingle();
 
-      // 3. Build card (existing row or brand-new card)
+      // 3. Build card from existing data or create new
+      // Note: DB only has simplified SM-2 columns (ease, interval_days, reps, due_at, last_reviewed_at)
+      // We compute FSRS-compatible values from what we have
       const now = new Date();
       const card = existing
         ? dbRowToCard({
             due_at: existing.due_at,
             last_reviewed_at: existing.last_reviewed_at,
             reps: existing.reps,
-            stability: existing.stability,
-            difficulty: existing.difficulty,
-            elapsed_days: existing.elapsed_days,
-            scheduled_days: existing.scheduled_days,
-            lapses: existing.lapses,
-            learning_steps: existing.learning_steps,
-            state: existing.state,
+            // Map existing SM-2 columns to FSRS equivalents
+            stability: existing.interval_days || 1, // Use interval as rough stability proxy
+            difficulty: existing.ease ? (3.0 - existing.ease) / 0.68 : 5, // Convert ease to difficulty scale
+            elapsed_days: 0,
+            scheduled_days: existing.interval_days || 0,
+            lapses: 0,
+            learning_steps: 0,
+            state: existing.reps > 0 ? 2 : 0, // 2 = Review, 0 = New
           })
         : createEmptyCard(now);
 
@@ -256,7 +259,7 @@ export function useSubmitAttempt() {
       const updatedCard = result[rating].card;
       const dbRow = cardToDbRow(updatedCard);
 
-      // 5. Upsert SRS state
+      // 5. Upsert SRS state (only columns that exist in DB)
       const { error: srsError } = await supabase
         .from('srs_state')
         .upsert({
@@ -265,13 +268,9 @@ export function useSubmitAttempt() {
           due_at: dbRow.due_at,
           last_reviewed_at: dbRow.last_reviewed_at,
           reps: dbRow.reps,
-          stability: dbRow.stability,
-          difficulty: dbRow.difficulty,
-          elapsed_days: dbRow.elapsed_days,
-          scheduled_days: dbRow.scheduled_days,
-          lapses: dbRow.lapses,
-          state: dbRow.state,
-        } as any, {
+          interval_days: dbRow.scheduled_days,
+          ease: 2.5 - (dbRow.difficulty - 5) * 0.08, // Convert FSRS difficulty back to ease
+        }, {
           onConflict: 'user_id,question_id',
         });
 
