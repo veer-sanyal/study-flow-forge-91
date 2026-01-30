@@ -258,90 +258,27 @@ Analyze the document now:`;
       });
     }
 
-    console.log(`Analysis complete: ${analysis.topics?.length || 0} topics extracted`);
+    console.log(`Analysis complete: ${analysis.topics?.length || 0} topics analyzed`);
 
-    // Store analysis and create topics/objectives
-    const topicsToCreate = [];
-    const objectivesToCreate = [];
-
-    if (analysis.topics && Array.isArray(analysis.topics)) {
-      for (const topic of analysis.topics) {
-        // Check if topic already exists for this course
-        const { data: existingTopic } = await supabase
-          .from("topics")
-          .select("id")
-          .eq("course_pack_id", material.course_pack_id)
-          .eq("title", topic.title)
-          .maybeSingle();
-
-        let topicId = existingTopic?.id;
-
-        if (!topicId) {
-          // Create new topic
-          const { data: newTopic, error: topicError } = await supabase
-            .from("topics")
-            .insert({
-              course_pack_id: material.course_pack_id,
-              edition_id: material.edition_id,
-              title: topic.title,
-              description: topic.description,
-              topic_code: topic.topic_code,
-              source: "lecture",
-            })
-            .select("id")
-            .single();
-
-          if (topicError) {
-            console.error("Error creating topic:", topicError);
-            continue;
-          }
-          topicId = newTopic.id;
-          topicsToCreate.push(topic.title);
-        }
-
-        // Create objectives for this topic
-        if (topic.objectives && Array.isArray(topic.objectives)) {
-          for (const objectiveText of topic.objectives) {
-            // Check if objective already exists
-            const { data: existingObj } = await supabase
-              .from("objectives")
-              .select("id")
-              .eq("topic_id", topicId)
-              .eq("objective_text", objectiveText)
-              .maybeSingle();
-
-            if (!existingObj) {
-              await supabase.from("objectives").insert({
-                topic_id: topicId,
-                objective_text: objectiveText,
-                source_material_id: materialId,
-              });
-              objectivesToCreate.push(objectiveText);
-            }
-          }
-        }
-      }
-    }
-
-    // Update material with analysis results
+    // Store analysis WITHOUT creating topic/objective records
+    // Topics will be matched to existing calendar/manually created topics during question generation
     await supabase
       .from("course_materials")
       .update({
         status: "analyzed",
         analysis_json: analysis,
-        topics_extracted_count: topicsToCreate.length,
+        topics_extracted_count: 0, // Not creating topics in DB
         error_message: null,
       })
       .eq("id", materialId);
 
-    console.log(`Created ${topicsToCreate.length} topics and ${objectivesToCreate.length} objectives`);
+    console.log(`Stored analysis with ${analysis.topics?.length || 0} topics analyzed (not created in DB)`);
 
     return new Response(
       JSON.stringify({
         success: true,
         analysis,
-        topicsCreated: topicsToCreate.length,
-        objectivesCreated: objectivesToCreate.length,
+        topicsAnalyzed: analysis.topics?.length || 0,
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } },
     );

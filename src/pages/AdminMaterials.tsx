@@ -196,7 +196,7 @@ export default function AdminMaterials() {
             Materials ({filteredMaterials?.length || 0})
           </CardTitle>
           <CardDescription>
-            Upload lecture PDFs to extract topics and generate practice questions
+            Upload lecture PDFs to analyze content and generate practice questions
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -226,7 +226,7 @@ export default function AdminMaterials() {
                   <TableHead>Course</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Topics</TableHead>
+                  <TableHead>Topics Analyzed</TableHead>
                   <TableHead>Questions</TableHead>
                   <TableHead>Uploaded</TableHead>
                   <TableHead className="w-[140px]">Actions</TableHead>
@@ -251,7 +251,7 @@ export default function AdminMaterials() {
                       {getStatusBadge(material.status as MaterialStatus)}
                     </TableCell>
                     <TableCell>
-                      {material.topics_extracted_count || 0}
+                      {(material.analysis_json as any)?.topics?.length || 0}
                     </TableCell>
                     <TableCell>
                       {material.questions_generated_count || 0}

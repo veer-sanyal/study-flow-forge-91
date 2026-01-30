@@ -148,8 +148,8 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                     <span>{format(new Date(material.created_at), 'MMM d, yyyy h:mm a')}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Topics Extracted</span>
-                    <span>{material.topics_extracted_count}</span>
+                    <span className="text-muted-foreground">Topics Analyzed</span>
+                    <span>{analysis?.topics?.length || 0}</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Questions Generated</span>
@@ -173,7 +173,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                   </TabsTrigger>
                   <TabsTrigger value="objectives" className="flex-1">
                     <BookOpen className="h-4 w-4 mr-1" />
-                    Objectives ({objectives?.length || 0})
+                    Objectives ({analysis?.topics?.reduce((acc, t) => acc + (t.objectives?.length || 0), 0) || 0})
                   </TabsTrigger>
                 </TabsList>
                 
@@ -219,8 +219,8 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       <Target className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No topics extracted yet</p>
-                      <p className="text-xs">Run analysis to extract topics</p>
+                      <p>No topics analyzed yet</p>
+                      <p className="text-xs">Run analysis to identify topics in the material</p>
                     </div>
                   )}
                 </TabsContent>
@@ -262,29 +262,36 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                 
                 {/* Objectives Tab */}
                 <TabsContent value="objectives" className="mt-4">
-                  {objectives?.length ? (
-                    <div className="space-y-2">
-                      {objectives.map(obj => (
-                        <Card key={obj.id}>
-                          <CardContent className="py-3">
-                            <div className="flex items-start gap-2">
-                              <BookOpen className="h-4 w-4 mt-0.5 text-muted-foreground" />
-                              <div>
-                                <p className="text-sm">{obj.objective_text}</p>
-                                <p className="text-xs text-muted-foreground">
-                                  Topic: {obj.topics?.title}
-                                </p>
-                              </div>
+                  {analysis?.topics?.some(t => t.objectives?.length > 0) ? (
+                    <div className="space-y-3">
+                      {analysis.topics.map((topic, topicIdx) =>
+                        topic.objectives?.length > 0 ? (
+                          <div key={topicIdx}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Badge variant="outline">{topic.topic_code || `Topic ${topicIdx + 1}`}</Badge>
+                              <span className="text-sm font-medium">{topic.title}</span>
                             </div>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            <div className="space-y-2 ml-4">
+                              {topic.objectives.map((obj, objIdx) => (
+                                <Card key={`${topicIdx}-${objIdx}`}>
+                                  <CardContent className="py-3">
+                                    <div className="flex items-start gap-2">
+                                      <BookOpen className="h-4 w-4 mt-0.5 text-muted-foreground" />
+                                      <p className="text-sm">{obj}</p>
+                                    </div>
+                                  </CardContent>
+                                </Card>
+                              ))}
+                            </div>
+                          </div>
+                        ) : null
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">
                       <BookOpen className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                      <p>No objectives extracted yet</p>
-                      <p className="text-xs">Run analysis to extract learning objectives</p>
+                      <p>No objectives analyzed yet</p>
+                      <p className="text-xs">Run analysis to identify learning objectives</p>
                     </div>
                   )}
                 </TabsContent>
