@@ -51,11 +51,11 @@ export function PlayerControls({
           <Button
             variant="outline"
             size="sm"
-            className="flex-col h-auto py-3 gap-1"
+            className="flex-col h-auto py-3 gap-1 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50"
             onClick={onGuideMe}
           >
             <Compass className="h-4 w-4" />
-            <span className="text-xs">Guide</span>
+            <span className="text-xs font-medium">Guide</span>
           </Button>
         )}
 

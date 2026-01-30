@@ -68,15 +68,23 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           p_topic_ids: topicIds.length > 0 ? topicIds : undefined,
           p_question_type_id: questionTypeId || undefined,
           p_ignore_constraints: ignoreConstraints,
+          p_enrolled_course_ids: enrolledCourseIds.length > 0 ? enrolledCourseIds : undefined,
         } as any);
 
       if (recError) {
         console.error('Recommendation error:', recError);
         // Fallback to simple query if recommendation fails
-        const { data: questions, error: questionsError } = await supabase
+        let fallbackQuery = supabase
           .from('questions')
           .select('*')
-          .eq('needs_review', false)
+          .eq('needs_review', false);
+
+        // Filter by enrolled courses
+        if (enrolledCourseIds.length > 0) {
+          fallbackQuery = fallbackQuery.in('course_pack_id', enrolledCourseIds);
+        }
+
+        const { data: questions, error: questionsError } = await fallbackQuery
           .order('created_at', { ascending: true })
           .limit(limit);
 

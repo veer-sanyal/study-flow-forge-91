@@ -25,23 +25,23 @@ export function AnswerFeedback({
     <div className="space-y-4">
       {/* Correctness indicator */}
       <div
-        className={`flex items-center gap-3 p-4 rounded-lg ${
+        className={`flex items-center gap-4 p-5 rounded-xl border ${
           isCorrect
-            ? "bg-green-500/10 text-green-600 dark:text-green-400"
-            : "bg-destructive/10 text-destructive"
+            ? "bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400"
+            : "bg-destructive/10 border-destructive/20 text-destructive"
         }`}
       >
         {isCorrect ? (
-          <CheckCircle2 className="h-6 w-6 shrink-0" />
+          <CheckCircle2 className="h-8 w-8 shrink-0" />
         ) : (
-          <XCircle className="h-6 w-6 shrink-0" />
+          <XCircle className="h-8 w-8 shrink-0" />
         )}
         <div>
-          <p className="font-semibold">
+          <p className="text-lg font-bold">
             {isCorrect ? "Correct!" : "Incorrect"}
           </p>
           {!isCorrect && (
-            <p className="text-sm opacity-80">
+            <p className="text-sm opacity-80 mt-0.5">
               The correct answer is {correctAnswer}
             </p>
           )}
@@ -70,8 +70,8 @@ export function AnswerFeedback({
 
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.98 }}
-      animate={{ opacity: 1, scale: 1 }}
+      initial={{ opacity: 0, y: 8, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: duration.normal, ease: easing.easeOut }}
     >
       {content}

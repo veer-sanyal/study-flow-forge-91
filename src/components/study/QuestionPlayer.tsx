@@ -70,8 +70,13 @@ export function QuestionPlayer({
   const handleSubmit = useCallback(() => {
     if (selectedChoice) {
       setIsSubmitted(true);
+      // Auto-enter Guide Me when the answer is wrong and guide steps are available
+      if (selectedChoice !== question.correctChoiceId && guideSteps) {
+        setGuideUsed(true);
+        setGuideMode(true);
+      }
     }
-  }, [selectedChoice]);
+  }, [selectedChoice, question.correctChoiceId, guideSteps]);
 
   const handleSkip = useCallback(() => {
     onComplete({
@@ -138,7 +143,7 @@ export function QuestionPlayer({
   }
 
   const questionContent = (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-3xl mx-auto">
       {/* Category badge and why selected */}
       {(question.category || question.whySelected) && (
         <div className="flex items-center gap-2 flex-wrap">
@@ -162,7 +167,6 @@ export function QuestionPlayer({
         imageUrl={question.imageUrl}
         sourceExam={question.sourceExam}
       />
-
 
       {/* Choices */}
       {question.choices && (

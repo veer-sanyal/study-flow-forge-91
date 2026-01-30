@@ -73,6 +73,9 @@ import { useCreateIngestionJob, useProcessJob } from "@/hooks/use-ingestion";
 import { useCanHover } from "@/hooks/use-can-hover";
 import { useAnalysisQueue, QueuedExam } from "@/hooks/use-analysis-queue";
 import { cn } from "@/lib/utils";
+import { useCourseMaterials, useUploadMaterial, useDeleteMaterial, useAnalyzeMaterial, useCheckDuplicate } from "@/hooks/use-materials";
+import { MaterialUploadDialog } from "@/components/admin/MaterialUploadDialog";
+import { MaterialDetailDrawer } from "@/components/admin/MaterialDetailDrawer";
 import { TopicsGroupedView, TypesGroupedView } from "@/components/admin/GroupedQuestionViews";
 
 type ViewMode = "exams" | "topics" | "types";
@@ -98,10 +101,10 @@ function useExamsForCourse(courseId: string) {
   return useQuery({
     queryKey: ["exams-for-course", courseId],
     queryFn: async () => {
-      // Get questions grouped by exam
+      // Get questions grouped by exam (include source_material_id for lecture questions)
       const { data: questions, error: qError } = await supabase
         .from("questions")
-        .select("id, source_exam, needs_review, midterm_number")
+        .select("id, source_exam, needs_review, midterm_number, source_material_id")
         .eq("course_pack_id", courseId);
 
       if (qError) throw qError;
@@ -195,8 +198,44 @@ function useExamsForCourse(courseId: string) {
         });
       });
 
+      // Collect questions from lecture materials (no source_exam but has source_material_id)
+      const materialQuestionsByMaterial = new Map<string, { count: number; needsReview: number }>();
+      const materialIds = new Set<string>();
+
+      questions.forEach((q: any) => {
+        if (!q.source_exam && q.source_material_id) {
+          materialIds.add(q.source_material_id);
+          const existing = materialQuestionsByMaterial.get(q.source_material_id) || { count: 0, needsReview: 0 };
+          existing.count++;
+          if (q.needs_review) existing.needsReview++;
+          materialQuestionsByMaterial.set(q.source_material_id, existing);
+        }
+      });
+
+      // Fetch material titles for the material IDs
+      let materialGroups: { materialId: string; title: string; count: number; needsReview: number }[] = [];
+      if (materialIds.size > 0) {
+        const { data: materials } = await supabase
+          .from("course_materials")
+          .select("id, title")
+          .in("id", Array.from(materialIds));
+
+        const materialTitleMap = new Map<string, string>();
+        materials?.forEach((m: any) => materialTitleMap.set(m.id, m.title));
+
+        materialGroups = Array.from(materialQuestionsByMaterial.entries()).map(([materialId, stats]) => ({
+          materialId,
+          title: materialTitleMap.get(materialId) || "Unknown Material",
+          count: stats.count,
+          needsReview: stats.needsReview,
+        }));
+      }
+
       // Group by year and semester
-      return groupExamsByYearAndSemester(exams);
+      return {
+        yearGroups: groupExamsByYearAndSemester(exams),
+        materialGroups,
+      };
     },
     enabled: !!courseId,
   });
@@ -927,7 +966,9 @@ export default function AdminExamsList() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: course, isLoading: courseLoading } = useCoursePack(courseId!);
-  const { data: yearGroups, isLoading: examsLoading } = useExamsForCourse(courseId!);
+  const { data: examsData, isLoading: examsLoading } = useExamsForCourse(courseId!);
+  const yearGroups = examsData?.yearGroups;
+  const materialGroups = examsData?.materialGroups || [];
   const deleteExam = useDeleteExamQuestions();
   const updateCourse = useUpdateCourseName();
   const updateExamDetails = useUpdateExamDetails();
@@ -939,6 +980,8 @@ export default function AdminExamsList() {
   const [examToDelete, setExamToDelete] = useState<string | null>(null);
   const [editCourseOpen, setEditCourseOpen] = useState(false);
   const [addExamOpen, setAddExamOpen] = useState(false);
+  const [addMaterialOpen, setAddMaterialOpen] = useState(false);
+  const [materialDetailId, setMaterialDetailId] = useState<string | null>(null);
   const [examToEdit, setExamToEdit] = useState<{
     sourceExam: string;
     examYear: number | null;
@@ -1060,6 +1103,8 @@ export default function AdminExamsList() {
 
   const isLoading = courseLoading || examsLoading;
   const hasExams = yearGroups && yearGroups.length > 0;
+  const hasMaterials = materialGroups.length > 0;
+  const hasContent = hasExams || hasMaterials;
 
   return (
     <PageTransition>
@@ -1149,6 +1194,10 @@ export default function AdminExamsList() {
                   Batch Analyze
                 </Button>
               )}
+              <Button variant="outline" onClick={() => setAddMaterialOpen(true)}>
+                <FileText className="h-4 w-4 mr-2" />
+                Add Material
+              </Button>
               <Button onClick={() => setAddExamOpen(true)}>
                 <Plus className="h-4 w-4 mr-2" />
                 Add Exam
@@ -1232,6 +1281,52 @@ export default function AdminExamsList() {
           </>
         )}
 
+        {/* Lecture Materials Section - questions generated from lecture notes */}
+        {viewMode === "exams" && !isLoading && hasMaterials && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2">
+              <BookOpen className="h-5 w-5 text-muted-foreground" />
+              <h2 className="text-xl font-bold text-foreground">Lecture Materials</h2>
+              <Badge variant="secondary" className="text-xs">
+                {materialGroups.reduce((sum, g) => sum + g.count, 0)} questions
+              </Badge>
+            </div>
+            <div className="space-y-2 pl-2 border-l-2 border-muted">
+              {materialGroups.map((group) => (
+                <Card
+                  key={group.materialId}
+                  className="transition-colors cursor-pointer hover:border-primary/50"
+                  onClick={() => {
+                    const encodedMaterial = encodeURIComponent(`material:${group.materialId}`);
+                    navigate(`/admin/questions/${courseId}/${encodedMaterial}`);
+                  }}
+                >
+                  <CardContent className="p-4 flex items-center justify-between">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="p-2 rounded-lg bg-muted">
+                        <BookOpen className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium truncate">{group.title}</h3>
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                          <span>{group.count} questions</span>
+                          {group.needsReview > 0 && (
+                            <Badge variant="destructive" className="h-5 gap-1 text-xs">
+                              <AlertCircle className="h-3 w-3" />
+                              {group.needsReview} need review
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Edit Course Dialog */}
         <EditCourseDialog
           open={editCourseOpen}
@@ -1256,6 +1351,19 @@ export default function AdminExamsList() {
           onOpenChange={setAddExamOpen}
           courseId={courseId!}
           onSuccess={handleExamAdded}
+        />
+
+        {/* Material Upload Dialog */}
+        <MaterialUploadDialog
+          open={addMaterialOpen}
+          onOpenChange={setAddMaterialOpen}
+          coursePacks={course ? [{ id: course.id, title: course.title }] : []}
+        />
+
+        {/* Material Detail Drawer */}
+        <MaterialDetailDrawer
+          materialId={materialDetailId}
+          onClose={() => setMaterialDetailId(null)}
         />
 
         {/* Delete Confirmation Dialog */}

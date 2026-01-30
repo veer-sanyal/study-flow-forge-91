@@ -23,7 +23,7 @@ import AdminQuestionsEditor from "@/pages/AdminQuestionsEditor";
 import AdminQuestionDetail from "@/pages/AdminQuestionDetail";
 import AdminSubpartDetail from "@/pages/AdminSubpartDetail";
 import AdminQuestionTypes from "@/pages/AdminQuestionTypes";
-import AdminMaterials from "@/pages/AdminMaterials";
+// AdminMaterials removed - materials are now managed inside AdminExamsList
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -54,7 +54,7 @@ const App = () => (
                   <Route element={<AdminRoute />}>
                     <Route path="/admin/calendar" element={<AdminCalendar />} />
                     <Route path="/admin/ingestion" element={<AdminIngestion />} />
-                    <Route path="/admin/materials" element={<AdminMaterials />} />
+                    <Route path="/admin/materials" element={<Navigate to="/admin/questions" replace />} />
                     <Route path="/admin/questions" element={<AdminCoursesList />} />
                     <Route path="/admin/question-types" element={<AdminQuestionTypes />} />
                     <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />

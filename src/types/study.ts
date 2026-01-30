@@ -26,6 +26,10 @@ export interface StudySubpart {
   imageUrl?: string;        // Optional image for subpart
   modelAnswer?: string;     // Model answer for free response
   gradingRubric?: string;   // Grading rubric
+  // Per-part guide me, explanation, and key takeaway
+  guideMeSteps?: GuideMe | null;
+  explanation?: string | null;
+  keyTakeaway?: string | null;
 }
 
 // Question category from build_daily_plan

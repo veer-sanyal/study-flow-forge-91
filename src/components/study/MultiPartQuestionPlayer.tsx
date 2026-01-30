@@ -11,10 +11,12 @@ import { ChoiceList } from "./ChoiceList";
 import { AnswerFeedback } from "./AnswerFeedback";
 import { ConfidenceTaps } from "./ConfidenceTaps";
 import { HintPanel } from "./HintPanel";
+import { GuideMePlayer } from "./GuideMePlayer";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { StudyQuestion, StudySubpart, SubpartResult } from "@/types/study";
+import { generateGuideStepsFromSolution, GuideMe } from "@/types/guide";
 import { supabase } from "@/integrations/supabase/client";
-import { ChevronRight, SkipForward, Lightbulb, Loader2 } from "lucide-react";
+import { ChevronRight, SkipForward, Lightbulb, Loader2, Compass, ChevronDown, ChevronUp } from "lucide-react";
 
 interface MultiPartQuestionPlayerProps {
   question: StudyQuestion;
@@ -72,6 +74,12 @@ export function MultiPartQuestionPlayer({
   const [hintUsed, setHintUsed] = useState(false);
   const [showHint, setShowHint] = useState(false);
 
+  // Per-subpart guide me state
+  const [guideMode, setGuideMode] = useState(false);
+  const [guideUsed, setGuideUsed] = useState(false);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const [showKeyTakeaway, setShowKeyTakeaway] = useState(false);
+
   const currentSubpart = subparts[currentPartIndex];
   const isLastPart = currentPartIndex === subparts.length - 1;
   const partLabel = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex] || String(currentPartIndex + 1);
@@ -80,6 +88,27 @@ export function MultiPartQuestionPlayer({
   // Subparts are typically free response unless they have explicit choices
   const subpartChoices = (currentSubpart as any)?.choices;
   const isMCQ = Array.isArray(subpartChoices) && subpartChoices.length > 0;
+
+  // Compute per-subpart guide steps
+  const subpartGuideSteps = useMemo((): GuideMe | null => {
+    if (!currentSubpart) return null;
+    const sp = currentSubpart as StudySubpart;
+    // Priority 1: Per-subpart AI-generated guide steps
+    if (sp.guideMeSteps &&
+        typeof sp.guideMeSteps === 'object' &&
+        'steps' in sp.guideMeSteps &&
+        Array.isArray(sp.guideMeSteps.steps) &&
+        sp.guideMeSteps.steps.length > 0) {
+      return sp.guideMeSteps;
+    }
+    // Priority 2: Generate from subpart solution steps
+    const steps = sp.solutionSteps || question.solutionSteps;
+    const fallback = generateGuideStepsFromSolution(steps || null, sp.prompt || question.prompt);
+    if (fallback.length > 0) {
+      return { steps: fallback, methodSummary: { bullets: [] } };
+    }
+    return null;
+  }, [currentSubpart, question.solutionSteps, question.prompt]);
 
   // Check MCQ answer locally
   const checkMCQAnswer = useCallback(() => {
@@ -101,7 +130,7 @@ export function MultiPartQuestionPlayer({
         isCorrect,
         confidence,
         hintsUsed: hintUsed,
-        guideUsed: false,
+        guideUsed,
         skipped: false,
         answerText: answerText || undefined,
         selectedChoiceId: selectedChoice,
@@ -115,6 +144,12 @@ export function MultiPartQuestionPlayer({
         updated[currentPartIndex] = true;
         return updated;
       });
+
+      // Auto-enter Guide Me on wrong answer
+      if (!isCorrect && subpartGuideSteps) {
+        setGuideUsed(true);
+        setGuideMode(true);
+      }
     } else {
       // Free response: grade with AI
       setIsGrading(true);
@@ -146,7 +181,7 @@ export function MultiPartQuestionPlayer({
           isCorrect,
           confidence,
           hintsUsed: hintUsed,
-          guideUsed: false,
+          guideUsed,
           skipped: false,
           answerText,
           pointsEarned,
@@ -159,6 +194,12 @@ export function MultiPartQuestionPlayer({
           updated[currentPartIndex] = true;
           return updated;
         });
+
+        // Auto-enter Guide Me on wrong answer
+        if (!isCorrect && subpartGuideSteps) {
+          setGuideUsed(true);
+          setGuideMode(true);
+        }
       } catch (err) {
         console.error("AI grading failed, falling back:", err);
         // Fallback: mark as needs review
@@ -227,6 +268,10 @@ export function MultiPartQuestionPlayer({
     setConfidence(null);
     setHintUsed(false);
     setShowHint(false);
+    setGuideMode(false);
+    setGuideUsed(false);
+    setShowExplanation(false);
+    setShowKeyTakeaway(false);
   }, [currentPartIndex]);
 
   const goToPart = useCallback((targetIndex: number) => {
@@ -241,11 +286,15 @@ export function MultiPartQuestionPlayer({
       setIsSubmitted(true);
       setIsGrading(false);
       setGradingFeedback(null);
+      setGuideMode(false);
+      setShowExplanation(false);
+      setShowKeyTakeaway(false);
       const savedResult = partResults.find(r => r.subpartId === subparts[targetIndex]?.id);
       setSelectedChoice(savedResult?.selectedChoiceId ?? null);
       setAnswerText(savedResult?.answerText ?? "");
       setConfidence(savedResult?.confidence ?? null);
       setHintUsed(savedResult?.hintsUsed ?? false);
+      setGuideUsed(savedResult?.guideUsed ?? false);
     } else {
       // Navigate to the frontier (current active part)
       setIsReviewing(false);
@@ -256,6 +305,10 @@ export function MultiPartQuestionPlayer({
       setGradingFeedback(null);
       setConfidence(null);
       setHintUsed(false);
+      setGuideMode(false);
+      setGuideUsed(false);
+      setShowExplanation(false);
+      setShowKeyTakeaway(false);
     }
   }, [currentPartIndex, completedParts, partResults, subparts]);
 
@@ -276,6 +329,19 @@ export function MultiPartQuestionPlayer({
     if (!hintUsed) setHintUsed(true);
     setShowHint(prev => !prev);
   }, [hintUsed]);
+
+  const handleGuideMe = useCallback(() => {
+    setGuideUsed(true);
+    setGuideMode(true);
+  }, []);
+
+  const handleGuideComplete = useCallback(() => {
+    setGuideMode(false);
+  }, []);
+
+  const handleBackToQuestion = useCallback(() => {
+    setGuideMode(false);
+  }, []);
   
   // Animation variants — opacity is intentionally omitted here because
   // PageTransition already animates opacity 0→1. Nesting two opacity
@@ -381,8 +447,16 @@ export function MultiPartQuestionPlayer({
           <HintPanel hint={question.hint} />
         )}
         
-        {/* Answer input area */}
-        {isGrading ? (
+        {/* Guide Me mode - per-subpart */}
+        {guideMode && subpartGuideSteps ? (
+          <GuideMePlayer
+            guide={subpartGuideSteps}
+            originalPrompt={currentSubpart.prompt || question.prompt}
+            topicName={question.topicNames[0] || 'General'}
+            onComplete={handleGuideComplete}
+            onBackToQuestion={handleBackToQuestion}
+          />
+        ) : isGrading ? (
           /* Grading in progress */
           <div className="flex flex-col items-center gap-3 py-8">
             <Loader2 className="h-6 w-6 animate-spin text-primary" />
@@ -420,6 +494,18 @@ export function MultiPartQuestionPlayer({
                 <ChevronRight className="ml-2 h-4 w-4" />
               </Button>
 
+              {/* Guide Me button */}
+              {subpartGuideSteps && (
+                <Button
+                  variant="outline"
+                  size="icon"
+                  onClick={handleGuideMe}
+                  title="Guide Me"
+                >
+                  <Compass className="h-4 w-4" />
+                </Button>
+              )}
+
               {question.hint && (
                 <Button
                   variant="outline"
@@ -456,6 +542,45 @@ export function MultiPartQuestionPlayer({
               <div className="p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
                 {gradingFeedback}
               </div>
+            )}
+
+            {/* Per-subpart Explanation (collapsible) */}
+            {(currentSubpart as StudySubpart).explanation && (
+              <div className="rounded-lg border bg-card">
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-between p-3 text-sm font-medium text-left"
+                  onClick={() => setShowExplanation(prev => !prev)}
+                >
+                  <span>Explanation</span>
+                  {showExplanation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                </button>
+                {showExplanation && (
+                  <div className="px-3 pb-3 text-sm text-muted-foreground">
+                    <MathRenderer content={(currentSubpart as StudySubpart).explanation!} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Per-subpart Key Takeaway */}
+            {(currentSubpart as StudySubpart).keyTakeaway && (
+              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm">
+                <p className="font-medium text-blue-700 dark:text-blue-400 mb-1">Key Takeaway</p>
+                <MathRenderer content={(currentSubpart as StudySubpart).keyTakeaway!} />
+              </div>
+            )}
+
+            {/* Guide Me button (post-submission) */}
+            {subpartGuideSteps && !guideUsed && (
+              <Button
+                variant="outline"
+                className="w-full gap-2"
+                onClick={handleGuideMe}
+              >
+                <Compass className="h-4 w-4" />
+                Guide Me Through This
+              </Button>
             )}
 
             {/* Confidence taps */}
