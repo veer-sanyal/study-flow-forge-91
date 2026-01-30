@@ -135,12 +135,25 @@ function useQuestionsForExam(courseId: string, sourceExam: string) {
   return useQuery({
     queryKey: ["questions-for-exam", courseId, sourceExam],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // Check if this is a material-based source (format: "material:UUID")
+      const isMaterialSource = sourceExam.startsWith("material:");
+      const materialId = isMaterialSource ? sourceExam.replace("material:", "") : null;
+
+      let query = supabase
         .from("questions")
-        .select("*, question_types(id, name)")
-        .eq("course_pack_id", courseId)
-        .eq("source_exam", sourceExam)
-        .order("question_order", { ascending: true, nullsFirst: false });
+        .select("*, question_types(id, name)");
+
+      if (isMaterialSource && materialId) {
+        // Query by source_material_id for material-generated questions
+        query = query.eq("source_material_id", materialId);
+      } else {
+        // Query by source_exam for exam-based questions
+        query = query
+          .eq("course_pack_id", courseId)
+          .eq("source_exam", sourceExam);
+      }
+
+      const { data, error } = await query.order("question_order", { ascending: true, nullsFirst: false });
 
       if (error) throw error;
       
