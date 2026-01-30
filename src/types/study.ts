@@ -1,5 +1,6 @@
 import { Tables } from '@/integrations/supabase/types';
 import { GuideMe } from './guide';
+import { Rating } from 'ts-fsrs';
 
 // Database types
 export type DbQuestion = Tables<'questions'>;
@@ -128,4 +129,16 @@ export interface SubpartResult {
   selectedChoiceId?: string | null;
   pointsEarned?: number;
   maxPoints?: number;
+}
+
+// FSRS rating derivation from correctness + confidence
+// Maps existing UX signals to FSRS Rating without any UI change
+export function deriveFsrsRating(isCorrect: boolean, confidence: number | null): Rating {
+  if (!isCorrect) return Rating.Again;
+  switch (confidence) {
+    case 1:  return Rating.Hard;   // guessed
+    case 2:  return Rating.Good;   // unsure
+    case 3:  return Rating.Easy;   // knew_it
+    default: return Rating.Good;   // no confidence tap
+  }
 }

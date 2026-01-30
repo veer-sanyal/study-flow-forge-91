@@ -91,6 +91,7 @@ export type Database = {
           answer_text: string | null
           confidence: string | null
           created_at: string
+          fsrs_rating: number | null
           guide_used: boolean
           hint_used: boolean
           id: string
@@ -110,6 +111,7 @@ export type Database = {
           answer_text?: string | null
           confidence?: string | null
           created_at?: string
+          fsrs_rating?: number | null
           guide_used?: boolean
           hint_used?: boolean
           id?: string
@@ -129,6 +131,7 @@ export type Database = {
           answer_text?: string | null
           confidence?: string | null
           created_at?: string
+          fsrs_rating?: number | null
           guide_used?: boolean
           hint_used?: boolean
           id?: string
@@ -783,37 +786,52 @@ export type Database = {
       srs_state: {
         Row: {
           created_at: string
+          difficulty: number
           due_at: string
-          ease: number
+          elapsed_days: number
           id: string
-          interval_days: number
+          lapses: number
           last_reviewed_at: string | null
+          learning_steps: number
           question_id: string
           reps: number
+          scheduled_days: number
+          stability: number
+          state: number
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          difficulty?: number
           due_at?: string
-          ease?: number
+          elapsed_days?: number
           id?: string
-          interval_days?: number
+          lapses?: number
           last_reviewed_at?: string | null
+          learning_steps?: number
           question_id: string
           reps?: number
+          scheduled_days?: number
+          stability?: number
+          state?: number
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          difficulty?: number
           due_at?: string
-          ease?: number
+          elapsed_days?: number
           id?: string
-          interval_days?: number
+          lapses?: number
           last_reviewed_at?: string | null
+          learning_steps?: number
           question_id?: string
           reps?: number
+          scheduled_days?: number
+          stability?: number
+          state?: number
           updated_at?: string
           user_id?: string
         }
@@ -1055,15 +1073,6 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
-      }
-      compute_quality_score: {
-        Args: {
-          p_confidence: string
-          p_guide_used: boolean
-          p_hint_used: boolean
-          p_is_correct: boolean
-        }
-        Returns: number
       }
       get_recommended_questions:
         | {

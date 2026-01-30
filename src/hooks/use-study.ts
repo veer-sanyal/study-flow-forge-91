@@ -2,8 +2,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
-import { StudyQuestion, mapDbQuestionToStudy, mapConfidenceToDb } from '@/types/study';
+import { StudyQuestion, mapDbQuestionToStudy, mapConfidenceToDb, deriveFsrsRating } from '@/types/study';
 import { Tables } from '@/integrations/supabase/types';
+import { dbRowToCard, cardToDbRow, createEmptyCard } from '@/lib/fsrs';
+import { fsrsInstance } from '@/lib/fsrs';
 
 type DbQuestion = Tables<'questions'>;
 type DbTopic = Tables<'topics'>;
@@ -203,6 +205,64 @@ export function useSubmitAttempt() {
         userId: user.id,
       });
 
+      // 1. Derive FSRS rating from correctness + confidence
+      const rating = deriveFsrsRating(params.isCorrect, params.confidence);
+
+      // 2. Fetch current SRS state (if any)
+      const { data: existing } = await supabase
+        .from('srs_state')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('question_id', params.questionId)
+        .maybeSingle();
+
+      // 3. Build card (existing row or brand-new card)
+      const now = new Date();
+      const card = existing
+        ? dbRowToCard({
+            due_at: existing.due_at,
+            last_reviewed_at: existing.last_reviewed_at,
+            reps: existing.reps,
+            stability: existing.stability,
+            difficulty: existing.difficulty,
+            elapsed_days: existing.elapsed_days,
+            scheduled_days: existing.scheduled_days,
+            lapses: existing.lapses,
+            learning_steps: existing.learning_steps,
+            state: existing.state,
+          })
+        : createEmptyCard(now);
+
+      // 4. Run FSRS scheduling client-side
+      const result = fsrsInstance.repeat(card, now);
+      const updatedCard = result[rating].card;
+      const dbRow = cardToDbRow(updatedCard);
+
+      // 5. Upsert SRS state
+      const { error: srsError } = await supabase
+        .from('srs_state')
+        .upsert({
+          user_id: user.id,
+          question_id: params.questionId,
+          due_at: dbRow.due_at,
+          last_reviewed_at: dbRow.last_reviewed_at,
+          reps: dbRow.reps,
+          stability: dbRow.stability,
+          difficulty: dbRow.difficulty,
+          elapsed_days: dbRow.elapsed_days,
+          scheduled_days: dbRow.scheduled_days,
+          lapses: dbRow.lapses,
+          state: dbRow.state,
+        } as any, {
+          onConflict: 'user_id,question_id',
+        });
+
+      if (srsError) {
+        console.error('[useSubmitAttempt] Error upserting SRS state:', srsError);
+        throw srsError;
+      }
+
+      // 6. Insert attempt row (topic mastery handled by DB trigger)
       const { data, error } = await supabase
         .from('attempts')
         .insert({
@@ -216,7 +276,8 @@ export function useSubmitAttempt() {
           time_spent_ms: params.timeSpentMs,
           subpart_id: params.subpartId,
           answer_text: params.answerText,
-        })
+          fsrs_rating: rating,
+        } as any)
         .select();
 
       if (error) {
