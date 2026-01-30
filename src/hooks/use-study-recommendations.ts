@@ -196,10 +196,14 @@ export function useTodayPlanStats(dailyGoal: number, dailyPlanMode: 'single_cour
 }
 
 // Generate recommended presets based on user data
-export function useRecommendedPresets(courseIds: string[]): FocusPreset[] {
-  const { data: upcomingExams } = useUpcomingExamsForPresets(courseIds);
-  const { data: weakAreas } = useWeakAreas(courseIds);
-  const { data: overdueReviews } = useOverdueReviews(courseIds);
+// If no courseIds provided, defaults to enrolled courses
+export function useRecommendedPresets(courseIds: string[], enrolledCourseIds: string[] = []): FocusPreset[] {
+  // Use enrolled courses as fallback when no specific courses selected
+  const effectiveCourseIds = courseIds.length > 0 ? courseIds : enrolledCourseIds;
+
+  const { data: upcomingExams } = useUpcomingExamsForPresets(effectiveCourseIds);
+  const { data: weakAreas } = useWeakAreas(effectiveCourseIds);
+  const { data: overdueReviews } = useOverdueReviews(effectiveCourseIds);
 
   const presets: FocusPreset[] = [];
 

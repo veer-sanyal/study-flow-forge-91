@@ -261,6 +261,7 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
   return useQuery({
     queryKey: ['topics-by-midterm', courseIds],
     queryFn: async () => {
+      // Allow query to proceed - courseIds will be enrolled courses from component
       if (courseIds.length === 0) return [];
 
       // Get topics
@@ -490,6 +491,7 @@ export function usePastExamsHierarchy(courseIds: string[]) {
   return useQuery({
     queryKey: ['past-exams-hierarchy', courseIds],
     queryFn: async () => {
+      // Allow query to proceed even with empty courseIds - it will be filtered by enrolled courses in the component
       if (courseIds.length === 0) return [];
 
       // First get published ingestion jobs to know which source_exams are published

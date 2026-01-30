@@ -38,8 +38,8 @@ export default function StudyFocus() {
   } = useFocusContext();
 
   // Use enrolled courses instead of all published courses
-  const { enrollments, isLoadingEnrollments } = useEnrollments();
-  
+  const { enrollments, isLoadingEnrollments, enrolledCourseIdsArray } = useEnrollments();
+
   // Map enrollments to course format for display
   const courses = useMemo(() => {
     return enrollments
@@ -49,12 +49,15 @@ export default function StudyFocus() {
         title: (e.course_packs as any)?.title || 'Unknown Course',
       }));
   }, [enrollments]);
-  
-  const { data: upcomingExams = [] } = useUpcomingExams(filters.courseIds);
-  const { data: topicGroups = [] } = useTopicsGroupedByMidterm(filters.courseIds);
-  const { data: pastExams = [] } = usePastExamsHierarchy(filters.courseIds);
-  const { data: questionTypes = [] } = useQuestionTypesForCourses(filters.courseIds);
-  const recommendedPresets = useRecommendedPresets(filters.courseIds);
+
+  // Use enrolled courses as fallback when no specific course is selected
+  const effectiveCourseIds = filters.courseIds.length > 0 ? filters.courseIds : enrolledCourseIdsArray;
+
+  const { data: upcomingExams = [] } = useUpcomingExams(effectiveCourseIds);
+  const { data: topicGroups = [] } = useTopicsGroupedByMidterm(effectiveCourseIds);
+  const { data: pastExams = [] } = usePastExamsHierarchy(effectiveCourseIds);
+  const { data: questionTypes = [] } = useQuestionTypesForCourses(effectiveCourseIds);
+  const recommendedPresets = useRecommendedPresets(filters.courseIds, enrolledCourseIdsArray);
 
   const hasCoursesSelected = filters.courseIds.length > 0;
 
