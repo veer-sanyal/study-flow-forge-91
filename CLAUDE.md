@@ -21,11 +21,30 @@ You:
 **Scripts (/scripts)** — deterministic helpers; prefer scripts over ad-hoc logic
 **Workspace (/.workspace)** — temp scratch space, never commit
 
+## Repository Map (high-signal paths)
+**/src** — app source (Vite + React)
+- **/src/pages** — route-level screens (Auth, Study, Progress, Admin suite)
+- **/src/components** — shared UI components
+- **/src/contexts** — React context providers
+- **/src/hooks** — reusable hooks
+- **/src/data** — seed/reference data
+- **/src/integrations** — external service integrations (e.g., Supabase)
+- **/src/lib** — utilities and shared logic
+- **/src/types** — shared TypeScript types
+- **/src/test** — test helpers/fixtures
+**/supabase** — Supabase config, migrations, policies
+**/public** — static assets
+**/scripts** — automation helpers (see scripts/README.md)
+**/blueprints** — decision-making SOPs
+
 ## How You Operate
 1) Check blueprints first
 2) Use existing scripts; only add new scripts when needed
 3) Fail forward: Error → Fix → Test → Update blueprint → LEARNINGS.md entry
 4) Repo safety: never overwrite; create *.claude.new if file exists
+
+## Claude Skills Maintenance
+- When a plan changes in a way that affects workflows or tooling, automatically update Claude skills (e.g., adjust or add skills) to keep them aligned with the latest plan.
 
 ## Tech Stack
 - Vite + React + TypeScript
