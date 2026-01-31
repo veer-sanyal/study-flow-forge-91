@@ -11,10 +11,150 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMaterialById, useMaterialChunks, useObjectivesForMaterial, useAnalyzeMaterial, useGenerateQuestions, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage } from "@/hooks/use-materials";
-import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus, type MaterialAnalysis } from "@/types/materials";
+import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus, type MaterialAnalysis, type AnalyzedTopic, isAnalyzedTopicV2 } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
-import { Play, Sparkles, FileText, Target, BookOpen, AlertCircle, Save, Trash2 } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Play, Sparkles, FileText, Target, BookOpen, AlertCircle, Save, Trash2, ChevronDown, Beaker, Brain, HelpCircle, BookMarked } from "lucide-react";
 import { format } from "date-fns";
+
+function TopicCard({ topic }: { topic: AnalyzedTopic }): JSX.Element {
+  const v2 = isAnalyzedTopicV2(topic) ? topic : null;
+
+  return (
+    <Card>
+      <CardHeader className="py-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          {topic.topic_code && (
+            <Badge variant="outline">{topic.topic_code}</Badge>
+          )}
+          {topic.title}
+        </CardTitle>
+        <CardDescription className="text-xs">
+          {topic.description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0 pb-3 space-y-2">
+        {/* Difficulty + type distribution */}
+        <div className="flex flex-wrap gap-1">
+          <Badge variant="secondary">
+            Difficulty: {topic.difficulty_estimate}/5
+          </Badge>
+          {v2?.question_type_distribution?.length ? (
+            v2.question_type_distribution.map(({ type, proportion }) => (
+              <Badge key={type} variant="outline" className="text-xs">
+                {type} {Math.round(proportion * 100)}%
+              </Badge>
+            ))
+          ) : (
+            topic.recommended_question_types.map(type => (
+              <Badge key={type} variant="outline" className="text-xs">
+                {type}
+              </Badge>
+            ))
+          )}
+        </div>
+
+        {/* Difficulty rationale (v2 only) */}
+        {v2?.difficulty_rationale && (
+          <p className="text-xs text-muted-foreground italic">
+            {v2.difficulty_rationale}
+          </p>
+        )}
+
+        {/* Objectives */}
+        {topic.objectives.length > 0 && (
+          <ul className="text-xs text-muted-foreground list-disc list-inside">
+            {topic.objectives.map((obj, i) => (
+              <li key={i}>{obj}</li>
+            ))}
+          </ul>
+        )}
+
+        {/* V2 expandable sections */}
+        {v2 && (
+          <div className="space-y-1 pt-1">
+            {v2.key_terms.length > 0 && (
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                  <ChevronDown className="h-3 w-3" />
+                  <BookMarked className="h-3 w-3" />
+                  Key Terms ({v2.key_terms.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1 space-y-1">
+                  {v2.key_terms.map((kt, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="font-medium">{kt.term}</span>
+                      <span className="text-muted-foreground"> - {kt.definition}</span>
+                      {kt.page_ref != null && (
+                        <span className="text-muted-foreground/60"> (p.{kt.page_ref + 1})</span>
+                      )}
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {v2.formulas.length > 0 && (
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                  <ChevronDown className="h-3 w-3" />
+                  <Beaker className="h-3 w-3" />
+                  Formulas ({v2.formulas.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1 space-y-1">
+                  {v2.formulas.map((f, i) => (
+                    <div key={i} className="text-xs">
+                      <span className="font-medium">{f.name}:</span>
+                      <code className="ml-1 bg-muted px-1 rounded">{f.expression}</code>
+                      <span className="text-muted-foreground ml-1">({f.context})</span>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {v2.common_misconceptions.length > 0 && (
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                  <ChevronDown className="h-3 w-3" />
+                  <Brain className="h-3 w-3" />
+                  Misconceptions ({v2.common_misconceptions.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1 space-y-1">
+                  {v2.common_misconceptions.map((m, i) => (
+                    <div key={i} className="text-xs space-y-0.5">
+                      <p className="text-destructive/80">Wrong: {m.description}</p>
+                      <p className="text-green-600/80">Correct: {m.correct_concept}</p>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
+            {v2.example_questions.length > 0 && (
+              <Collapsible>
+                <CollapsibleTrigger className="flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
+                  <ChevronDown className="h-3 w-3" />
+                  <HelpCircle className="h-3 w-3" />
+                  Example Questions ({v2.example_questions.length})
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pl-5 pt-1 space-y-1">
+                  {v2.example_questions.map((eq, i) => (
+                    <div key={i} className="text-xs">
+                      <Badge variant="outline" className="text-[10px] mr-1">{eq.expected_answer_type}</Badge>
+                      <Badge variant="secondary" className="text-[10px] mr-1">D{eq.difficulty}</Badge>
+                      <span className="text-muted-foreground">{eq.stem}</span>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
 
 interface MaterialDetailDrawerProps {
   materialId: string | null;
@@ -298,38 +438,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                   {analysis?.topics?.length ? (
                     <div className="space-y-3">
                       {analysis.topics.map((topic, idx) => (
-                        <Card key={idx}>
-                          <CardHeader className="py-3">
-                            <CardTitle className="text-sm flex items-center gap-2">
-                              {topic.topic_code && (
-                                <Badge variant="outline">{topic.topic_code}</Badge>
-                              )}
-                              {topic.title}
-                            </CardTitle>
-                            <CardDescription className="text-xs">
-                              {topic.description}
-                            </CardDescription>
-                          </CardHeader>
-                          <CardContent className="pt-0 pb-3">
-                            <div className="flex flex-wrap gap-1">
-                              <Badge variant="secondary">
-                                Difficulty: {topic.difficulty_estimate}/5
-                              </Badge>
-                              {topic.recommended_question_types.map(type => (
-                                <Badge key={type} variant="outline" className="text-xs">
-                                  {type}
-                                </Badge>
-                              ))}
-                            </div>
-                            {topic.objectives.length > 0 && (
-                              <ul className="mt-2 text-xs text-muted-foreground list-disc list-inside">
-                                {topic.objectives.map((obj, i) => (
-                                  <li key={i}>{obj}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </CardContent>
-                        </Card>
+                        <TopicCard key={idx} topic={topic} />
                       ))}
                     </div>
                   ) : (
@@ -343,29 +452,57 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                 
                 {/* Chunks Tab */}
                 <TabsContent value="chunks" className="mt-4">
-                  {chunks?.length ? (
+                  {(analysis?.chunk_summaries?.length || chunks?.length) ? (
                     <div className="space-y-3">
-                      {chunks.map(chunk => (
-                        <Card key={chunk.id}>
-                          <CardHeader className="py-2">
-                            <CardTitle className="text-sm flex items-center gap-2">
-                              <Badge variant="outline">
-                                {chunk.chunk_type === 'page' ? 'Page' : 'Slide'} {chunk.chunk_index + 1}
-                              </Badge>
-                              {chunk.title_hint && (
-                                <span className="text-muted-foreground font-normal">
-                                  {chunk.title_hint}
-                                </span>
+                      {analysis?.chunk_summaries?.length ? (
+                        analysis.chunk_summaries.map((cs) => (
+                          <Card key={cs.chunk_index}>
+                            <CardHeader className="py-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <Badge variant="outline">
+                                  {cs.chunk_type === 'page' ? 'Page' : 'Slide'} {cs.chunk_index + 1}
+                                </Badge>
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="pt-0 pb-3 space-y-2">
+                              <p className="text-xs text-muted-foreground">
+                                {cs.summary}
+                              </p>
+                              {cs.key_terms.length > 0 && (
+                                <div className="flex flex-wrap gap-1">
+                                  {cs.key_terms.map((term) => (
+                                    <Badge key={term} variant="outline" className="text-[10px]">
+                                      {term}
+                                    </Badge>
+                                  ))}
+                                </div>
                               )}
-                            </CardTitle>
-                          </CardHeader>
-                          <CardContent className="pt-0 pb-3">
-                            <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
-                              {chunk.text}
-                            </p>
-                          </CardContent>
-                        </Card>
-                      ))}
+                            </CardContent>
+                          </Card>
+                        ))
+                      ) : (
+                        chunks?.map(chunk => (
+                          <Card key={chunk.id}>
+                            <CardHeader className="py-2">
+                              <CardTitle className="text-sm flex items-center gap-2">
+                                <Badge variant="outline">
+                                  {chunk.chunk_type === 'page' ? 'Page' : 'Slide'} {chunk.chunk_index + 1}
+                                </Badge>
+                                {chunk.title_hint && (
+                                  <span className="text-muted-foreground font-normal">
+                                    {chunk.title_hint}
+                                  </span>
+                                )}
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent className="pt-0 pb-3">
+                              <p className="text-xs text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+                                {chunk.text}
+                              </p>
+                            </CardContent>
+                          </Card>
+                        ))
+                      )}
                     </div>
                   ) : (
                     <div className="text-center py-8 text-muted-foreground">

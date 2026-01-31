@@ -62,13 +62,19 @@ export interface Objective {
 }
 
 // Analysis JSON structure from Gemini
+
+/** V1 analysis (legacy single-call pipeline) */
 export interface MaterialAnalysis {
+  schema_version?: 1 | 2;
   course_guess?: {
     course_code: string;
     confidence: number;
     signals: string[];
   };
   topics: AnalyzedTopic[];
+  /** V2 fields — absent on v1 */
+  chunk_summaries?: ChunkSummary[];
+  outline?: OutlineSection[];
 }
 
 export interface AnalyzedTopic {
@@ -80,6 +86,65 @@ export interface AnalyzedTopic {
   objectives: string[];
   prerequisites: string[];
   supporting_chunks: number[];
+}
+
+// --- V2 enriched analysis types ---
+
+export interface OutlineSection {
+  section_title: string;
+  page_range: [number, number];
+  subtopics: string[];
+}
+
+export interface ChunkSummary {
+  chunk_index: number;
+  chunk_type: 'page' | 'slide';
+  summary: string;
+  key_terms: string[];
+}
+
+export interface KeyTerm {
+  term: string;
+  definition: string;
+  page_ref: number | null;
+}
+
+export interface Formula {
+  name: string;
+  expression: string;
+  context: string;
+}
+
+export interface Misconception {
+  description: string;
+  correct_concept: string;
+}
+
+export interface ExampleQuestion {
+  stem: string;
+  expected_answer_type: string;
+  difficulty: number;
+}
+
+export interface QuestionTypeDistribution {
+  type: string;
+  proportion: number;
+}
+
+/** V2 enriched topic with difficulty evidence, question seeds, type distribution */
+export interface AnalyzedTopicV2 extends AnalyzedTopic {
+  difficulty_rationale: string;
+  difficulty_signals: string[];
+  key_terms: KeyTerm[];
+  formulas: Formula[];
+  common_misconceptions: Misconception[];
+  example_questions: ExampleQuestion[];
+  question_type_distribution: QuestionTypeDistribution[];
+}
+
+/** Type guard: check if a topic has v2 enrichments */
+export function isAnalyzedTopicV2(topic: AnalyzedTopic): topic is AnalyzedTopicV2 {
+  return 'difficulty_rationale' in topic && 'key_terms' in topic;
 }
 
 // Question generation request
