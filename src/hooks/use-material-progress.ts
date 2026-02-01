@@ -47,10 +47,19 @@ export function useMaterialProgress() {
         .in("status", ["pending", "running"])
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      if (error) {
+        // If table doesn't exist yet (migration not applied), return empty array
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          console.warn("material_jobs table does not exist yet. Please apply migration.");
+          return [];
+        }
+        throw error;
+      }
       return (data as unknown as MaterialJob[]) || [];
     },
     refetchInterval: 2000, // Poll every 2 seconds
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
   });
 
   // Subscribe to realtime updates

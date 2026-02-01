@@ -418,11 +418,16 @@ export function useAnalyzeMaterial() {
       });
       
       if (error) throw error;
+      
+      // Immediately invalidate queries to show the new job
+      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
+      
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-materials"] });
       queryClient.invalidateQueries({ queryKey: ["course-material"] });
+      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
     },
   });
 }
@@ -443,11 +448,16 @@ export function useGenerateQuestions() {
       });
       
       if (error) throw error;
+      
+      // Immediately invalidate queries to show the new job
+      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
+      
       return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-materials"] });
       queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
     },
   });
 }
