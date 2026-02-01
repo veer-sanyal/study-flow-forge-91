@@ -309,6 +309,37 @@ Deno.serve(async (req) => {
     // Update status to analyzing
     await supabase.from("course_materials").update({ status: "analyzing", error_message: null }).eq("id", materialId);
 
+    // Create job record for progress tracking
+    const { data: job, error: jobError } = await supabase
+      .from("material_jobs")
+      .insert({
+        material_id: materialId,
+        job_type: "analysis",
+        status: "pending",
+        created_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (jobError) {
+      console.warn("Failed to create job record:", jobError);
+    }
+
+    const jobId = job?.id;
+
+    // Update job to running
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          status: "running",
+          started_at: new Date().toISOString(),
+          analysis_phase: "chunk_summarization",
+          progress_message: "Starting analysis...",
+        })
+        .eq("id", jobId);
+    }
+
     console.log(`Starting analysis for material: ${material.title}`);
 
     // Download file from storage
@@ -354,6 +385,17 @@ Deno.serve(async (req) => {
     // PHASE A: Chunk Summarization (sends base64)
     // ==========================================
     console.log("Phase A: Chunk summarization...");
+    
+    // Update job progress
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          analysis_phase: "chunk_summarization",
+          progress_message: "Analyzing document pages/slides...",
+        })
+        .eq("id", jobId);
+    }
 
     const chunkPrompt = `You are analyzing course lecture material. For each page or slide in this document, produce a summary.
 
@@ -389,6 +431,19 @@ Analyze the document now:`;
     const chunkSummaries = phaseAData.chunk_summaries || [];
     allWarnings.push(...phaseAWarnings);
     console.log(`Phase A complete: ${chunkSummaries.length} chunk summaries`);
+    
+    // Update job progress
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          total_chunks: chunkSummaries.length,
+          completed_chunks: chunkSummaries.length,
+          analysis_phase: "outline",
+          progress_message: `Analyzed ${chunkSummaries.length} pages/slides. Creating outline...`,
+        })
+        .eq("id", jobId);
+    }
 
     // ==========================================
     // PHASE B: Coarse Outline (text-only, uses summaries)
@@ -431,11 +486,33 @@ Rules:
     const courseGuess = phaseBData.course_guess;
     allWarnings.push(...phaseBWarnings);
     console.log(`Phase B complete: ${outline.length} sections identified`);
+    
+    // Update job progress
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          analysis_phase: "topic_extraction",
+          progress_message: `Identified ${outline.length} sections. Extracting topics...`,
+        })
+        .eq("id", jobId);
+    }
 
     // ==========================================
     // PHASE C: Per-Section Fine-Grained Extraction (parallel)
     // ==========================================
     console.log(`Phase C: Extracting ${outline.length} sections in parallel...`);
+
+    // Update job with total sections
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          total_topics: outline.length,
+          completed_topics: 0,
+        })
+        .eq("id", jobId);
+    }
 
     const sectionPromises = outline.map((section, idx) => {
       // Gather chunk summaries for this section's page range
@@ -488,9 +565,47 @@ CRITICAL RULES:
                 `Fix ONLY these issues in the JSON and return the corrected full JSON:\n${issues.map((i) => `- ${i.field}: ${i.message}`).join("\n")}\n\nOriginal JSON:\n${raw}`,
             );
 
+            // Update job progress for each completed section
+            if (jobId) {
+              const { data: currentJob } = await supabase
+                .from("material_jobs")
+                .select("completed_topics")
+                .eq("id", jobId)
+                .single();
+              
+              if (currentJob) {
+                await supabase
+                  .from("material_jobs")
+                  .update({
+                    completed_topics: ((currentJob as any).completed_topics || 0) + 1,
+                    current_item: section.section_title,
+                    progress_message: `Extracted topic ${idx + 1} of ${outline.length}: ${section.section_title}`,
+                  })
+                  .eq("id", jobId);
+              }
+            }
+            
             resolve({ section: section.section_title, topic, warnings });
           } catch (e) {
             console.error(`Phase C failed for section "${section.section_title}":`, e);
+            
+            // Still increment on failure
+            if (jobId) {
+              const { data: currentJob } = await supabase
+                .from("material_jobs")
+                .select("completed_topics")
+                .eq("id", jobId)
+                .single();
+              
+              if (currentJob) {
+                await supabase
+                  .from("material_jobs")
+                  .update({
+                    completed_topics: ((currentJob as any).completed_topics || 0) + 1,
+                  })
+                  .eq("id", jobId);
+              }
+            }
             resolve({
               section: section.section_title,
               topic: {
@@ -567,6 +682,19 @@ CRITICAL RULES:
       })
       .eq("id", materialId);
 
+    // Update job to completed
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          completed_topics: topics.length,
+          progress_message: `Analysis complete! Extracted ${topics.length} topics.`,
+        })
+        .eq("id", jobId);
+    }
+
     console.log(`Stored v2 analysis with ${topics.length} topics (not created in DB)`);
 
     return new Response(
@@ -591,6 +719,28 @@ CRITICAL RULES:
           .from("course_materials")
           .update({ status: "failed", error_message: String(error) })
           .eq("id", materialId);
+        
+        // Update job to failed
+        const { data: failedJob } = await sb
+          .from("material_jobs")
+          .select("id")
+          .eq("material_id", materialId)
+          .eq("job_type", "analysis")
+          .in("status", ["pending", "running"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (failedJob) {
+          await sb
+            .from("material_jobs")
+            .update({
+              status: "failed",
+              error_message: String(error),
+              completed_at: new Date().toISOString(),
+            })
+            .eq("id", failedJob.id);
+        }
       } catch {
         // Best-effort status update
       }

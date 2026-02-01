@@ -178,8 +178,12 @@ Deno.serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  let materialId: string | undefined;
+  
   try {
-    const { materialId, topicIds, questionTypeIds, difficultyRange = [1, 5], quantityPerBucket = 3 } = await req.json();
+    const body = await req.json();
+    materialId = body.materialId;
+    const { topicIds, questionTypeIds, difficultyRange = [1, 5], quantityPerBucket = 3 } = body;
 
     if (!materialId) {
       return new Response(JSON.stringify({ error: "materialId is required" }), {
@@ -265,6 +269,24 @@ Deno.serve(async (req) => {
       .update({ status: "generating_questions", error_message: null })
       .eq("id", materialId);
 
+    // Create job record for progress tracking
+    const { data: job, error: jobError } = await supabase
+      .from("material_jobs")
+      .insert({
+        material_id: materialId,
+        job_type: "generation",
+        status: "pending",
+        created_by: user.id,
+      })
+      .select()
+      .single();
+
+    if (jobError) {
+      console.warn("Failed to create job record:", jobError);
+    }
+
+    const jobId = job?.id;
+
     console.log(`Starting question generation for material: ${material.title}`);
 
     // Normalize analysis for v1/v2 compatibility
@@ -324,6 +346,20 @@ Deno.serve(async (req) => {
       `Topic matching: ${topicMatches.length}/${topics.length} matched to material content`,
     );
 
+    // Update job to running with topic count
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          status: "running",
+          started_at: new Date().toISOString(),
+          total_topics: topicMatches.length,
+          completed_topics: 0,
+          progress_message: `Starting question generation for ${topicMatches.length} topics...`,
+        })
+        .eq("id", jobId);
+    }
+
     if (topicMatches.length === 0) {
       await supabase
         .from("course_materials")
@@ -344,8 +380,22 @@ Deno.serve(async (req) => {
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`;
 
     let totalQuestionsCreated = 0;
+    let completedTopicCount = 0;
 
     for (const { dbTopic, analysisTopic } of topicMatches) {
+      completedTopicCount++;
+      
+      // Update job progress
+      if (jobId) {
+        await supabase
+          .from("material_jobs")
+          .update({
+            completed_topics: completedTopicCount,
+            current_item: dbTopic.title,
+            progress_message: `Generating questions for topic ${completedTopicCount} of ${topicMatches.length}: ${dbTopic.title}`,
+          })
+          .eq("id", jobId);
+      }
       const topicObjectives =
         objectives?.filter((o) => o.topic_id === dbTopic.id).map((o) => o.objective_text) || [];
       const allObjectives = [...topicObjectives, ...(analysisTopic?.objectives || [])];
@@ -521,6 +571,25 @@ ${QUESTION_SCHEMA}`;
             console.error("Error inserting question:", insertError);
           } else {
             totalQuestionsCreated++;
+            
+            // Update question count in job
+            if (jobId) {
+              const { data: currentJob } = await supabase
+                .from("material_jobs")
+                .select("total_questions, completed_questions")
+                .eq("id", jobId)
+                .single();
+              
+              if (currentJob) {
+                await supabase
+                  .from("material_jobs")
+                  .update({
+                    total_questions: Math.max((currentJob as any).total_questions || 0, totalQuestionsCreated),
+                    completed_questions: totalQuestionsCreated,
+                  })
+                  .eq("id", jobId);
+              }
+            }
           }
         }
       } catch (topicError) {
@@ -539,6 +608,21 @@ ${QUESTION_SCHEMA}`;
       })
       .eq("id", materialId);
 
+    // Update job to completed
+    if (jobId) {
+      await supabase
+        .from("material_jobs")
+        .update({
+          status: "completed",
+          completed_at: new Date().toISOString(),
+          completed_topics: topicMatches.length,
+          total_questions: totalQuestionsCreated,
+          completed_questions: totalQuestionsCreated,
+          progress_message: `Generation complete! Created ${totalQuestionsCreated} questions from ${topicMatches.length} topics.`,
+        })
+        .eq("id", jobId);
+    }
+
     console.log(`Created ${totalQuestionsCreated} questions as drafts across ${topicMatches.length} topics`);
 
     return new Response(
@@ -552,6 +636,38 @@ ${QUESTION_SCHEMA}`;
     );
   } catch (error) {
     console.error("Error in generate-questions:", error);
+
+    // Try to update job to failed
+    if (materialId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const sb = createClient(supabaseUrl, supabaseServiceKey);
+        
+        const { data: failedJob } = await sb
+          .from("material_jobs")
+          .select("id")
+          .eq("material_id", materialId)
+          .eq("job_type", "generation")
+          .in("status", ["pending", "running"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single();
+        
+        if (failedJob) {
+          await sb
+            .from("material_jobs")
+            .update({
+              status: "failed",
+              error_message: String(error),
+              completed_at: new Date().toISOString(),
+            })
+            .eq("id", failedJob.id);
+        }
+      } catch {
+        // Best-effort status update
+      }
+    }
 
     return new Response(JSON.stringify({ error: String(error) }), {
       status: 500,

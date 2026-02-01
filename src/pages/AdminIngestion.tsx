@@ -40,6 +40,7 @@ import {
   useIngestionProgress 
 } from "@/hooks/use-ingestion";
 import { useAnalysisProgress } from "@/hooks/use-analysis-progress";
+import { useMaterialProgress } from "@/hooks/use-material-progress";
 import { staggerContainer, staggerItem } from "@/lib/motion";
 import { formatDistanceToNow } from "date-fns";
 import { useNavigate } from "react-router-dom";
@@ -397,6 +398,214 @@ function AnalysisProgressCard() {
   );
 }
 
+// Material Progress Card Component
+function MaterialProgressCard({ job, getProgress }: { job: any; getProgress: (job: any) => number }) {
+  const navigate = useNavigate();
+  const [now, setNow] = useState(Date.now());
+  const material = job.course_materials;
+
+  // Update elapsed time every second
+  useEffect(() => {
+    if (!job || job.status !== "running") return;
+    
+    const interval = setInterval(() => {
+      setNow(Date.now());
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [job]);
+
+  const progressPercent = getProgress(job);
+  const isCompleted = job.status === "completed";
+  const isFailed = job.status === "failed";
+  const currentElapsed = job.started_at ? now - new Date(job.started_at).getTime() : 0;
+
+  const handleViewMaterial = () => {
+    if (material?.course_pack_id) {
+      navigate(`/admin/questions/${material.course_pack_id}`);
+    }
+  };
+
+  const getPhaseLabel = (phase: string | null) => {
+    switch (phase) {
+      case "chunk_summarization":
+        return "Analyzing Pages";
+      case "outline":
+        return "Creating Outline";
+      case "topic_extraction":
+        return "Extracting Topics";
+      default:
+        return "Starting...";
+    }
+  };
+
+  const getJobTypeLabel = (type: string) => {
+    return type === "analysis" ? "Material Analysis" : "Question Generation";
+  };
+
+  return (
+    <motion.div
+      variants={staggerItem}
+      initial={{ opacity: 0, y: -10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -10 }}
+    >
+      <Card className={`border-2 ${isCompleted ? 'border-green-500/50 bg-green-500/5' : isFailed ? 'border-destructive/50 bg-destructive/5' : 'border-primary/50 bg-primary/5'}`}>
+        <CardContent className="p-5">
+          <div className="space-y-4">
+            {/* Header */}
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className={`p-2 rounded-full ${isCompleted ? 'bg-green-500/20' : isFailed ? 'bg-destructive/20' : 'bg-primary/20'}`}>
+                  {isCompleted ? (
+                    <CheckCircle2 className="h-5 w-5 text-green-500" />
+                  ) : isFailed ? (
+                    <AlertTriangle className="h-5 w-5 text-destructive" />
+                  ) : (
+                    <Wand2 className="h-5 w-5 text-primary animate-pulse" />
+                  )}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-semibold text-base">
+                      {isCompleted ? `${getJobTypeLabel(job.job_type)} Complete` : isFailed ? `${getJobTypeLabel(job.job_type)} Failed` : getJobTypeLabel(job.job_type)}
+                    </h3>
+                    <Badge variant={isCompleted ? "default" : isFailed ? "destructive" : "secondary"} className={isCompleted ? "bg-green-500" : ""}>
+                      {isCompleted ? "Done" : isFailed ? "Failed" : "In Progress"}
+                    </Badge>
+                  </div>
+                  <p className="text-sm text-muted-foreground">
+                    {material?.title || "Material"}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {material?.course_pack_id && (
+                  <Button 
+                    size="sm" 
+                    variant="outline"
+                    onClick={handleViewMaterial}
+                    className="gap-1"
+                  >
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    View
+                  </Button>
+                )}
+              </div>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-sm">
+                <span className="font-medium">
+                  {job.job_type === "analysis" ? (
+                    job.analysis_phase ? (
+                      <>
+                        {getPhaseLabel(job.analysis_phase)}
+                        {job.analysis_phase === "chunk_summarization" && job.total_chunks > 0 && (
+                          <> • {job.completed_chunks}/{job.total_chunks} pages</>
+                        )}
+                        {job.analysis_phase === "topic_extraction" && job.total_topics > 0 && (
+                          <> • {job.completed_topics}/{job.total_topics} topics</>
+                        )}
+                      </>
+                    ) : (
+                      "Starting..."
+                    )
+                  ) : (
+                    <>
+                      {job.completed_topics}/{job.total_topics} topics
+                      {job.total_questions > 0 && (
+                        <> • {job.completed_questions} questions</>
+                      )}
+                    </>
+                  )}
+                </span>
+                <span className="text-muted-foreground">
+                  {Math.round(progressPercent)}%
+                </span>
+              </div>
+              <Progress value={progressPercent} className="h-2" />
+            </div>
+
+            {/* Current Item Preview */}
+            {!isCompleted && !isFailed && job.current_item && (
+              <div className="p-3 rounded-lg bg-muted/50 border">
+                <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  {job.job_type === "analysis" ? "Currently processing" : "Generating questions for"}
+                </div>
+                <div className="text-sm font-medium">
+                  {job.current_item}
+                </div>
+                {job.progress_message && (
+                  <div className="text-xs text-muted-foreground mt-1">
+                    {job.progress_message}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Stats Grid */}
+            <div className="grid grid-cols-3 gap-4">
+              {/* Elapsed Time */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Timer className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Elapsed</p>
+                  <p className="font-medium text-sm">{formatDuration(currentElapsed)}</p>
+                </div>
+              </div>
+
+              {/* Progress Info */}
+              <div className="flex items-center gap-2">
+                <div className="p-1.5 rounded bg-muted">
+                  <Zap className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">
+                    {job.job_type === "analysis" ? "Phase" : "Progress"}
+                  </p>
+                  <p className="font-medium text-sm">
+                    {job.job_type === "analysis" 
+                      ? getPhaseLabel(job.analysis_phase) 
+                      : `${job.completed_topics}/${job.total_topics}`
+                    }
+                  </p>
+                </div>
+              </div>
+
+              {/* Questions Generated (for generation jobs) */}
+              {job.job_type === "generation" && job.total_questions > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded bg-muted">
+                    <FileText className="h-4 w-4 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Questions</p>
+                    <p className="font-medium text-sm">{job.completed_questions}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Error Message */}
+            {isFailed && job.error_message && (
+              <div className="flex items-center gap-2 p-2 rounded bg-destructive/10 border border-destructive/30 text-destructive">
+                <AlertTriangle className="h-4 w-4 flex-shrink-0" />
+                <span className="text-sm">{job.error_message}</span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
 export default function AdminIngestion() {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -408,6 +617,7 @@ export default function AdminIngestion() {
   // Data
   const { data: jobs, isLoading: jobsLoading, refetch: refetchJobs } = useIngestionJobs();
   const { progress: analysisProgress } = useAnalysisProgress();
+  const { activeJobs: materialJobs, analysisJobs, generationJobs, getProgress } = useMaterialProgress();
   
   // Mutations
   const processJob = useProcessJob();
@@ -505,6 +715,16 @@ export default function AdminIngestion() {
 
         {/* Analysis Progress Card */}
         {analysisProgress && <AnalysisProgressCard />}
+
+        {/* Material Analysis Progress Cards */}
+        {analysisJobs.map((job) => (
+          <MaterialProgressCard key={job.id} job={job} getProgress={getProgress} />
+        ))}
+
+        {/* Material Generation Progress Cards */}
+        {generationJobs.map((job) => (
+          <MaterialProgressCard key={job.id} job={job} getProgress={getProgress} />
+        ))}
 
         {/* Jobs List */}
         <motion.div variants={staggerItem}>
