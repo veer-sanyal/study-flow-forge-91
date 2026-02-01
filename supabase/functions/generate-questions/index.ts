@@ -311,14 +311,34 @@ Deno.serve(async (req) => {
     const typesList = questionTypes?.map((qt) => qt.name).join(", ") || "multiple choice, short answer, conceptual";
 
     // Match each DB topic to its analysis topic
-    const topicMatches: Array<{ dbTopic: DbTopic; analysisTopic: AnalysisTopicV2 | null }> = topics.map((t) => ({
+    const allMatches: Array<{ dbTopic: DbTopic; analysisTopic: AnalysisTopicV2 | null }> = topics.map((t) => ({
       dbTopic: t as DbTopic,
       analysisTopic: matchAnalysisTopic(t as DbTopic, analysis.topics),
     }));
 
+    // CRITICAL FIX: Only generate questions for topics that ACTUALLY matched content in the analyzed material
+    // This prevents generating questions for topics not covered in the uploaded lecture
+    const topicMatches = allMatches.filter((m) => m.analysisTopic !== null);
+
     console.log(
-      `Topic matching: ${topicMatches.filter((m) => m.analysisTopic).length}/${topics.length} matched`,
+      `Topic matching: ${topicMatches.length}/${topics.length} matched to material content`,
     );
+
+    if (topicMatches.length === 0) {
+      await supabase
+        .from("course_materials")
+        .update({ status: "analyzed", error_message: "No topics from this material matched database topics" })
+        .eq("id", materialId);
+
+      return new Response(JSON.stringify({ 
+        error: "No matching topics found", 
+        detail: "The analyzed material's topics did not match any existing database topics. Please ensure topics have been created first.",
+        analysisTopics: analysis.topics.map(t => t.title),
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // Generate questions per topic using Gemini
     const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`;
