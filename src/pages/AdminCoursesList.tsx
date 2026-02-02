@@ -38,16 +38,20 @@ function useCoursesWithStats() {
       if (coursesError) throw coursesError;
 
       // Get question counts per course
+      // Only count published/approved questions (matching the standard filters used elsewhere)
       const { data: questions, error: questionsError } = await supabase
         .from("questions")
-        .select("id, course_pack_id, needs_review, source_exam");
+        .select("id, course_pack_id, needs_review, source_exam, status, is_published");
 
       if (questionsError) throw questionsError;
 
       // Calculate stats for each course
       const coursesWithStats: CourseWithStats[] = (courses as any[]).map((course) => {
+        // Filter to only count published/approved questions (matching standard behavior)
         const courseQuestions = questions.filter(
-          (q) => q.course_pack_id === course.id
+          (q) => q.course_pack_id === course.id &&
+                 (q.is_published !== false) && // is_published is true or null (defaults to true)
+                 (q.status === 'approved' || !q.status) // status is 'approved' or null (defaults to 'approved')
         );
         const uniqueExams = new Set(
           courseQuestions.map((q) => q.source_exam).filter(Boolean)
