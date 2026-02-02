@@ -56,11 +56,42 @@ const TOPIC_EXTRACTION_SCHEMA = `{
   "formulas": [
     {"name": "formula name", "expression": "LaTeX or text expression", "context": "when/how it's used"}
   ],
+  "canonical_formulas": [
+    {"name": "formula name", "expression": "exact LaTeX expression with symbols", "page_ref": 3}
+  ],
   "common_misconceptions": [
     {"description": "what students get wrong", "correct_concept": "what is actually true"}
   ],
+  "worked_examples": [
+    {
+      "prompt": "textbook-style example description",
+      "given": ["given value 1", "given value 2"],
+      "steps": ["step 1", "step 2", "step 3"],
+      "answer": "final answer",
+      "page_ref": 31
+    }
+  ],
+  "tables": [
+    {
+      "title": "Table title",
+      "columns": ["column1", "column2", "column3"],
+      "rows": [["value1", "value2", "value3"], ["value4", "value5", "value6"]],
+      "page_ref": 41
+    }
+  ],
   "example_questions": [
-    {"stem": "sample question text", "expected_answer_type": "numeric|mcq|short", "difficulty": 3}
+    {
+      "type": "conceptual|computation|mcq|short_answer",
+      "stem": "question text",
+      "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
+      "correct_choice_index": 1,
+      "final_answer": "string",
+      "solution_steps": ["step 1", "step 2"],
+      "objective_index": 0,
+      "misconception_index": 0,
+      "page_ref": 29,
+      "difficulty": 3
+    }
   ]
 }`;
 
@@ -186,6 +217,12 @@ function validateTopic(topic: Record<string, unknown>): ValidationIssue[] {
     if (Math.abs(sum - 1.0) > 0.05) {
       issues.push({ field: "question_type_distribution", message: `Proportions sum to ${sum}, must be ~1.0` });
     }
+  }
+
+  // Example questions validation - require at least 4
+  const exampleQuestions = (topic.example_questions as Array<Record<string, unknown>>) || [];
+  if (exampleQuestions.length < 4) {
+    issues.push({ field: "example_questions", message: `Must have at least 4 example questions, found ${exampleQuestions.length}` });
   }
 
   return issues;
@@ -542,10 +579,52 @@ CRITICAL RULES:
 2. DO NOT use these verbs in objectives: ${BANNED_VERBS.join(", ")}
 3. difficulty_estimate: 1=introductory, 3=intermediate, 5=advanced. Justify in difficulty_rationale.
 4. question_type_distribution proportions MUST sum to 1.0
-5. Include at least 2 key_terms, 2 objectives, and 1 example_question
+5. Include at least 2 key_terms, 2 objectives, and 4 example_questions
 6. supporting_chunks: list the chunk_index values from the page summaries above
 7. formulas: include any mathematical formulas, equations, or key expressions. Empty array if none.
-8. common_misconceptions: what students typically get wrong about this topic. At least 1.`;
+8. common_misconceptions: what students typically get wrong about this topic. At least 1.
+
+QUESTION-READY FACTS EXTRACTION:
+9. worked_examples: Extract any worked examples from the material showing givens → steps → final answer. Include concrete numbers, formulas used, and step-by-step reasoning. Empty array if none.
+10. tables: Extract any structured tables with columns and rows. Preserve exact values (percentages, numbers, etc.). Empty array if none.
+11. canonical_formulas: Extract exact mathematical formulas with precise symbols and notation (e.g., union formula, Bayes form). Use LaTeX. Empty array if none.
+
+QUALITY RUBRIC FOR EXAMPLE_QUESTIONS:
+12. example_questions MUST be at least 4 questions (not 1), and MUST follow these rules:
+    - Include: 1 conceptual, 1 computation/numeric, 2 MCQ (4 options each).
+    - Each question must explicitly target ONE objective from objectives[]:
+        include "objective_index" pointing to the objective it tests (0-based index).
+    - Every question must include:
+        (a) "final_answer" (the correct answer)
+        (b) "solution_steps" (3-8 bullet steps showing how to solve)
+        (c) "difficulty" (1-5) consistent with difficulty_estimate
+        (d) "page_ref" using a chunk_index from supporting_chunks
+    - MCQ rules:
+        * exactly 4 choices
+        * exactly one correct choice
+        * include "correct_choice_index" (0-3)
+        * include "misconception_index" mapping to a common_misconceptions[] index for distractor rationale
+    - Use the lecture's concrete numbers/examples whenever present in RELEVANT PAGE SUMMARIES.
+    - Avoid definition-only questions unless the objective is explicitly "define" or "identify".
+    - No ambiguous stems; define all symbols; specify rounding if numeric.
+    - Each question must be solvable from the provided material (no outside facts required).
+
+DIFFICULTY OPERATIONALIZATION:
+13. Difficulty levels mean:
+    - 1: Single-step recall or definition. No computation. Direct application of a single concept.
+    - 2: Two-step process. Simple substitution into formula. Basic algebraic manipulation.
+    - 3: Multi-step reasoning. Requires combining 2-3 concepts. Moderate algebraic work.
+    - 4: Complex multi-step. Conditional reasoning. Requires synthesis of multiple concepts. Advanced algebra.
+    - 5: Novel problem-solving. Requires creative application. Proof or derivation. Multiple solution paths.
+
+ANTI-BAD-QUESTION RULES:
+14. BAN these failure modes:
+    - Vague stems ("Which is correct?" with missing context)
+    - Trick wording or gotcha questions
+    - Questions that can't be answered without the slide image (must be solvable from text)
+    - Multi-skill mashups (one question testing multiple unrelated objectives)
+    - MCQ with multiple correct choices (unless explicitly multi_select)
+    - Questions requiring outside knowledge not in the material`;
 
       // Stagger calls by 500ms * index
       return new Promise<{ section: string; topic: Record<string, unknown>; warnings: string[] }>((resolve) => {

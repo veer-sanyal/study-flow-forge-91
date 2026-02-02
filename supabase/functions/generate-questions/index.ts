@@ -22,8 +22,34 @@ interface AnalysisTopicV2 extends AnalysisTopicV1 {
   difficulty_signals?: string[];
   key_terms?: Array<{ term: string; definition: string; page_ref: number | null }>;
   formulas?: Array<{ name: string; expression: string; context: string }>;
+  canonical_formulas?: Array<{ name: string; expression: string; page_ref: number }>;
   common_misconceptions?: Array<{ description: string; correct_concept: string }>;
-  example_questions?: Array<{ stem: string; expected_answer_type: string; difficulty: number }>;
+  worked_examples?: Array<{
+    prompt: string;
+    given: string[];
+    steps: string[];
+    answer: string;
+    page_ref: number;
+  }>;
+  tables?: Array<{
+    title: string;
+    columns: string[];
+    rows: string[][];
+    page_ref: number;
+  }>;
+  example_questions?: Array<{
+    type: string;
+    stem: string;
+    choices?: string[];
+    correct_choice_index?: number;
+    final_answer?: string;
+    solution_steps?: string[];
+    objective_index?: number;
+    misconception_index?: number;
+    page_ref?: number;
+    difficulty: number;
+    expected_answer_type?: string; // Legacy field
+  }>;
   question_type_distribution?: Array<{ type: string; proportion: number }>;
 }
 
@@ -72,7 +98,10 @@ function normalizeAnalysis(raw: Record<string, unknown>): NormalizedAnalysis {
       difficulty_rationale: "",
       key_terms: [],
       formulas: [],
+      canonical_formulas: [],
       common_misconceptions: [],
+      worked_examples: [],
+      tables: [],
       example_questions: [],
       question_type_distribution: types.map((type) => ({ type, proportion })),
     };
@@ -162,11 +191,40 @@ const QUESTION_SCHEMA = `{
       "answer_format": "mcq|numeric|short|multi_select",
       "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
       "correct_answer": "The correct answer (letter for MCQ, value for numeric/short)",
+      "correct_choice_index": 0,
       "full_solution": "Step-by-step solution explanation",
+      "solution_steps": ["Step 1", "Step 2", "Step 3"],
       "hints": ["Hint 1 (general)", "Hint 2 (more specific)", "Hint 3 (almost gives away answer)"],
       "common_mistakes": ["Common mistake 1", "Common mistake 2"],
+      "distractor_rationales": {"0": "why this is wrong", "1": "why this is wrong", "2": "why this is wrong"},
       "tags": ["tag1", "tag2"],
-      "difficulty": 1-5
+      "difficulty": 1-5,
+      "objective_index": 0,
+      "source_refs": {"supporting_chunks": [29, 30], "page_refs": [29]}
+    }
+  ]
+}`;
+
+const JUDGE_SCHEMA = `{
+  "judged_questions": [
+    {
+      "original_index": 0,
+      "score": 1-5,
+      "scores": {
+        "alignment": 1-5,
+        "clarity": 1-5,
+        "solvability_from_material": 1-5,
+        "correctness": 1-5,
+        "distractor_quality": 1-5
+      },
+      "issues": ["issue 1", "issue 2"],
+      "rewritten_question": {
+        "stem": "improved question text",
+        "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
+        "correct_answer": "correct answer",
+        "full_solution": "improved solution",
+        "solution_steps": ["Step 1", "Step 2"]
+      }
     }
   ]
 }`;
@@ -420,6 +478,36 @@ Deno.serve(async (req) => {
             .join("\n");
         }
 
+        // Canonical formulas (exact expressions)
+        if (analysisTopic.canonical_formulas && analysisTopic.canonical_formulas.length > 0) {
+          enrichedContext += "\nCANONICAL FORMULAS (exact expressions with precise symbols):\n";
+          enrichedContext += analysisTopic.canonical_formulas
+            .map((f) => `- ${f.name}: ${f.expression} [Page ${f.page_ref}]`)
+            .join("\n");
+        }
+
+        // Worked examples (problem-ready facts)
+        if (analysisTopic.worked_examples && analysisTopic.worked_examples.length > 0) {
+          enrichedContext += "\nWORKED EXAMPLES (use these concrete numbers and steps):\n";
+          enrichedContext += analysisTopic.worked_examples
+            .map((we) => {
+              return `Example: ${we.prompt}\nGiven: ${we.given.join(", ")}\nSteps: ${we.steps.join(" → ")}\nAnswer: ${we.answer} [Page ${we.page_ref}]`;
+            })
+            .join("\n\n");
+        }
+
+        // Tables (structured data)
+        if (analysisTopic.tables && analysisTopic.tables.length > 0) {
+          enrichedContext += "\nTABLES (use exact values from these):\n";
+          enrichedContext += analysisTopic.tables
+            .map((t) => {
+              const header = `${t.title} [Page ${t.page_ref}]:\n${t.columns.join(" | ")}\n`;
+              const rows = t.rows.map((r) => r.join(" | ")).join("\n");
+              return header + rows;
+            })
+            .join("\n\n");
+        }
+
         // Common misconceptions (use as MCQ distractors)
         if (analysisTopic.common_misconceptions && analysisTopic.common_misconceptions.length > 0) {
           enrichedContext += "\nCOMMON MISCONCEPTIONS (use these to create distractors for MCQs):\n";
@@ -432,8 +520,14 @@ Deno.serve(async (req) => {
         if (analysisTopic.example_questions && analysisTopic.example_questions.length > 0) {
           enrichedContext += "\nEXAMPLE QUESTION SEEDS (rephrase, don't copy verbatim):\n";
           enrichedContext += analysisTopic.example_questions
-            .map((eq) => `- [${eq.expected_answer_type}, difficulty ${eq.difficulty}] ${eq.stem}`)
-            .join("\n");
+            .map((eq, idx) => {
+              const base = `[${idx}] [${eq.type}, difficulty ${eq.difficulty}, objective ${eq.objective_index}] ${eq.stem}`;
+              if (eq.choices && eq.choices.length > 0) {
+                return base + `\nChoices: ${eq.choices.join(", ")}\nCorrect: ${eq.correct_choice_index}`;
+              }
+              return base + `\nAnswer: ${eq.final_answer}`;
+            })
+            .join("\n\n");
         }
 
         // Chunk summaries for grounded context
@@ -472,21 +566,62 @@ TOPIC: ${dbTopic.title}
 DESCRIPTION: ${dbTopic.description || analysisTopic?.description || "N/A"}
 
 LEARNING OBJECTIVES:
-${allObjectives.length > 0 ? allObjectives.map((o) => `- ${o}`).join("\n") : "- General understanding of the topic"}
+${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join("\n") : "- General understanding of the topic"}
 ${enrichedContext}
 
 ${quantityInstructions}
 
+QUALITY RUBRIC (CRITICAL):
+1. Each question must test exactly ONE objective:
+   - Include "objective_index" pointing to the objective it tests (0-based index from LEARNING OBJECTIVES above)
+   - Do NOT create multi-skill mashups
+
+2. Must be solvable from provided material:
+   - Use concrete numbers/examples from worked_examples and tables when available
+   - Use exact formulas from canonical_formulas
+   - Do NOT require outside facts not in the material
+
+3. MCQ requirements (if answer_format is "mcq"):
+   - Exactly 4 choices (A, B, C, D)
+   - Exactly one correct choice
+   - Include "correct_choice_index" (0-3)
+   - Include "distractor_rationales" mapping each wrong choice to a misconception
+   - Distractors must map to misconceptions from COMMON MISCONCEPTIONS above
+
+4. Difficulty operationalization:
+   - 1: Single-step recall or definition. No computation. Direct application of a single concept.
+   - 2: Two-step process. Simple substitution into formula. Basic algebraic manipulation.
+   - 3: Multi-step reasoning. Requires combining 2-3 concepts. Moderate algebraic work.
+   - 4: Complex multi-step. Conditional reasoning. Requires synthesis of multiple concepts. Advanced algebra.
+   - 5: Novel problem-solving. Requires creative application. Proof or derivation. Multiple solution paths.
+   - Difficulty MUST match the number of steps and complexity described above
+
+5. Anti-bad-question rules (BAN these):
+   - Vague stems ("Which is correct?" with missing context)
+   - Trick wording or gotcha questions
+   - Questions that can't be answered without the slide image (must be solvable from text)
+   - Multi-skill mashups (one question testing multiple unrelated objectives)
+   - MCQ with multiple correct choices (unless explicitly multi_select)
+   - Questions requiring outside knowledge not in the material
+   - Definition-only questions unless the objective explicitly requires "define" or "identify"
+
+6. Required fields for each question:
+   - stem: Clear, unambiguous question text. Define all symbols. Specify rounding if numeric.
+   - solution_steps: 3-8 bullet steps showing how to solve
+   - final_answer: The correct answer (use this field, not just correct_answer)
+   - source_refs: Include supporting_chunks and page_refs from the material
+   - For MCQs: choices array with exactly 4 items, correct_choice_index, distractor_rationales
+
 RULES:
-- Difficulty range: ${difficultyRange[0]}-${difficultyRange[1]} (1=easy, 5=hard)
+- Difficulty range: ${difficultyRange[0]}-${difficultyRange[1]}
 - Allowed types: ${typesList}
-- Each question needs: stem, 4 MCQ choices (A-D) for MCQs, correct answer, step-by-step solution, 3 hints, 2 common mistakes, tags, difficulty
 - topic_title MUST be exactly: "${dbTopic.title}"
 - Keep solutions concise (under 100 words each)
 - Keep hints short (one sentence each)
 - Questions MUST be grounded in the material context provided above
-- For MCQs: use misconceptions as distractors when available
-- For computation: use formulas and require actual calculation steps
+- Use worked_examples' concrete numbers and steps when available
+- Use tables' exact values when available
+- Use canonical_formulas' exact expressions when available
 
 CRITICAL: Your response MUST be complete valid JSON. Do not truncate.
 
@@ -534,30 +669,126 @@ ${QUESTION_SCHEMA}`;
 
         if (!generatedData.questions || !Array.isArray(generatedData.questions)) continue;
 
+        // Judge pass: Score and rewrite questions scoring <4
+        let questionsToInsert = generatedData.questions;
+        try {
+          const judgePrompt = `You are a quality judge for practice questions. Score each question 1-5 on:
+- alignment: Does it test exactly one objective from the list?
+- clarity: Is the stem clear and unambiguous?
+- solvability_from_material: Can it be solved using only the provided material?
+- correctness: Is the answer and solution correct?
+- distractor_quality: For MCQs, are distractors meaningful and map to misconceptions?
+
+LEARNING OBJECTIVES:
+${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join("\n") : "- General understanding"}
+
+GENERATED QUESTIONS:
+${JSON.stringify(generatedData.questions, null, 2)}
+
+RULES:
+- Score each question 1-5 on each dimension (alignment, clarity, solvability_from_material, correctness, distractor_quality)
+- Overall score = average of all dimensions
+- For any question with overall score < 4, provide a rewritten_question with improvements
+- Keep rewritten questions in the same format as original
+- Return ONLY valid JSON matching this schema:
+${JUDGE_SCHEMA}`;
+
+          const judgeResponse = await fetch(geminiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: judgePrompt }] }],
+              generationConfig: {
+                temperature: 0.3,
+                maxOutputTokens: 16384,
+                response_mime_type: "application/json",
+              },
+            }),
+          });
+
+          if (judgeResponse.ok) {
+            const judgeResult = await judgeResponse.json();
+            const judgeText = judgeResult.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (judgeText) {
+              try {
+                const cleanedJudgeText = judgeText.replace(/```json\n?|\n?```/g, "").trim();
+                const judgeData = JSON.parse(cleanedJudgeText) as { judged_questions: Array<{
+                  original_index: number;
+                  score: number;
+                  scores: {
+                    alignment: number;
+                    clarity: number;
+                    solvability_from_material: number;
+                    correctness: number;
+                    distractor_quality: number;
+                  };
+                  issues: string[];
+                  rewritten_question?: Record<string, unknown>;
+                }> };
+
+                // Replace low-scoring questions with rewritten versions
+                if (judgeData.judged_questions) {
+                  for (const judged of judgeData.judged_questions) {
+                    if (judged.score < 4 && judged.rewritten_question) {
+                      const originalIdx = judged.original_index;
+                      if (originalIdx >= 0 && originalIdx < questionsToInsert.length) {
+                        // Merge rewritten question with original (preserve fields not in rewritten)
+                        questionsToInsert[originalIdx] = {
+                          ...questionsToInsert[originalIdx],
+                          ...judged.rewritten_question,
+                        };
+                        console.log(`Rewrote question ${originalIdx} (score: ${judged.score.toFixed(2)})`);
+                      }
+                    }
+                  }
+                }
+              } catch (e) {
+                console.warn(`Failed to parse judge response for topic "${dbTopic.title}":`, e);
+                // Continue with original questions
+              }
+            }
+          }
+        } catch (judgeError) {
+          console.warn(`Judge pass failed for topic "${dbTopic.title}":`, judgeError);
+          // Continue with original questions
+        }
+
         // Insert questions with correct topic_id
-        for (const q of generatedData.questions) {
-          const choices =
-            (q.choices as string[])?.map((text: string, idx: number) => ({
-              id: String.fromCharCode(65 + idx),
-              text: text.replace(/^[A-D]\)\s*/, ""),
-              isCorrect: (q.correct_answer as string)?.toUpperCase().startsWith(String.fromCharCode(65 + idx)),
-            })) || null;
+        for (const q of questionsToInsert) {
+          // Handle choices - use correct_choice_index if available, otherwise infer from correct_answer
+          const choicesArray = (q.choices as string[]) || [];
+          const correctChoiceIndex = (q.correct_choice_index as number) ?? 
+            (q.correct_answer as string)?.toUpperCase().charCodeAt(0) - 65;
+          
+          const choices = choicesArray.length > 0
+            ? choicesArray.map((text: string, idx: number) => ({
+                id: String.fromCharCode(65 + idx),
+                text: text.replace(/^[A-D]\)\s*/, ""),
+                isCorrect: idx === correctChoiceIndex,
+              }))
+            : null;
 
           const answerFormat = (q.answer_format as string) || "mcq";
           const questionFormat =
             answerFormat === "mcq" ? "multiple_choice" : answerFormat === "numeric" ? "numeric" : "short_answer";
+
+          // Use final_answer if available, otherwise fall back to correct_answer
+          const finalAnswer = (q.final_answer as string) || (q.correct_answer as string) || "";
+
+          // Use solution_steps if available, otherwise fall back to hints
+          const solutionSteps = (q.solution_steps as string[]) || (q.hints as string[]) || [];
 
           const { error: insertError } = await supabase.from("questions").insert({
             course_pack_id: material.course_pack_id,
             topic_ids: [dbTopic.id],
             prompt: q.stem,
             choices: choices,
-            correct_answer: q.correct_answer,
+            correct_answer: finalAnswer,
             question_format: questionFormat,
             difficulty: (q.difficulty as number) || 3,
             hint: (q.hints as string[])?.[0] || null,
-            solution_steps: (q.hints as string[]) || [],
-            full_solution: q.full_solution,
+            solution_steps: solutionSteps,
+            full_solution: (q.full_solution as string) || solutionSteps.join("\n"),
             common_mistakes: (q.common_mistakes as string[]) || [],
             tags: (q.tags as string[]) || [],
             source: "generated",
