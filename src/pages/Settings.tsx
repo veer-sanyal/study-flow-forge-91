@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EnrollmentCard } from "@/components/settings/EnrollmentCard";
+import { ClearDataCard } from "@/components/settings/ClearDataCard";
 import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
@@ -319,6 +320,11 @@ export default function Settings() {
           {/* Enrollment */}
           <motion.div variants={itemVariants}>
             <EnrollmentCard />
+          </motion.div>
+
+          {/* Danger Zone - Clear Data */}
+          <motion.div variants={itemVariants}>
+            <ClearDataCard />
           </motion.div>
         </motion.div>
       </div>
