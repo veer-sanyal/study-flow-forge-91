@@ -1,9 +1,13 @@
 import { Navigate, Outlet } from 'react-router-dom';
 import { useAuth } from '@/hooks/use-auth';
+import { useFsrsMaintenance } from '@/hooks/use-fsrs-maintenance';
 import { Loader2 } from 'lucide-react';
 
 export function ProtectedRoute() {
   const { isAuthenticated, loading } = useAuth();
+  
+  // Run FSRS maintenance on app load/reload for authenticated users
+  useFsrsMaintenance();
 
   if (loading) {
     return (
