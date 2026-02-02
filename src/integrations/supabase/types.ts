@@ -783,37 +783,58 @@ export type Database = {
       srs_state: {
         Row: {
           created_at: string
+          difficulty: number | null
           due_at: string
           ease: number
+          elapsed_days: number | null
           id: string
           interval_days: number
+          lapses: number | null
           last_reviewed_at: string | null
+          learning_steps: number | null
           question_id: string
           reps: number
+          scheduled_days: number | null
+          stability: number | null
+          state: number | null
           updated_at: string
           user_id: string
         }
         Insert: {
           created_at?: string
+          difficulty?: number | null
           due_at?: string
           ease?: number
+          elapsed_days?: number | null
           id?: string
           interval_days?: number
+          lapses?: number | null
           last_reviewed_at?: string | null
+          learning_steps?: number | null
           question_id: string
           reps?: number
+          scheduled_days?: number | null
+          stability?: number | null
+          state?: number | null
           updated_at?: string
           user_id: string
         }
         Update: {
           created_at?: string
+          difficulty?: number | null
           due_at?: string
           ease?: number
+          elapsed_days?: number | null
           id?: string
           interval_days?: number
+          lapses?: number | null
           last_reviewed_at?: string | null
+          learning_steps?: number | null
           question_id?: string
           reps?: number
+          scheduled_days?: number | null
+          stability?: number | null
+          state?: number | null
           updated_at?: string
           user_id?: string
         }
@@ -1132,6 +1153,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      recalculate_fsrs_for_user: { Args: { p_user_id: string }; Returns: Json }
     }
     Enums: {
       answer_format:
