@@ -1278,6 +1278,10 @@ export default function AdminExamsList() {
           storagePath: materialToDelete.storagePath
         });
         toast.success("Material deleted successfully");
+        // Close the material detail drawer if it's open for the deleted material
+        if (materialDetailId === materialToDelete.id) {
+          setMaterialDetailId(null);
+        }
       } catch (error) {
         toast.error("Failed to delete material");
       }
