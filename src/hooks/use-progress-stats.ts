@@ -44,11 +44,12 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
     queryKey: ['progress-stats', user?.id, courseIds, daysBack],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase.rpc('get_progress_stats', {
+      // Type assertion needed - RPC not yet in generated types
+      const { data, error } = await (supabase.rpc as any)('get_progress_stats', {
         p_user_id: user.id,
         p_course_ids: courseIds.length > 0 ? courseIds : undefined,
         p_days_back: daysBack,
-      } as Record<string, unknown>);
+      });
       if (error) throw error;
       return (data ?? []) as Array<{
         topic_id: string;
@@ -78,11 +79,12 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
     queryKey: ['review-forecast', user?.id, courseIds],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase.rpc('get_review_forecast', {
+      // Type assertion needed - RPC not yet in generated types
+      const { data, error } = await (supabase.rpc as any)('get_review_forecast', {
         p_user_id: user.id,
         p_course_ids: courseIds.length > 0 ? courseIds : undefined,
         p_days_ahead: 14,
-      } as Record<string, unknown>);
+      });
       if (error) throw error;
       return (data ?? []) as Array<{
         due_date: string;

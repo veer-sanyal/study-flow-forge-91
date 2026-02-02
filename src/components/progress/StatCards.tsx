@@ -26,34 +26,34 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
       label: 'Due Today',
       value: String(summary.totalDueToday),
       subtitle: `~${estimateReviewMinutes(summary.totalDueToday)} min`,
-      icon: <Clock className="h-5 w-5 text-primary" />,
+      icon: <Clock className="h-4 w-4 text-primary" />,
     },
     {
       label: 'At-Risk',
       value: String(summary.atRiskTopicCount),
       subtitle: 'below target',
-      icon: <AlertTriangle className="h-5 w-5 text-amber-500" />,
+      icon: <AlertTriangle className="h-4 w-4 text-amber-500" />,
       highlight: summary.atRiskTopicCount > 0,
     },
     {
-      label: 'Median Stability',
-      value: `S50 = ${formatStability(summary.globalMedianStability)}`,
-      subtitle: 'long-term strength',
-      icon: <Shield className="h-5 w-5 text-primary" />,
+      label: 'Stability',
+      value: formatStability(summary.globalMedianStability),
+      subtitle: 'long-term',
+      icon: <Shield className="h-4 w-4 text-primary" />,
     },
     {
-      label: 'Median Difficulty',
-      value: `D50 = ${formatDifficulty(summary.globalMedianDifficulty)}`,
-      subtitle: 'inherent hardness',
-      icon: <Brain className="h-5 w-5 text-primary" />,
+      label: 'Difficulty',
+      value: formatDifficulty(summary.globalMedianDifficulty),
+      subtitle: 'median',
+      icon: <Brain className="h-4 w-4 text-primary" />,
     },
     {
-      label: 'Observed Recall',
+      label: 'Recall',
       value: summary.observedRecall != null
         ? `${Math.round(summary.observedRecall * 100)}%`
         : '--',
-      subtitle: `vs ${Math.round(summary.targetRetention * 100)}% target`,
-      icon: <Target className="h-5 w-5 text-primary" />,
+      subtitle: `vs ${Math.round(summary.targetRetention * 100)}%`,
+      icon: <Target className="h-4 w-4 text-primary" />,
     },
   ];
 
@@ -75,7 +75,7 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
       variants={containerVariants}
       initial="hidden"
       animate="visible"
-      className="grid grid-cols-2 md:grid-cols-5 gap-3"
+      className="grid grid-cols-5 gap-2"
     >
       {stats.map((stat) => (
         <motion.div key={stat.label} variants={itemVariants}>
@@ -83,18 +83,16 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
             'h-full',
             stat.highlight && 'border-amber-500/50',
           )}>
-            <CardContent className="pt-4 pb-4">
-              <div className="flex items-center gap-3">
+            <CardContent className="p-2 sm:p-3">
+              <div className="flex flex-col items-center text-center gap-1">
                 <div className={cn(
-                  'p-2 rounded-lg',
+                  'p-1.5 rounded-lg',
                   stat.highlight ? 'bg-amber-500/10' : 'bg-primary/10',
                 )}>
                   {stat.icon}
                 </div>
-                <div className="min-w-0">
-                  <p className="text-lg font-bold truncate">{stat.value}</p>
-                  <p className="text-xs text-muted-foreground truncate">{stat.subtitle}</p>
-                </div>
+                <p className="text-sm sm:text-lg font-bold leading-tight">{stat.value}</p>
+                <p className="text-[10px] sm:text-xs text-muted-foreground leading-tight">{stat.subtitle}</p>
               </div>
             </CardContent>
           </Card>
