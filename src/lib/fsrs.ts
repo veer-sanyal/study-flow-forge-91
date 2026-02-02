@@ -40,7 +40,7 @@ export function dbRowToCard(row: DbSrsRow): Card {
 }
 
 // Convert a ts-fsrs Card into a DB-writable partial row
-export function cardToDbRow(card: Card): Omit<DbSrsRow, 'learning_steps'> & { learning_steps?: number } {
+export function cardToDbRow(card: Card): DbSrsRow {
   return {
     due_at: card.due.toISOString(),
     last_reviewed_at: card.last_review ? card.last_review.toISOString() : null,
@@ -50,6 +50,7 @@ export function cardToDbRow(card: Card): Omit<DbSrsRow, 'learning_steps'> & { le
     elapsed_days: card.elapsed_days,
     scheduled_days: card.scheduled_days,
     lapses: card.lapses,
+    learning_steps: card.learning_steps,
     state: card.state as number,
   };
 }

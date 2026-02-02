@@ -235,22 +235,20 @@ export function useSubmitAttempt() {
         .maybeSingle();
 
       // 3. Build card from existing data or create new
-      // Note: DB only has simplified SM-2 columns (ease, interval_days, reps, due_at, last_reviewed_at)
-      // We compute FSRS-compatible values from what we have
+      // DB now has full FSRS columns: stability, difficulty, elapsed_days, scheduled_days, lapses, learning_steps, state
       const now = new Date();
       const card = existing
         ? dbRowToCard({
             due_at: existing.due_at,
             last_reviewed_at: existing.last_reviewed_at,
             reps: existing.reps,
-            // Map existing SM-2 columns to FSRS equivalents
-            stability: existing.interval_days || 1, // Use interval as rough stability proxy
-            difficulty: existing.ease ? (3.0 - existing.ease) / 0.68 : 5, // Convert ease to difficulty scale
-            elapsed_days: 0,
-            scheduled_days: existing.interval_days || 0,
-            lapses: 0,
-            learning_steps: 0,
-            state: existing.reps > 0 ? 2 : 0, // 2 = Review, 0 = New
+            stability: (existing as any).stability ?? existing.interval_days ?? 1,
+            difficulty: (existing as any).difficulty ?? 5,
+            elapsed_days: (existing as any).elapsed_days ?? 0,
+            scheduled_days: (existing as any).scheduled_days ?? existing.interval_days ?? 0,
+            lapses: (existing as any).lapses ?? 0,
+            learning_steps: (existing as any).learning_steps ?? 0,
+            state: (existing as any).state ?? (existing.reps > 0 ? 2 : 0),
           })
         : createEmptyCard(now);
 
@@ -259,7 +257,7 @@ export function useSubmitAttempt() {
       const updatedCard = result[rating].card;
       const dbRow = cardToDbRow(updatedCard);
 
-      // 5. Upsert SRS state (only columns that exist in DB)
+      // 5. Upsert SRS state with full FSRS fields
       const { error: srsError } = await supabase
         .from('srs_state')
         .upsert({
@@ -268,9 +266,17 @@ export function useSubmitAttempt() {
           due_at: dbRow.due_at,
           last_reviewed_at: dbRow.last_reviewed_at,
           reps: dbRow.reps,
-          interval_days: dbRow.scheduled_days,
-          ease: 2.5 - (dbRow.difficulty - 5) * 0.08, // Convert FSRS difficulty back to ease
-        }, {
+          interval_days: dbRow.scheduled_days, // Keep for backward compatibility
+          ease: 2.5 - (dbRow.difficulty - 5) * 0.08, // Keep for backward compatibility
+          // Full FSRS-6 fields
+          stability: dbRow.stability,
+          difficulty: dbRow.difficulty,
+          elapsed_days: dbRow.elapsed_days,
+          scheduled_days: dbRow.scheduled_days,
+          lapses: dbRow.lapses,
+          learning_steps: dbRow.learning_steps,
+          state: dbRow.state,
+        } as any, {
           onConflict: 'user_id,question_id',
         });
 

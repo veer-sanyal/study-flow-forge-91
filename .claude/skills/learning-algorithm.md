@@ -145,70 +145,79 @@ END AS new_bonus
 
 ---
 
-## SM-2 Algorithm Implementation
+## FSRS-6 Algorithm Implementation (ts-fsrs)
 
-After each attempt, update SRS state:
+We use the official ts-fsrs library (v5.2.3) which implements FSRS-6, the latest version of the Free Spaced Repetition Scheduler algorithm.
 
-### Quality Score Mapping
+### Key FSRS Concepts
+
+**Memory State:**
+- **Stability (S)**: Interval when retrievability R=90%. Higher = more durable memory.
+- **Difficulty (D)**: D∈[1,10]. Higher = harder to remember.
+- **Retrievability (R)**: Probability of recall, decays over time.
+
+**Card States:**
+- 0 = New (never reviewed)
+- 1 = Learning (initial learning steps)
+- 2 = Review (graduated, in review cycle)
+- 3 = Relearning (forgotten, going through learning steps again)
+
+### Forgetting Curve (FSRS-6)
+
+```
+R(t, S) = (1 + factor × t/S)^(-w20)
+```
+
+Where `factor = (0.9^(1/w20) - 1)` ensures R(S, S) = 90%.
+
+### Rating to FSRS Mapping
+
+After each attempt, we derive an FSRS rating from correctness + confidence:
+
 ```typescript
-function mapToQuality(isCorrect: boolean, confidence: string, hintUsed: boolean): number {
-  if (!isCorrect) return hintUsed ? 0 : 1;
-
+function deriveFsrsRating(isCorrect: boolean, confidence: number | null): Rating {
+  if (!isCorrect) return Rating.Again;
   switch (confidence) {
-    case 'low':
-      return hintUsed ? 2 : 3;
-    case 'medium':
-      return hintUsed ? 3 : 4;
-    case 'high':
-      return hintUsed ? 4 : 5;
-    default:
-      return 3;
+    case 1:  return Rating.Hard;   // guessed
+    case 2:  return Rating.Good;   // unsure
+    case 3:  return Rating.Easy;   // knew_it
+    default: return Rating.Good;   // no confidence tap
   }
 }
 ```
 
-| Correct | Confidence | Hint | Quality |
-|---------|------------|------|---------|
-| No | - | Yes | 0 |
-| No | - | No | 1 |
-| Yes | Low | Yes | 2 |
-| Yes | Low | No | 3 |
-| Yes | Medium | Yes | 3 |
-| Yes | Medium | No | 4 |
-| Yes | High | Yes | 4 |
-| Yes | High | No | 5 |
+| Correct | Confidence | FSRS Rating |
+|---------|------------|-------------|
+| No | - | Again |
+| Yes | Guessed | Hard |
+| Yes | Unsure | Good |
+| Yes | Knew It | Easy |
 
-### Interval Calculation
-```typescript
-function calculateNextInterval(quality: number, currentInterval: number, easeFactor: number): {
-  nextInterval: number;
-  nextEaseFactor: number;
-} {
-  let nextInterval: number;
-  let nextEaseFactor = easeFactor;
+### Scheduling Flow
 
-  if (quality < 3) {
-    // Failed: reset to 1 day
-    nextInterval = 1;
-  } else {
-    if (currentInterval === 0) {
-      nextInterval = 1;
-    } else if (currentInterval === 1) {
-      nextInterval = 6;
-    } else {
-      nextInterval = Math.round(currentInterval * easeFactor);
-    }
-  }
+1. User answers question → derive FSRS Rating
+2. Fetch existing Card from `srs_state` (or create new)
+3. Call `fsrsInstance.repeat(card, now)` → get scheduling options
+4. Select card for the given rating
+5. Upsert updated Card back to `srs_state`
 
-  // Update ease factor (min 1.3)
-  nextEaseFactor = Math.max(
-    1.3,
-    easeFactor + (0.1 - (5 - quality) * (0.08 + (5 - quality) * 0.02))
-  );
+### Database Schema (srs_state)
 
-  return { nextInterval, nextEaseFactor };
-}
-```
+Full FSRS-6 fields stored:
+- `stability`: S value (interval when R=90%)
+- `difficulty`: D value (1-10 scale)
+- `elapsed_days`: Days since last review
+- `scheduled_days`: Next interval
+- `lapses`: Times forgotten after graduating
+- `learning_steps`: Current learning step
+- `state`: Card state (0-3)
+- `due_at`: Next due date
+- `last_reviewed_at`: Last review timestamp
+- `reps`: Total review count
+
+### FSRS Maintenance
+
+On app load, `recalculate_fsrs_for_user` updates `elapsed_days` for all cards based on current time. This ensures the forgetting curve calculation uses accurate time data.
 
 ---
 

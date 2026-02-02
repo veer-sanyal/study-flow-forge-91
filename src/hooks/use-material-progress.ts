@@ -42,7 +42,7 @@ export function useMaterialProgress() {
     queryKey: ["material-jobs-active"],
     queryFn: async () => {
       const { data, error } = await supabase
-        .from("material_jobs")
+        .from("material_jobs" as any)
         .select("*, course_materials(title, course_pack_id)")
         .in("status", ["pending", "running"])
         .order("created_at", { ascending: false });
