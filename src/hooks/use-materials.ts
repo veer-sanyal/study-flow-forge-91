@@ -292,12 +292,21 @@ export function useDeleteMaterialQuestions() {
 
   return useMutation({
     mutationFn: async (materialId: string) => {
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from("questions")
         .delete()
-        .eq("source_material_id", materialId);
+        .eq("source_material_id", materialId)
+        .select("id");
 
       if (error) throw error;
+
+      // Verify that questions were actually deleted
+      if (!data || data.length === 0) {
+        throw new Error("No questions found to delete for this material");
+      }
+
+      // Log the number of deleted questions for debugging
+      console.log(`Deleted ${data.length} question(s) for material ${materialId}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-materials"] });

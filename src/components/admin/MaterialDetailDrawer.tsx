@@ -206,9 +206,23 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     if (!materialId) return;
     try {
       await deleteMaterialQuestions.mutateAsync(materialId);
-      toast({ title: "Questions deleted" });
+      toast({ title: "Questions deleted", description: "All questions for this material have been removed." });
     } catch (error) {
-      toast({ title: "Delete failed", description: String(error), variant: "destructive" });
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      // Handle the case where no questions exist to delete
+      if (errorMessage.includes("No questions found")) {
+        toast({ 
+          title: "No questions to delete", 
+          description: "This material doesn't have any questions associated with it.",
+          variant: "default"
+        });
+      } else {
+        toast({ 
+          title: "Delete failed", 
+          description: errorMessage || "An error occurred while deleting questions. Please try again.",
+          variant: "destructive" 
+        });
+      }
     }
   };
 
