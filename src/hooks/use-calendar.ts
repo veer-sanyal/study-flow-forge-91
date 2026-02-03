@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { startOfWeek, endOfWeek, addWeeks, format, differenceInDays, parseISO, isAfter, isBefore, addDays } from "date-fns";
+import { useAuth } from "@/hooks/use-auth";
+import type { CalendarDayReviewData } from "@/types/progress";
 
 interface CalendarEvent {
   id: string;
@@ -189,4 +191,104 @@ export function getEventTypeColor(eventType: string): string {
     default:
       return 'bg-muted text-muted-foreground border-border';
   }
+}
+
+// ---- Calendar Review Data (FSRS per-day aggregation) ----
+
+interface CalendarReviewRow {
+  due_date: string;
+  topic_id: string;
+  topic_title: string;
+  course_pack_id: string;
+  due_count: number;
+  is_overdue: boolean;
+}
+
+/** Pure function: aggregate raw RPC rows into a Map keyed by YYYY-MM-DD */
+export function aggregateCalendarReviewData(
+  rows: CalendarReviewRow[]
+): Map<string, CalendarDayReviewData> {
+  const map = new Map<string, CalendarDayReviewData>();
+
+  for (const row of rows) {
+    const dateKey = row.due_date;
+    let entry = map.get(dateKey);
+    if (!entry) {
+      entry = { date: dateKey, totalDue: 0, overdueCount: 0, topTopics: [] };
+      map.set(dateKey, entry);
+    }
+
+    entry.totalDue += row.due_count;
+    if (row.is_overdue) {
+      entry.overdueCount += row.due_count;
+    }
+
+    // Accumulate topics (will trim to top 3 after loop)
+    const existing = entry.topTopics.find(t => t.topicId === row.topic_id);
+    if (existing) {
+      existing.dueCount += row.due_count;
+    } else {
+      entry.topTopics.push({
+        topicId: row.topic_id,
+        topicTitle: row.topic_title,
+        dueCount: row.due_count,
+      });
+    }
+  }
+
+  // Sort topics by dueCount descending and keep top 3
+  for (const entry of map.values()) {
+    entry.topTopics.sort((a, b) => b.dueCount - a.dueCount);
+    entry.topTopics = entry.topTopics.slice(0, 3);
+  }
+
+  return map;
+}
+
+interface UseCalendarReviewDataParams {
+  courseIds: string[];
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  includeOverdue: boolean;
+}
+
+export function useCalendarReviewData({
+  courseIds,
+  startDate,
+  endDate,
+  includeOverdue,
+}: UseCalendarReviewDataParams): {
+  data: Map<string, CalendarDayReviewData>;
+  isLoading: boolean;
+  hasAnyReviews: boolean;
+} {
+  const { user } = useAuth();
+
+  const query = useQuery({
+    queryKey: ['calendar-review-data', user?.id, courseIds, startDate, endDate, includeOverdue],
+    queryFn: async () => {
+      if (!user) return [];
+
+      const { data, error } = await supabase.rpc('get_calendar_review_data', {
+        p_user_id: user.id,
+        p_course_ids: courseIds.length > 0 ? courseIds : null,
+        p_start_date: startDate,
+        p_end_date: endDate,
+        p_include_overdue: includeOverdue,
+      });
+
+      if (error) throw error;
+      return (data || []) as CalendarReviewRow[];
+    },
+    enabled: !!user,
+    staleTime: 60_000,
+  });
+
+  const aggregated = aggregateCalendarReviewData(query.data || []);
+
+  return {
+    data: aggregated,
+    isLoading: query.isLoading,
+    hasAnyReviews: aggregated.size > 0,
+  };
 }

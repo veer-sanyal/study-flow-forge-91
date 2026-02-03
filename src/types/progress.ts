@@ -67,6 +67,14 @@ export interface ExamProjection {
   topics: TopicExamProjection[];
 }
 
+/** Aggregated review data for a single calendar day */
+export interface CalendarDayReviewData {
+  date: string;           // YYYY-MM-DD
+  totalDue: number;
+  overdueCount: number;
+  topTopics: Array<{ topicId: string; topicTitle: string; dueCount: number }>;
+}
+
 /** Sort options for the topic risk list */
 export type TopicSortKey = 'most-at-risk' | 'most-due' | 'lowest-stability' | 'highest-difficulty';
 
