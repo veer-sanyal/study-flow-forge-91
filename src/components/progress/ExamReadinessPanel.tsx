@@ -26,7 +26,7 @@ function buildExamProjections(
   return exams.map((exam) => {
     const topicProjections: TopicExamProjection[] = topics
       .map((t) => {
-        const currentR = t.r_now ?? 1;
+        const currentR = t.r_now ?? 0;
         const projectedR =
           t.median_stability != null && t.median_stability > 0 && t.median_elapsed_days != null
             ? projectRetention(t.median_stability, t.median_elapsed_days, exam.daysUntil)
@@ -57,7 +57,7 @@ function buildExamProjections(
 
     const rValues = topicProjections.map((t) => t.projectedR);
     const overallProjectedR =
-      rValues.length > 0 ? rValues.reduce((s, v) => s + v, 0) / rValues.length : 1;
+      rValues.length > 0 ? rValues.reduce((s, v) => s + v, 0) / rValues.length : 0;
 
     return {
       examId: exam.id,
@@ -82,7 +82,19 @@ export function ExamReadinessPanel({
     return buildExamProjections(upcomingExams, topics, 0.9);
   }, [upcomingExams, topics]);
 
+  const hasStudyData = topics.some((t) => t.attempts_count > 0);
+
   if (projections.length === 0) return null;
+
+  if (!hasStudyData) {
+    return (
+      <Card>
+        <CardContent className="py-6 text-center text-muted-foreground text-sm">
+          Not enough data yet — start studying to see exam readiness projections.
+        </CardContent>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">

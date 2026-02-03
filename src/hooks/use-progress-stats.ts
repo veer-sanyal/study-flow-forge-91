@@ -70,7 +70,7 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
         total_lapses: number;
       }>;
     },
-    enabled: !!user,
+    enabled: !!user && courseIds.length > 0,
     staleTime: 60_000,
   });
 
@@ -93,7 +93,7 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
         is_overdue: boolean;
       }>;
     },
-    enabled: !!user,
+    enabled: !!user && courseIds.length > 0,
     staleTime: 60_000,
   });
 
@@ -149,6 +149,7 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
     globalMedianDifficulty: computeMedian(difficulties),
     observedRecall: totalAttempts > 0 ? totalCorrect / totalAttempts : null,
     targetRetention: 0.9,
+    totalAttempts,
   };
 
   // Build forecast days (fill in gaps for 14 days)

@@ -34,6 +34,7 @@ export interface ProgressSummary {
   globalMedianDifficulty: number | null;
   observedRecall: number | null;       // correct_count / attempts_count in window
   targetRetention: number;             // 0.9
+  totalAttempts: number;
 }
 
 /** Single day in the review forecast */

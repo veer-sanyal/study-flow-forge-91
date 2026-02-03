@@ -98,6 +98,7 @@ export function useStudentCalendarEvents(filters: CalendarFilters) {
 export function useUpcomingExams(courseIds: string[]) {
   return useQuery({
     queryKey: ['upcoming-exams-student', courseIds],
+    enabled: courseIds.length > 0,
     queryFn: async () => {
       let query = supabase
         .from('calendar_events')

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2 } from 'lucide-react';
+import { Loader2, BookOpen } from 'lucide-react';
 import { PageTransition } from '@/components/motion/PageTransition';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Card, CardContent } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
 import { useEnrollments } from '@/hooks/use-enrollments';
 import { useProgressStats } from '@/hooks/use-progress-stats';
@@ -43,10 +45,34 @@ export default function Progress(): React.ReactElement {
 
   const isLoading = isLoadingEnrollments || statsLoading;
 
+  const hasEnrollments = enrollments.length > 0;
+  const hasAttempts = summary.totalAttempts > 0;
+
   if (isLoading) {
     return (
       <PageTransition className="flex items-center justify-center py-20">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </PageTransition>
+    );
+  }
+
+  // Case A: No enrollments
+  if (!hasEnrollments) {
+    return (
+      <PageTransition>
+        <div className="max-w-4xl mx-auto flex items-center justify-center py-20">
+          <Card className="max-w-md w-full">
+            <CardContent className="py-10 text-center space-y-4">
+              <BookOpen className="h-10 w-10 mx-auto text-muted-foreground" />
+              <p className="text-muted-foreground">
+                You're not enrolled in any courses yet.
+              </p>
+              <Button onClick={() => navigate('/settings')}>
+                Enroll in a course
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </PageTransition>
     );
   }
@@ -61,6 +87,20 @@ export default function Progress(): React.ReactElement {
             FSRS-powered insights: what you know, what's fading, and what's next
           </p>
         </div>
+
+        {/* Case B: Enrolled but no attempts yet */}
+        {!hasAttempts && (
+          <Card className="border-dashed">
+            <CardContent className="py-6 text-center space-y-3">
+              <p className="text-muted-foreground">
+                Start studying to see your progress here.
+              </p>
+              <Button variant="outline" onClick={() => navigate('/study')}>
+                Start studying
+              </Button>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Filters */}
         <ProgressFilters
