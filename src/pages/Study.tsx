@@ -19,6 +19,7 @@ import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
 import { useStudyDashboard, PracticeRecommendation } from "@/hooks/use-study-dashboard";
 import { useEnrollments } from "@/hooks/use-enrollments";
+import { NoCoursesEmptyState } from "@/components/shared/NoCoursesEmptyState";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
@@ -49,7 +50,7 @@ export default function Study() {
 
   const { user } = useAuth();
   const { settings } = useUserSettings();
-  const { enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
+  const { enrollments, enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
   const queryClient = useQueryClient();
   const { collapse, expand } = useSidebar();
 
@@ -361,6 +362,21 @@ export default function Study() {
     }
     handleStartPractice();
   }, [setTopicIds, handleStartPractice]);
+
+  // HOME state — enrollment gate
+  const hasEnrollments = enrollments.length > 0;
+
+  if (studyState === "home" && isLoadingEnrollments) {
+    return (
+      <PageTransition className="flex items-center justify-center min-h-[60vh]">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </PageTransition>
+    );
+  }
+
+  if (studyState === "home" && !hasEnrollments) {
+    return <NoCoursesEmptyState />;
+  }
 
   // HOME state
   if (studyState === "home") {

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, BookOpen } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { PageTransition } from '@/components/motion/PageTransition';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
@@ -15,6 +15,7 @@ import { ReviewForecastChart } from '@/components/progress/ReviewForecastChart';
 import { TopicRiskList } from '@/components/progress/TopicRiskList';
 import { ExamReadinessPanel } from '@/components/progress/ExamReadinessPanel';
 import { ProgressFilters } from '@/components/progress/ProgressFilters';
+import { NoCoursesEmptyState } from '@/components/shared/NoCoursesEmptyState';
 
 export default function Progress(): React.ReactElement {
   const navigate = useNavigate();
@@ -58,23 +59,7 @@ export default function Progress(): React.ReactElement {
 
   // Case A: No enrollments
   if (!hasEnrollments) {
-    return (
-      <PageTransition>
-        <div className="max-w-4xl mx-auto flex items-center justify-center py-20">
-          <Card className="max-w-md w-full">
-            <CardContent className="py-10 text-center space-y-4">
-              <BookOpen className="h-10 w-10 mx-auto text-muted-foreground" />
-              <p className="text-muted-foreground">
-                You're not enrolled in any courses yet.
-              </p>
-              <Button onClick={() => navigate('/settings')}>
-                Enroll in a course
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </PageTransition>
-    );
+    return <NoCoursesEmptyState />;
   }
 
   return (

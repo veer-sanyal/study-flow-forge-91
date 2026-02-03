@@ -101,7 +101,7 @@ describe('Progress page gating', () => {
     renderProgress();
 
     expect(screen.getByText(/not enrolled in any courses/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /enroll in a course/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /enroll in courses/i })).toBeInTheDocument();
     // No stat cards should be visible
     expect(screen.queryByTestId('stat-cards')).not.toBeInTheDocument();
   });
