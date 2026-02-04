@@ -45,6 +45,39 @@ After each phase's JSON parse:
 
 ## Question Generation
 
+### Question Generation Pipeline (v3, 3-stage)
+
+Three-stage pipeline replacing the v2 generate-and-rewrite-in-place approach:
+
+#### Stage A: Generation (temp 0.5)
+- Generates ~150% of desired count to account for rejection
+- MCQ-first bias: 80-90% mcq_single, mcq_multi only for "select all", short_answer only for derivations
+- Difficulty distribution target: 40% easy, 40% medium, 20% hard
+- Uses `CANDIDATE_SCHEMA` with `type` field (replaces `answer_format`)
+- Each question includes `why_this_question` linking to specific material content
+
+#### Stage B: Quality Judge with Rejection (temp 0.2)
+- 6-dimension scoring per question:
+  - Binary (0/1): `answerable_from_context`, `has_single_clear_correct`, `format_justified`
+  - Likert (1-5): `distractors_plausible`, `clarity`, `difficulty_appropriate`
+- Composite score: binary dims x2 (max 6) + normalized Likert (max 4) = total /10
+- Verdict rules: keep (score >= 7), repair (score >= 4), reject (score < 4)
+- LLM verdict overridden by numeric score via `resolveVerdict()`
+- Partitions into 3 buckets: kept, toRepair, rejected
+
+#### Stage C: Repair Pass (temp 0.4, only if repairs needed)
+- Per-question repair instructions based on specific issues
+- Format conversion: unjustified short_answer -> mcq_single with 4 misconception-based choices
+- Clarity fixes: tighten stem, define symbols
+- Distractor fixes: replace weak distractors with misconception-based options
+- Structural re-validation (stem >10 chars, non-empty solution_steps, MCQ has 4 choices)
+- Pass -> add to repaired list. Fail -> increment rejected count.
+
+#### Insert
+- Combines kept + repaired, sorts by score descending, caps at MAX_QUESTIONS_PER_TOPIC (8)
+- Maps `type` to DB `question_format`: mcq_single/mcq_multi -> "multiple_choice", short_answer -> "short_answer"
+- Stores `quality_score` and `quality_flags` (all 6 dimensions + issues + pipeline_version + was_repaired)
+
 ### Per-Topic Generation (fixes all-topics[0] bug)
 - Questions generated one topic at a time via separate Gemini calls
 - Each question inserted with correct `topic_ids: [dbTopic.id]`

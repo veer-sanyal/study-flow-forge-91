@@ -161,7 +161,10 @@ export interface QuestionGenerationRequest {
 // Generated question from Gemini
 export interface GeneratedQuestion {
   stem: string;
-  answer_format: 'mcq' | 'numeric' | 'short' | 'multi_select';
+  /** @deprecated Use `type` instead. Kept for backward compat with v1/v2 pipeline data. */
+  answer_format?: 'mcq' | 'numeric' | 'short' | 'multi_select';
+  /** v3 pipeline type field */
+  type: 'mcq_single' | 'mcq_multi' | 'short_answer';
   choices?: string[];
   correct_answer: string;
   full_solution: string;
@@ -169,6 +172,20 @@ export interface GeneratedQuestion {
   common_mistakes: string[];
   tags: string[];
   difficulty: number;
+  why_this_question?: string;
+}
+
+// Quality flags stored in questions.quality_flags (v3 pipeline)
+export interface QualityFlags {
+  answerable_from_context: number;   // 0 | 1
+  has_single_clear_correct: number;  // 0 | 1
+  format_justified: number;          // 0 | 1
+  distractors_plausible: number;     // 1-5
+  clarity: number;                   // 1-5
+  difficulty_appropriate: number;    // 1-5
+  issues: string[];
+  pipeline_version: number;
+  was_repaired: boolean;
 }
 
 // Material status display helpers

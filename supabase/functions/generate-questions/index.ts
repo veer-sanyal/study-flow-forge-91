@@ -181,16 +181,28 @@ function matchAnalysisTopic(
   return bestMatch;
 }
 
-// ---------- Question Schema ----------
+// ---------- Pipeline Config ----------
 
-const QUESTION_SCHEMA = `{
+const PIPELINE_CONFIG = {
+  TEMP_GENERATE: 0.5,
+  TEMP_JUDGE: 0.2,
+  TEMP_REPAIR: 0.4,
+  KEEP_THRESHOLD: 7,     // out of 10
+  REPAIR_THRESHOLD: 4,   // out of 10
+  MAX_QUESTIONS_PER_TOPIC: 8,
+  OVERGENERATE_FACTOR: 1.5, // request 150% of desired count
+} as const;
+
+// ---------- Question Schema (v3 Candidate) ----------
+
+const CANDIDATE_SCHEMA = `{
   "questions": [
     {
       "stem": "The question text",
       "topic_title": "The topic this question belongs to",
-      "answer_format": "mcq|numeric|short|multi_select",
+      "type": "mcq_single|mcq_multi|short_answer",
       "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
-      "correct_answer": "The correct answer (letter for MCQ, value for numeric/short)",
+      "correct_answer": "The correct answer (letter for MCQ, value for short_answer)",
       "correct_choice_index": 0,
       "full_solution": "Step-by-step solution explanation",
       "solution_steps": ["Step 1", "Step 2", "Step 3"],
@@ -200,34 +212,76 @@ const QUESTION_SCHEMA = `{
       "tags": ["tag1", "tag2"],
       "difficulty": 1-5,
       "objective_index": 0,
-      "source_refs": {"supporting_chunks": [29, 30], "page_refs": [29]}
+      "source_refs": {"supporting_chunks": [29, 30], "page_refs": [29]},
+      "why_this_question": "One sentence linking this question to specific material content"
     }
   ]
 }`;
 
-const JUDGE_SCHEMA = `{
+const JUDGE_V2_SCHEMA = `{
   "judged_questions": [
     {
       "original_index": 0,
-      "score": 1-5,
-      "scores": {
-        "alignment": 1-5,
-        "clarity": 1-5,
-        "solvability_from_material": 1-5,
-        "correctness": 1-5,
-        "distractor_quality": 1-5
+      "binary": {
+        "answerable_from_context": 0 or 1,
+        "has_single_clear_correct": 0 or 1,
+        "format_justified": 0 or 1
       },
-      "issues": ["issue 1", "issue 2"],
-      "rewritten_question": {
-        "stem": "improved question text",
-        "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
-        "correct_answer": "correct answer",
-        "full_solution": "improved solution",
-        "solution_steps": ["Step 1", "Step 2"]
-      }
+      "likert": {
+        "distractors_plausible": 1-5,
+        "clarity": 1-5,
+        "difficulty_appropriate": 1-5
+      },
+      "verdict": "keep|repair|reject",
+      "issues": ["issue 1", "issue 2"]
     }
   ]
 }`;
+
+// ---------- Judge Types ----------
+
+interface JudgeBinary {
+  answerable_from_context: number;
+  has_single_clear_correct: number;
+  format_justified: number;
+}
+
+interface JudgeLikert {
+  distractors_plausible: number;
+  clarity: number;
+  difficulty_appropriate: number;
+}
+
+interface JudgeResult {
+  original_index: number;
+  binary: JudgeBinary;
+  likert: JudgeLikert;
+  verdict: "keep" | "repair" | "reject";
+  issues: string[];
+}
+
+// ---------- Scoring ----------
+
+function computeTotalScore(binary: JudgeBinary, likert: JudgeLikert): number {
+  // Binary dims weighted x2 (max 6)
+  const binaryScore =
+    (binary.answerable_from_context + binary.has_single_clear_correct + binary.format_justified) * 2;
+  // Normalized Likert: average of 3 dims scaled to max 4
+  const avgLikert =
+    (likert.distractors_plausible + likert.clarity + likert.difficulty_appropriate) / 3;
+  const likertScore = (avgLikert / 5) * 4;
+  return Math.round((binaryScore + likertScore) * 10) / 10; // total out of 10
+}
+
+function resolveVerdict(
+  llmVerdict: string,
+  score: number,
+): "keep" | "repair" | "reject" {
+  // Trust numeric scores over LLM labels
+  if (score >= PIPELINE_CONFIG.KEEP_THRESHOLD) return "keep";
+  if (score >= PIPELINE_CONFIG.REPAIR_THRESHOLD) return "repair";
+  return "reject";
+}
 
 // ---------- Main handler ----------
 
@@ -388,7 +442,7 @@ Deno.serve(async (req) => {
     }
 
     const { data: questionTypes } = await questionTypesQuery;
-    const typesList = questionTypes?.map((qt) => qt.name).join(", ") || "multiple choice, short answer, conceptual";
+    // v3 pipeline uses MCQ-first distribution, but questionTypes kept for future filtering
 
     // Match each DB topic to its analysis topic
     const allMatches: Array<{ dbTopic: DbTopic; analysisTopic: AnalysisTopicV2 | null }> = topics.map((t) => ({
@@ -547,18 +601,8 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Determine quantity per type from distribution
-      let quantityInstructions = `Generate ${quantityPerBucket} questions.`;
-      const dist = analysisTopic?.question_type_distribution || [];
-      if (dist.length > 0) {
-        const typeQuantities = dist
-          .map((d) => {
-            const count = Math.max(1, Math.round(quantityPerBucket * d.proportion));
-            return `${count} ${d.type}`;
-          })
-          .join(", ");
-        quantityInstructions = `Generate approximately: ${typeQuantities} (total ~${quantityPerBucket}).`;
-      }
+      // Request ~150% of desired count to account for rejection in judge pass
+      const candidateCount = Math.ceil(quantityPerBucket * PIPELINE_CONFIG.OVERGENERATE_FACTOR);
 
       const topicPrompt = `You are generating practice questions for a specific topic.
 
@@ -569,7 +613,18 @@ LEARNING OBJECTIVES:
 ${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join("\n") : "- General understanding of the topic"}
 ${enrichedContext}
 
-${quantityInstructions}
+Generate ${candidateCount} candidate questions. Some may be filtered out by a quality judge, so generate more than needed.
+
+QUESTION TYPE DISTRIBUTION (CRITICAL - MCQ FIRST):
+- 80-90% must be mcq_single (standard 4-choice MCQ)
+- mcq_multi ONLY for "select all that apply" concepts where multiple answers are genuinely correct
+- short_answer ONLY for formula derivations / proofs where MCQ would trivialize the question
+- The "type" field replaces "answer_format". Valid values: "mcq_single", "mcq_multi", "short_answer"
+
+DIFFICULTY DISTRIBUTION TARGET:
+- ~40% easy (difficulty 1-2)
+- ~40% medium (difficulty 3)
+- ~20% hard (difficulty 4-5)
 
 QUALITY RUBRIC (CRITICAL):
 1. Each question must test exactly ONE objective:
@@ -581,7 +636,7 @@ QUALITY RUBRIC (CRITICAL):
    - Use exact formulas from canonical_formulas
    - Do NOT require outside facts not in the material
 
-3. MCQ requirements (if answer_format is "mcq"):
+3. MCQ requirements (if type is "mcq_single"):
    - Exactly 4 choices (A, B, C, D)
    - Exactly one correct choice
    - Include "correct_choice_index" (0-3)
@@ -601,20 +656,21 @@ QUALITY RUBRIC (CRITICAL):
    - Trick wording or gotcha questions
    - Questions that can't be answered without the slide image (must be solvable from text)
    - Multi-skill mashups (one question testing multiple unrelated objectives)
-   - MCQ with multiple correct choices (unless explicitly multi_select)
+   - MCQ with multiple correct choices (unless explicitly mcq_multi)
    - Questions requiring outside knowledge not in the material
    - Definition-only questions unless the objective explicitly requires "define" or "identify"
 
 6. Required fields for each question:
    - stem: Clear, unambiguous question text. Define all symbols. Specify rounding if numeric.
+   - type: "mcq_single", "mcq_multi", or "short_answer"
    - solution_steps: 3-8 bullet steps showing how to solve
-   - final_answer: The correct answer (use this field, not just correct_answer)
+   - correct_answer: The correct answer
    - source_refs: Include supporting_chunks and page_refs from the material
+   - why_this_question: One sentence linking this question to specific material content
    - For MCQs: choices array with exactly 4 items, correct_choice_index, distractor_rationales
 
 RULES:
 - Difficulty range: ${difficultyRange[0]}-${difficultyRange[1]}
-- Allowed types: ${typesList}
 - topic_title MUST be exactly: "${dbTopic.title}"
 - Keep solutions concise (under 100 words each)
 - Keep hints short (one sentence each)
@@ -626,7 +682,7 @@ RULES:
 CRITICAL: Your response MUST be complete valid JSON. Do not truncate.
 
 Return this exact JSON structure:
-${QUESTION_SCHEMA}`;
+${CANDIDATE_SCHEMA}`;
 
       console.log(`Generating questions for topic: ${dbTopic.title}`);
 
@@ -637,7 +693,7 @@ ${QUESTION_SCHEMA}`;
           body: JSON.stringify({
             contents: [{ parts: [{ text: topicPrompt }] }],
             generationConfig: {
-              temperature: 0.6,
+              temperature: PIPELINE_CONFIG.TEMP_GENERATE,
               maxOutputTokens: 16384,
               response_mime_type: "application/json",
             },
@@ -669,15 +725,30 @@ ${QUESTION_SCHEMA}`;
 
         if (!generatedData.questions || !Array.isArray(generatedData.questions)) continue;
 
-        // Judge pass: Score and rewrite questions scoring <4
-        let questionsToInsert = generatedData.questions;
+        console.log(`Stage A complete: ${generatedData.questions.length} candidates for "${dbTopic.title}"`);
+
+        // ========== STAGE B: Quality Judge with Rejection ==========
+        const kept: Array<{ question: Record<string, unknown>; judgeData: JudgeResult }> = [];
+        const toRepair: Array<{ question: Record<string, unknown>; judgeData: JudgeResult }> = [];
+        let rejectedCount = 0;
+
         try {
-          const judgePrompt = `You are a quality judge for practice questions. Score each question 1-5 on:
-- alignment: Does it test exactly one objective from the list?
-- clarity: Is the stem clear and unambiguous?
-- solvability_from_material: Can it be solved using only the provided material?
-- correctness: Is the answer and solution correct?
-- distractor_quality: For MCQs, are distractors meaningful and map to misconceptions?
+          const judgePrompt = `You are a strict quality judge for practice questions. Score each question on 6 dimensions.
+
+BINARY DIMENSIONS (0 = fail, 1 = pass):
+- answerable_from_context: Can a student answer this using ONLY the provided material? (0 if requires outside knowledge)
+- has_single_clear_correct: Is there exactly one unambiguous correct answer? (0 if ambiguous or multiple correct)
+- format_justified: Is the chosen format (mcq_single/mcq_multi/short_answer) the best format for this question? (0 if MCQ trivializes it, or short_answer used where MCQ is better)
+
+LIKERT DIMENSIONS (1-5 scale):
+- distractors_plausible: For MCQs, are wrong choices based on real misconceptions? (5 = maps to common errors; 1 = obviously wrong). Rate 3 for short_answer.
+- clarity: Is the stem clear, unambiguous, all symbols defined? (5 = crystal clear; 1 = confusing)
+- difficulty_appropriate: Does the stated difficulty match actual complexity? (5 = perfect match; 1 = way off)
+
+VERDICT RULES (you MUST follow these exactly):
+- "keep": ALL binary = 1 AND average Likert >= 3.5
+- "repair": At least 2 binary = 1 AND average Likert >= 2.0
+- "reject": Everything else
 
 LEARNING OBJECTIVES:
 ${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join("\n") : "- General understanding"}
@@ -685,13 +756,9 @@ ${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join
 GENERATED QUESTIONS:
 ${JSON.stringify(generatedData.questions, null, 2)}
 
-RULES:
-- Score each question 1-5 on each dimension (alignment, clarity, solvability_from_material, correctness, distractor_quality)
-- Overall score = average of all dimensions
-- For any question with overall score < 4, provide a rewritten_question with improvements
-- Keep rewritten questions in the same format as original
-- Return ONLY valid JSON matching this schema:
-${JUDGE_SCHEMA}`;
+For each question, output ALL 6 dimension scores, the verdict, and a list of specific issues.
+Return ONLY valid JSON matching this schema:
+${JUDGE_V2_SCHEMA}`;
 
           const judgeResponse = await fetch(geminiUrl, {
             method: "POST",
@@ -699,8 +766,8 @@ ${JUDGE_SCHEMA}`;
             body: JSON.stringify({
               contents: [{ parts: [{ text: judgePrompt }] }],
               generationConfig: {
-                temperature: 0.3,
-                maxOutputTokens: 16384,
+                temperature: PIPELINE_CONFIG.TEMP_JUDGE,
+                maxOutputTokens: 8192,
                 response_mime_type: "application/json",
               },
             }),
@@ -710,56 +777,197 @@ ${JUDGE_SCHEMA}`;
             const judgeResult = await judgeResponse.json();
             const judgeText = judgeResult.candidates?.[0]?.content?.parts?.[0]?.text;
             if (judgeText) {
-              try {
-                const cleanedJudgeText = judgeText.replace(/```json\n?|\n?```/g, "").trim();
-                const judgeData = JSON.parse(cleanedJudgeText) as { judged_questions: Array<{
-                  original_index: number;
-                  score: number;
-                  scores: {
-                    alignment: number;
-                    clarity: number;
-                    solvability_from_material: number;
-                    correctness: number;
-                    distractor_quality: number;
-                  };
-                  issues: string[];
-                  rewritten_question?: Record<string, unknown>;
-                }> };
+              const cleanedJudgeText = judgeText.replace(/```json\n?|\n?```/g, "").trim();
+              const judgeData = JSON.parse(cleanedJudgeText) as { judged_questions: JudgeResult[] };
 
-                // Replace low-scoring questions with rewritten versions
-                if (judgeData.judged_questions) {
-                  for (const judged of judgeData.judged_questions) {
-                    if (judged.score < 4 && judged.rewritten_question) {
-                      const originalIdx = judged.original_index;
-                      if (originalIdx >= 0 && originalIdx < questionsToInsert.length) {
-                        // Merge rewritten question with original (preserve fields not in rewritten)
-                        questionsToInsert[originalIdx] = {
-                          ...questionsToInsert[originalIdx],
-                          ...judged.rewritten_question,
-                        };
-                        console.log(`Rewrote question ${originalIdx} (score: ${judged.score.toFixed(2)})`);
-                      }
-                    }
+              if (judgeData.judged_questions) {
+                for (const judged of judgeData.judged_questions) {
+                  const idx = judged.original_index;
+                  if (idx < 0 || idx >= generatedData.questions.length) continue;
+
+                  const question = generatedData.questions[idx];
+                  const binary = judged.binary || { answerable_from_context: 0, has_single_clear_correct: 0, format_justified: 0 };
+                  const likert = judged.likert || { distractors_plausible: 1, clarity: 1, difficulty_appropriate: 1 };
+                  const score = computeTotalScore(binary, likert);
+
+                  // Override LLM verdict with numeric score
+                  const finalVerdict = resolveVerdict(judged.verdict, score);
+                  const result: JudgeResult = { ...judged, binary, likert, verdict: finalVerdict };
+
+                  if (finalVerdict === "keep") {
+                    kept.push({ question, judgeData: result });
+                  } else if (finalVerdict === "repair") {
+                    toRepair.push({ question, judgeData: result });
+                  } else {
+                    rejectedCount++;
                   }
                 }
-              } catch (e) {
-                console.warn(`Failed to parse judge response for topic "${dbTopic.title}":`, e);
-                // Continue with original questions
               }
+            }
+          } else {
+            // Judge call failed — treat all candidates as kept with default scores
+            console.warn(`Judge API failed for "${dbTopic.title}", keeping all candidates`);
+            for (const question of generatedData.questions) {
+              kept.push({
+                question,
+                judgeData: {
+                  original_index: 0,
+                  binary: { answerable_from_context: 1, has_single_clear_correct: 1, format_justified: 1 },
+                  likert: { distractors_plausible: 3, clarity: 3, difficulty_appropriate: 3 },
+                  verdict: "keep",
+                  issues: ["judge_pass_skipped"],
+                },
+              });
             }
           }
         } catch (judgeError) {
           console.warn(`Judge pass failed for topic "${dbTopic.title}":`, judgeError);
-          // Continue with original questions
+          // Fallback: keep all candidates with default scores
+          for (const question of generatedData.questions) {
+            kept.push({
+              question,
+              judgeData: {
+                original_index: 0,
+                binary: { answerable_from_context: 1, has_single_clear_correct: 1, format_justified: 1 },
+                likert: { distractors_plausible: 3, clarity: 3, difficulty_appropriate: 3 },
+                verdict: "keep",
+                issues: ["judge_pass_skipped"],
+              },
+            });
+          }
         }
 
-        // Insert questions with correct topic_id
-        for (const q of questionsToInsert) {
-          // Handle choices - use correct_choice_index if available, otherwise infer from correct_answer
+        console.log(`Stage B complete: ${kept.length} kept, ${toRepair.length} to repair, ${rejectedCount} rejected`);
+
+        // ========== STAGE C: Repair Pass ==========
+        const repaired: Array<{ question: Record<string, unknown>; judgeData: JudgeResult; wasRepaired: true }> = [];
+
+        if (toRepair.length > 0) {
+          try {
+            const repairInstructions = toRepair.map((item, i) => {
+              const issues = item.judgeData.issues.join("; ");
+              const formatFailed = item.judgeData.binary.format_justified === 0;
+              const qType = (item.question.type as string) || "mcq_single";
+              let instruction = `[${i}] Issues: ${issues}`;
+              if (formatFailed && qType === "short_answer") {
+                instruction += "\n  ACTION: Convert to mcq_single with 4 choices based on common misconceptions.";
+              }
+              if (item.judgeData.likert.clarity < 3) {
+                instruction += "\n  ACTION: Tighten stem wording, define all symbols, remove ambiguity.";
+              }
+              if (item.judgeData.likert.distractors_plausible < 3) {
+                instruction += "\n  ACTION: Replace weak distractors with misconception-based options.";
+              }
+              return instruction;
+            }).join("\n\n");
+
+            const repairPrompt = `You are repairing practice questions that failed quality review.
+Fix ONLY the specific issues listed for each question. Preserve topic_title, objective_index, source_refs, and difficulty.
+
+QUESTIONS TO REPAIR:
+${JSON.stringify(toRepair.map(r => r.question), null, 2)}
+
+REPAIR INSTRUCTIONS:
+${repairInstructions}
+
+RULES:
+- If converting short_answer to mcq_single: add exactly 4 choices, set correct_choice_index, add distractor_rationales
+- type must be one of: "mcq_single", "mcq_multi", "short_answer"
+- Preserve all fields not mentioned in the repair instructions
+- Each repaired question must have: stem (>10 chars), solution_steps (non-empty array), correct_answer
+- For mcq_single: exactly 4 choices and a valid correct_choice_index (0-3)
+
+Return the repaired questions in this JSON structure:
+{
+  "repaired_questions": [
+    { ...full question object with repairs applied... }
+  ]
+}`;
+
+            const repairResponse = await fetch(geminiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ parts: [{ text: repairPrompt }] }],
+                generationConfig: {
+                  temperature: PIPELINE_CONFIG.TEMP_REPAIR,
+                  maxOutputTokens: 16384,
+                  response_mime_type: "application/json",
+                },
+              }),
+            });
+
+            if (repairResponse.ok) {
+              const repairResult = await repairResponse.json();
+              const repairText = repairResult.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (repairText) {
+                const cleanedRepairText = repairText.replace(/```json\n?|\n?```/g, "").trim();
+                const repairData = JSON.parse(cleanedRepairText) as {
+                  repaired_questions: Array<Record<string, unknown>>;
+                };
+
+                if (repairData.repaired_questions) {
+                  for (let i = 0; i < repairData.repaired_questions.length; i++) {
+                    const rq = repairData.repaired_questions[i];
+                    const originalJudge = toRepair[i]?.judgeData;
+
+                    // Structural re-validation (not a full re-judge)
+                    const stem = rq.stem as string;
+                    const solutionSteps = rq.solution_steps as string[];
+                    const qType = (rq.type as string) || "mcq_single";
+                    const choices = rq.choices as string[] | undefined;
+                    const correctIdx = rq.correct_choice_index as number | undefined;
+
+                    const stemOk = stem && stem.length > 10;
+                    const stepsOk = Array.isArray(solutionSteps) && solutionSteps.length > 0;
+                    const mcqOk = qType !== "mcq_single" || (
+                      Array.isArray(choices) && choices.length === 4 &&
+                      typeof correctIdx === "number" && correctIdx >= 0 && correctIdx <= 3
+                    );
+
+                    if (stemOk && stepsOk && mcqOk && originalJudge) {
+                      repaired.push({ question: rq, judgeData: originalJudge, wasRepaired: true });
+                    } else {
+                      rejectedCount++;
+                      console.log(`Repaired question ${i} failed structural validation, rejecting`);
+                    }
+                  }
+                }
+              }
+            }
+          } catch (repairError) {
+            console.warn(`Repair pass failed for topic "${dbTopic.title}":`, repairError);
+            rejectedCount += toRepair.length;
+          }
+        }
+
+        console.log(`Stage C complete: ${repaired.length} repaired, ${rejectedCount} total rejected`);
+
+        // ========== Combine, sort, cap, and insert ==========
+        const allScoredQuestions = [
+          ...kept.map(k => ({ ...k, wasRepaired: false as const })),
+          ...repaired,
+        ];
+
+        // Sort by score descending, cap at MAX_QUESTIONS_PER_TOPIC
+        allScoredQuestions.sort((a, b) => {
+          const scoreA = computeTotalScore(a.judgeData.binary, a.judgeData.likert);
+          const scoreB = computeTotalScore(b.judgeData.binary, b.judgeData.likert);
+          return scoreB - scoreA;
+        });
+
+        const finalQuestions = allScoredQuestions.slice(0, PIPELINE_CONFIG.MAX_QUESTIONS_PER_TOPIC);
+
+        for (const { question: q, judgeData, wasRepaired } of finalQuestions) {
+          // Map new type field to DB question_format
+          const qType = (q.type as string) || "mcq_single";
+          const questionFormat = qType === "short_answer" ? "short_answer" : "multiple_choice";
+
+          // Handle choices
           const choicesArray = (q.choices as string[]) || [];
-          const correctChoiceIndex = (q.correct_choice_index as number) ?? 
-            (q.correct_answer as string)?.toUpperCase().charCodeAt(0) - 65;
-          
+          const correctChoiceIndex = (q.correct_choice_index as number) ??
+            ((q.correct_answer as string)?.toUpperCase().charCodeAt(0) - 65);
+
           const choices = choicesArray.length > 0
             ? choicesArray.map((text: string, idx: number) => ({
                 id: String.fromCharCode(65 + idx),
@@ -768,15 +976,23 @@ ${JUDGE_SCHEMA}`;
               }))
             : null;
 
-          const answerFormat = (q.answer_format as string) || "mcq";
-          const questionFormat =
-            answerFormat === "mcq" ? "multiple_choice" : answerFormat === "numeric" ? "numeric" : "short_answer";
-
-          // Use final_answer if available, otherwise fall back to correct_answer
-          const finalAnswer = (q.final_answer as string) || (q.correct_answer as string) || "";
-
-          // Use solution_steps if available, otherwise fall back to hints
+          // Use correct_answer (v3 primary field), fall back to final_answer for compat
+          const finalAnswer = (q.correct_answer as string) || (q.final_answer as string) || "";
           const solutionSteps = (q.solution_steps as string[]) || (q.hints as string[]) || [];
+
+          // Compute quality metadata
+          const qualityScore = computeTotalScore(judgeData.binary, judgeData.likert);
+          const qualityFlags = {
+            answerable_from_context: judgeData.binary.answerable_from_context,
+            has_single_clear_correct: judgeData.binary.has_single_clear_correct,
+            format_justified: judgeData.binary.format_justified,
+            distractors_plausible: judgeData.likert.distractors_plausible,
+            clarity: judgeData.likert.clarity,
+            difficulty_appropriate: judgeData.likert.difficulty_appropriate,
+            issues: judgeData.issues,
+            pipeline_version: 3,
+            was_repaired: wasRepaired,
+          };
 
           const { error: insertError } = await supabase.from("questions").insert({
             course_pack_id: material.course_pack_id,
@@ -796,32 +1012,27 @@ ${JUDGE_SCHEMA}`;
             status: "draft",
             is_published: false,
             needs_review: true,
+            quality_score: qualityScore,
+            quality_flags: qualityFlags,
           });
 
           if (insertError) {
             console.error("Error inserting question:", insertError);
           } else {
             totalQuestionsCreated++;
-            
-            // Update question count in job
-            if (jobId) {
-              const { data: currentJob } = await supabase
-                .from("material_jobs")
-                .select("total_questions, completed_questions")
-                .eq("id", jobId)
-                .single();
-              
-              if (currentJob) {
-                await supabase
-                  .from("material_jobs")
-                  .update({
-                    total_questions: Math.max((currentJob as any).total_questions || 0, totalQuestionsCreated),
-                    completed_questions: totalQuestionsCreated,
-                  })
-                  .eq("id", jobId);
-              }
-            }
           }
+        }
+
+        // Update job progress with pipeline stats
+        if (jobId) {
+          await supabase
+            .from("material_jobs")
+            .update({
+              total_questions: totalQuestionsCreated,
+              completed_questions: totalQuestionsCreated,
+              progress_message: `Topic "${dbTopic.title}": ${kept.length} kept, ${repaired.length} repaired, ${rejectedCount} rejected. Total so far: ${totalQuestionsCreated}`,
+            })
+            .eq("id", jobId);
         }
       } catch (topicError) {
         console.error(`Error generating questions for topic "${dbTopic.title}":`, topicError);
