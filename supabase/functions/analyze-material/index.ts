@@ -18,82 +18,88 @@ const CHUNK_SUMMARY_SCHEMA = `{
   ]
 }`;
 
+
 const OUTLINE_SCHEMA = `{
-  "course_guess": {
-    "course_code": "string or null",
-    "confidence": 0-1,
-    "signals": ["signal1"]
+    "course_guess": {
+      "course_code": "string or null",
+      "confidence": 0-1,
+        "signals": ["signal1"]
   },
-  "outline": [
-    {
-      "section_title": "Major section/topic title",
-      "page_range": [0, 5],
-      "subtopics": ["subtopic1", "subtopic2"]
-    }
-  ]
+"lecture_date_guess": {
+  "date": "YYYY-MM-DD or null",
+    "confidence": 0 - 1,
+      "reasoning": "Found date on title slide"
+},
+"outline": [
+  {
+    "section_title": "Major section/topic title",
+    "page_range": [0, 5],
+    "subtopics": ["subtopic1", "subtopic2"]
+  }
+]
 }`;
 
 const TOPIC_EXTRACTION_SCHEMA = `{
   "topic_code": "string like '2.1' if present, else null",
-  "title": "topic title",
-  "description": "short description",
-  "difficulty_estimate": 1-5,
-  "difficulty_rationale": "One sentence explaining why this difficulty rating",
-  "difficulty_signals": ["signal1", "signal2"],
-  "recommended_question_types": ["conceptual", "computation", "mcq", "short_answer"],
-  "question_type_distribution": [
-    {"type": "conceptual", "proportion": 0.3},
-    {"type": "computation", "proportion": 0.4},
-    {"type": "mcq", "proportion": 0.2},
-    {"type": "short_answer", "proportion": 0.1}
-  ],
-  "objectives": ["Students will be able to calculate ...", "Students will be able to explain ..."],
-  "prerequisites": ["topic title or code"],
-  "supporting_chunks": [0, 1, 2],
-  "key_terms": [
-    {"term": "term name", "definition": "brief definition", "page_ref": 3}
-  ],
-  "formulas": [
-    {"name": "formula name", "expression": "LaTeX or text expression", "context": "when/how it's used"}
-  ],
-  "canonical_formulas": [
-    {"name": "formula name", "expression": "exact LaTeX expression with symbols", "page_ref": 3}
-  ],
-  "common_misconceptions": [
-    {"description": "what students get wrong", "correct_concept": "what is actually true"}
-  ],
-  "worked_examples": [
-    {
-      "prompt": "textbook-style example description",
-      "given": ["given value 1", "given value 2"],
-      "steps": ["step 1", "step 2", "step 3"],
-      "answer": "final answer",
-      "page_ref": 31
-    }
-  ],
-  "tables": [
-    {
-      "title": "Table title",
-      "columns": ["column1", "column2", "column3"],
-      "rows": [["value1", "value2", "value3"], ["value4", "value5", "value6"]],
-      "page_ref": 41
-    }
-  ],
-  "example_questions": [
-    {
-      "type": "conceptual|computation|mcq|short_answer",
-      "stem": "question text",
-      "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
-      "correct_choice_index": 1,
-      "final_answer": "string",
-      "solution_steps": ["step 1", "step 2"],
-      "objective_index": 0,
-      "misconception_index": 0,
-      "page_ref": 29,
-      "difficulty": 3
-    }
-  ]
-}`;
+    "title": "topic title",
+      "description": "short description",
+        "difficulty_estimate": 1 - 5,
+          "difficulty_rationale": "One sentence explaining why this difficulty rating",
+            "difficulty_signals": ["signal1", "signal2"],
+              "recommended_question_types": ["conceptual", "computation", "mcq", "short_answer"],
+                "question_type_distribution": [
+                  { "type": "conceptual", "proportion": 0.3 },
+                  { "type": "computation", "proportion": 0.4 },
+                  { "type": "mcq", "proportion": 0.2 },
+                  { "type": "short_answer", "proportion": 0.1 }
+                ],
+                  "objectives": ["Students will be able to calculate ...", "Students will be able to explain ..."],
+                    "prerequisites": ["topic title or code"],
+                      "supporting_chunks": [0, 1, 2],
+                        "key_terms": [
+                          { "term": "term name", "definition": "brief definition", "page_ref": 3 }
+                        ],
+                          "formulas": [
+                            { "name": "formula name", "expression": "LaTeX or text expression", "context": "when/how it's used" }
+                          ],
+                            "canonical_formulas": [
+                              { "name": "formula name", "expression": "exact LaTeX expression with symbols", "page_ref": 3 }
+                            ],
+                              "common_misconceptions": [
+                                { "description": "what students get wrong", "correct_concept": "what is actually true" }
+                              ],
+                                "worked_examples": [
+                                  {
+                                    "prompt": "textbook-style example description",
+                                    "given": ["given value 1", "given value 2"],
+                                    "steps": ["step 1", "step 2", "step 3"],
+                                    "answer": "final answer",
+                                    "page_ref": 31
+                                  }
+                                ],
+                                  "tables": [
+                                    {
+                                      "title": "Table title",
+                                      "columns": ["column1", "column2", "column3"],
+                                      "rows": [["value1", "value2", "value3"], ["value4", "value5", "value6"]],
+                                      "page_ref": 41
+                                    }
+                                  ],
+                                    "example_questions": [
+                                      {
+                                        "type": "conceptual|computation|mcq|short_answer",
+                                        "stem": "question text",
+                                        "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
+                                        "correct_choice_index": 1,
+                                        "final_answer": "string",
+                                        "solution_steps": ["step 1", "step 2"],
+                                        "objective_index": 0,
+                                        "misconception_index": 0,
+                                        "page_ref": 29,
+                                        "difficulty": 3
+                                      }
+                                    ]
+} `;
 
 const MEASURABLE_VERBS = [
   "calculate", "compute", "derive", "solve", "evaluate", "simplify", "prove",
@@ -422,7 +428,7 @@ Deno.serve(async (req) => {
     // PHASE A: Chunk Summarization (sends base64)
     // ==========================================
     console.log("Phase A: Chunk summarization...");
-    
+
     // Update job progress
     if (jobId) {
       await supabase
@@ -468,7 +474,7 @@ Analyze the document now:`;
     const chunkSummaries = phaseAData.chunk_summaries || [];
     allWarnings.push(...phaseAWarnings);
     console.log(`Phase A complete: ${chunkSummaries.length} chunk summaries`);
-    
+
     // Update job progress
     if (jobId) {
       await supabase
@@ -501,6 +507,7 @@ ${OUTLINE_SCHEMA}
 
 Rules:
 - Identify the course code if possible from the content
+- Identify the lecture date if possible (often on title slide or footer). Format as YYYY-MM-DD.
 - page_range is [start_index, end_index] (inclusive, 0-based)
 - Focus on substantive academic topics, not meta-content like "syllabus" or "title page"
 - subtopics should list specific concepts covered in that section`;
@@ -521,9 +528,25 @@ Rules:
 
     const outline = phaseBData.outline || [];
     const courseGuess = phaseBData.course_guess;
+    const dateGuess = (phaseBData as any).lecture_date_guess;
+
     allWarnings.push(...phaseBWarnings);
     console.log(`Phase B complete: ${outline.length} sections identified`);
-    
+
+    if (dateGuess?.date && dateGuess.confidence > 0.7) {
+      console.log(`Found high-confidence date: ${dateGuess.date}`);
+      try {
+        await supabase
+          .from("course_materials")
+          .update({ content_date: dateGuess.date })
+          .eq("id", materialId);
+      } catch (e) {
+        console.warn("Failed to update content_date:", e);
+      }
+    }
+
+    console.log(`Phase B complete: ${outline.length} sections identified`);
+
     // Update job progress
     if (jobId) {
       await supabase
@@ -651,7 +674,7 @@ ANTI-BAD-QUESTION RULES:
                 .select("completed_topics")
                 .eq("id", jobId)
                 .single();
-              
+
               if (currentJob) {
                 await supabase
                   .from("material_jobs")
@@ -663,11 +686,11 @@ ANTI-BAD-QUESTION RULES:
                   .eq("id", jobId);
               }
             }
-            
+
             resolve({ section: section.section_title, topic, warnings });
           } catch (e) {
             console.error(`Phase C failed for section "${section.section_title}":`, e);
-            
+
             // Still increment on failure
             if (jobId) {
               const { data: currentJob } = await supabase
@@ -675,7 +698,7 @@ ANTI-BAD-QUESTION RULES:
                 .select("completed_topics")
                 .eq("id", jobId)
                 .single();
-              
+
               if (currentJob) {
                 await supabase
                   .from("material_jobs")
@@ -740,6 +763,7 @@ ANTI-BAD-QUESTION RULES:
     const analysis = {
       schema_version: 2 as const,
       course_guess: courseGuess || undefined,
+      lecture_date_guess: dateGuess || undefined,
       chunk_summaries: chunkSummaries,
       outline,
       topics,
@@ -798,7 +822,7 @@ ANTI-BAD-QUESTION RULES:
           .from("course_materials")
           .update({ status: "failed", error_message: String(error) })
           .eq("id", materialId);
-        
+
         // Update job to failed
         const { data: failedJob } = await sb
           .from("material_jobs")
@@ -809,7 +833,7 @@ ANTI-BAD-QUESTION RULES:
           .order("created_at", { ascending: false })
           .limit(1)
           .single();
-        
+
         if (failedJob) {
           await sb
             .from("material_jobs")
