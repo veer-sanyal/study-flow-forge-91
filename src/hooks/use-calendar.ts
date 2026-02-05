@@ -269,7 +269,7 @@ export function useCalendarReviewData({
     queryFn: async () => {
       if (!user) return [];
 
-      const { data, error } = await supabase.rpc('get_calendar_review_data', {
+      const { data, error } = await (supabase.rpc as any)('get_calendar_review_data', {
         p_user_id: user.id,
         p_course_ids: courseIds.length > 0 ? courseIds : null,
         p_start_date: startDate,

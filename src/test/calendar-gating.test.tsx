@@ -16,7 +16,7 @@ vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ user: { id: 'test-user' } }),
 }));
 
-const mockEnrollments = vi.fn<[], {
+interface MockEnrollmentsReturn {
   enrollments: Array<{ course_pack_id: string }>;
   isLoadingEnrollments: boolean;
   enrolledCourseIdsArray: string[];
@@ -27,16 +27,18 @@ const mockEnrollments = vi.fn<[], {
   unenroll: () => void;
   isEnrolling: boolean;
   isUnenrolling: boolean;
-}>();
+}
+const mockEnrollments = vi.fn<() => MockEnrollmentsReturn>();
 vi.mock('@/hooks/use-enrollments', () => ({
   useEnrollments: () => mockEnrollments(),
 }));
 
-const mockCalendarReviewData = vi.fn<[], {
+interface MockCalendarReviewReturn {
   data: Map<string, CalendarDayReviewData>;
   isLoading: boolean;
   hasAnyReviews: boolean;
-}>();
+}
+const mockCalendarReviewData = vi.fn<() => MockCalendarReviewReturn>();
 vi.mock('@/hooks/use-calendar', () => ({
   useStudentCalendarEvents: () => ({ data: [] }),
   useUpcomingExams: () => ({ data: [] }),
