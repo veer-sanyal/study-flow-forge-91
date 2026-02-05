@@ -16,12 +16,14 @@ vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ user: { id: 'test-user' } }),
 }));
 
-const mockEnrollments = vi.fn<[], { enrollments: Array<{ course_pack_id: string }>; isLoadingEnrollments: boolean }>();
+interface MockEnrollmentsReturn { enrollments: Array<{ course_pack_id: string }>; isLoadingEnrollments: boolean }
+const mockEnrollments = vi.fn<() => MockEnrollmentsReturn>();
 vi.mock('@/hooks/use-enrollments', () => ({
   useEnrollments: () => mockEnrollments(),
 }));
 
-const mockProgressStats = vi.fn<[], { topics: TopicProgressRow[]; summary: ProgressSummary; forecast: ForecastDay[]; isLoading: boolean }>();
+interface MockProgressReturn { topics: TopicProgressRow[]; summary: ProgressSummary; forecast: ForecastDay[]; isLoading: boolean }
+const mockProgressStats = vi.fn<() => MockProgressReturn>();
 vi.mock('@/hooks/use-progress-stats', () => ({
   useProgressStats: () => mockProgressStats(),
 }));

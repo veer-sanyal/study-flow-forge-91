@@ -4,7 +4,62 @@ Goal: Ensure generated questions meet minimum quality thresholds before reaching
 
 ---
 
-## V4 Quality Dimensions (8 dimensions)
+## V5 Evidence-Based Pipeline (Current - 2-Call Workflow)
+
+The best approach: **"Evidence → One Claim → One MCQ"**
+
+Instead of "generate 30 questions," we do a tight loop:
+1. **Extract testable facts** with exact evidence (quotes) from a small chunk (1–2 pages)
+2. **Pick one fact/claim**
+3. **Generate ONE MCQ** grounded in that evidence, with an option audit
+4. If it fails the audit, the model rewrites immediately (same call) or discards
+
+This isn't "generate then filter"; it's **"generate only when grounded + verified."**
+
+### Why big-batch generation makes MCQs worse
+
+When you ask for many questions at once, the model:
+- Uses weaker evidence ("I think the notes imply…")
+- Repeats patterns and reuses distractors
+- Writes broad "definition" stems that don't test anything
+- Accidentally creates 2 correct answers because it isn't auditing each option carefully
+
+### V5 Minimal 2-Call Workflow
+
+**Call 1 — "Fact Bank" (from a chunk)**
+- Input: text from 1-2 pages
+- Output: 8-15 "testable claims" with exact quotes
+- Each claim includes: claim_id, claim_type, evidence quotes, common confusions
+
+**Call 2 — "Generate ONE MCQ from ONE Claim" (with self-audit)**
+- Input: one claim + evidence + confusion list
+- Output: one MCQ with option audit
+- Model audits each option: cite which evidence supports/refutes it
+- If audit shows ambiguity → model rewrites immediately
+- Confidence threshold: 0.7 (below = discard)
+
+### V5 Quality Checks (Built Into Generation)
+
+| Check | When | Action if fails |
+|---|---|---|
+| Option audit shows 2+ correct | During Call 2 | Model rewrites or discards |
+| Confidence < 0.7 | After Call 2 | Discard |
+| No evidence quotes | After Call 2 | Discard |
+| Invalid MCQ structure | After Call 2 | Discard |
+
+### V5 Config
+
+```
+TEMP_FACT_BANK: 0.3
+TEMP_MCQ_GEN: 0.4
+MAX_CLAIMS_PER_CHUNK: 12
+MAX_QUESTIONS_PER_TOPIC: 8
+MIN_CONFIDENCE: 0.7
+```
+
+---
+
+## V4 Quality Dimensions (8 dimensions) — LEGACY
 
 ### Binary (0 = fail, 1 = pass)
 | Dimension | Question it answers |
@@ -24,7 +79,7 @@ Goal: Ensure generated questions meet minimum quality thresholds before reaching
 
 ---
 
-## V4 Scoring Formula
+## V4 Scoring Formula (Legacy)
 
 ```
 binary_score = (grounded + answerable_from_context + has_single_clear_correct + format_justified) * 1.5  // max 6
@@ -35,7 +90,7 @@ total_score  = binary_score + likert_score                                      
 
 ---
 
-## V4 Thresholds
+## V4 Thresholds (Legacy)
 
 | Score range | Verdict | Action |
 |---|---|---|

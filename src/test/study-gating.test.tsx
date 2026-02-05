@@ -25,11 +25,12 @@ vi.mock('@/hooks/use-settings', () => ({
   }),
 }));
 
-const mockEnrollments = vi.fn<[], {
+interface MockEnrollmentsReturn {
   enrollments: Array<{ course_pack_id: string }>;
   enrolledCourseIdsArray: string[];
   isLoadingEnrollments: boolean;
-}>();
+}
+const mockEnrollments = vi.fn<() => MockEnrollmentsReturn>();
 vi.mock('@/hooks/use-enrollments', () => ({
   useEnrollments: () => mockEnrollments(),
 }));
