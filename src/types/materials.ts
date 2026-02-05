@@ -63,7 +63,7 @@ export interface Objective {
 
 // Analysis JSON structure from Gemini
 
-/** V1 analysis (legacy single-call pipeline) */
+/** V1/V2 analysis (legacy pipelines) */
 export interface MaterialAnalysis {
   schema_version?: 1 | 2;
   course_guess?: {
@@ -76,6 +76,9 @@ export interface MaterialAnalysis {
   chunk_summaries?: ChunkSummary[];
   outline?: OutlineSection[];
 }
+
+/** Union type for all analysis versions */
+export type AnyMaterialAnalysis = MaterialAnalysis | MaterialAnalysisV4;
 
 export interface AnalyzedTopic {
   topic_code: string | null;
@@ -147,6 +150,177 @@ export function isAnalyzedTopicV2(topic: AnalyzedTopic): topic is AnalyzedTopicV
   return 'difficulty_rationale' in topic && 'key_terms' in topic;
 }
 
+// ===== V4 Question-Ready Facts Pipeline Types =====
+
+/** Evidence span linking content to exact source text */
+export interface EvidenceSpan {
+  span_id: string;  // "e_{chunk_index}_{seq}"
+  text: string;     // Exact excerpt <= 50 words
+}
+
+/** Atomic fact with evidence grounding */
+export interface AtomicFact {
+  fact_id: string;  // "f_{chunk_index}_{seq}"
+  statement: string;
+  fact_type: 'definition' | 'property' | 'relationship' | 'procedure' | 'example' | 'constraint';
+  evidence_span_id: string;
+}
+
+/** Definition extracted from material */
+export interface ChunkDefinition {
+  term: string;
+  definition: string;
+  evidence_span_id: string;
+}
+
+/** Formula with complete variable bindings */
+export interface ChunkFormula {
+  name: string;
+  expression: string;  // LaTeX
+  variables: { symbol: string; meaning: string; domain: string | null }[];
+  conditions: string[];
+  evidence_span_id: string;
+}
+
+/** Constraint or rule from material */
+export interface ChunkConstraint {
+  constraint: string;
+  context: string;
+  evidence_span_id: string;
+}
+
+/** Worked example with full solution steps */
+export interface WorkedExample {
+  problem_statement: string;
+  given: { quantity: string; value: string; unit: string | null }[];
+  asked: string;
+  steps: { step_number: number; action: string; formula_used: string | null; intermediate_result: string | null }[];
+  final_answer: string;
+  evidence_span_id: string;
+}
+
+/** Common misconception for distractor generation */
+export interface ChunkMisconception {
+  misconception_id: string;  // "m_{chunk_index}_{seq}"
+  description: string;
+  correct_concept: string;
+  evidence_span_id: string;
+}
+
+/** V4 Question-Ready Chunk replacing shallow ChunkSummary */
+export interface QuestionReadyChunk {
+  chunk_index: number;
+  chunk_type: 'page' | 'slide';
+  summary: string;  // Kept for backward compat
+
+  // QUESTION-READY FACTS
+  atomic_facts: AtomicFact[];
+  definitions: ChunkDefinition[];
+  formulas: ChunkFormula[];
+  constraints: ChunkConstraint[];
+  worked_examples: WorkedExample[];
+  common_misconceptions: ChunkMisconception[];
+
+  // EVIDENCE & GROUNDING
+  evidence_spans: EvidenceSpan[];
+  key_terms: string[];
+
+  // METADATA
+  content_density: 'sparse' | 'normal' | 'dense';
+  question_potential: 'low' | 'medium' | 'high';
+}
+
+/** Source evidence for grounded questions */
+export interface SourceEvidence {
+  evidence_span_ids: string[];
+  fact_ids: string[];
+  page_refs: number[];
+}
+
+/** Grounding verification for questions */
+export interface GroundingCheck {
+  all_facts_cited: boolean;
+  uses_material_context: boolean;
+  reasoning_steps: number;
+}
+
+/** Distractor rationale for MCQ wrong choices */
+export interface DistractorRationale {
+  choice_id: string;
+  rationale_type: 'misconception' | 'computation_error' | 'partial_understanding';
+  misconception_id?: string;
+  error_description: string;
+}
+
+/** V4 Candidate Question with grounding */
+export interface CandidateQuestionV4 {
+  stem: string;
+  type: 'mcq_single' | 'mcq_multi' | 'short_answer';
+
+  // GROUNDING (new required fields)
+  source_evidence: SourceEvidence;
+  grounding_check: GroundingCheck;
+
+  choices?: { id: string; text: string; is_correct: boolean }[];
+  correct_answer: string;
+  correct_choice_index?: number;
+  solution_steps: string[];
+  full_solution: string;
+  difficulty: number;
+  objective_index: number;
+
+  // MCQ distractor rationales
+  distractor_rationales?: DistractorRationale[];
+}
+
+/** V4 8-dimension quality flags */
+export interface QualityFlagsV4 {
+  // Binary (0 = fail, 1 = pass)
+  grounded: number;
+  answerable_from_context: number;
+  has_single_clear_correct: number;
+  format_justified: number;
+
+  // Likert (1-5)
+  non_trivial: number;
+  distractors_plausible: number;
+  clarity: number;
+  context_authentic: number;
+
+  issues: string[];
+  pipeline_version: 4;
+  was_repaired: boolean;
+}
+
+/** V4 Material Analysis with question-ready chunks */
+export interface MaterialAnalysisV4 {
+  schema_version: 4;
+  course_guess?: {
+    course_code: string;
+    confidence: number;
+    signals: string[];
+  };
+  lecture_date_guess?: {
+    date: string;
+    confidence: number;
+    reasoning: string;
+  };
+  question_ready_chunks: QuestionReadyChunk[];
+  outline: OutlineSection[];
+  topics: AnalyzedTopicV2[];
+}
+
+/** Type guard for V4 analysis */
+export function isMaterialAnalysisV4(analysis: unknown): analysis is MaterialAnalysisV4 {
+  return (
+    typeof analysis === 'object' &&
+    analysis !== null &&
+    'schema_version' in analysis &&
+    (analysis as { schema_version: unknown }).schema_version === 4 &&
+    'question_ready_chunks' in analysis
+  );
+}
+
 // Question generation request
 export interface QuestionGenerationRequest {
   course_pack_id: string;
@@ -175,7 +349,7 @@ export interface GeneratedQuestion {
   why_this_question?: string;
 }
 
-// Quality flags stored in questions.quality_flags (v3 pipeline)
+/** Quality flags stored in questions.quality_flags (v3 pipeline) */
 export interface QualityFlags {
   answerable_from_context: number;   // 0 | 1
   has_single_clear_correct: number;  // 0 | 1
@@ -187,6 +361,9 @@ export interface QualityFlags {
   pipeline_version: number;
   was_repaired: boolean;
 }
+
+/** Union type for all quality flags versions */
+export type AnyQualityFlags = QualityFlags | QualityFlagsV4;
 
 // Material status display helpers
 export const MATERIAL_STATUS_CONFIG: Record<MaterialStatus, { label: string; color: string }> = {

@@ -60,10 +60,70 @@ interface ChunkSummary {
   key_terms: string[];
 }
 
+// V4 Question-Ready Types
+interface EvidenceSpan {
+  span_id: string;
+  text: string;
+}
+
+interface AtomicFact {
+  fact_id: string;
+  statement: string;
+  fact_type: string;
+  evidence_span_id: string;
+}
+
+interface ChunkDefinition {
+  term: string;
+  definition: string;
+  evidence_span_id: string;
+}
+
+interface ChunkFormula {
+  name: string;
+  expression: string;
+  variables: { symbol: string; meaning: string; domain: string | null }[];
+  conditions: string[];
+  evidence_span_id: string;
+}
+
+interface WorkedExampleV4 {
+  problem_statement: string;
+  given: { quantity: string; value: string; unit: string | null }[];
+  asked: string;
+  steps: { step_number: number; action: string; formula_used: string | null; intermediate_result: string | null }[];
+  final_answer: string;
+  evidence_span_id: string;
+}
+
+interface ChunkMisconception {
+  misconception_id: string;
+  description: string;
+  correct_concept: string;
+  evidence_span_id: string;
+}
+
+interface QuestionReadyChunk {
+  chunk_index: number;
+  chunk_type: "page" | "slide";
+  summary: string;
+  key_terms: string[];
+  evidence_spans: EvidenceSpan[];
+  atomic_facts: AtomicFact[];
+  definitions: ChunkDefinition[];
+  formulas: ChunkFormula[];
+  constraints: { constraint: string; context: string; evidence_span_id: string }[];
+  worked_examples: WorkedExampleV4[];
+  common_misconceptions: ChunkMisconception[];
+  content_density: "sparse" | "normal" | "dense";
+  question_potential: "low" | "medium" | "high";
+}
+
 interface NormalizedAnalysis {
-  schema_version: 1 | 2;
+  schema_version: 1 | 2 | 4;
   topics: AnalysisTopicV2[];
   chunk_summaries: ChunkSummary[];
+  question_ready_chunks?: QuestionReadyChunk[];
 }
 
 interface DbTopic {
@@ -75,7 +135,31 @@ interface DbTopic {
 
 // ---------- Normalization ----------
 
-function normalizeAnalysis(raw: Record<string, unknown>): NormalizedAnalysis {
+function normalizeAnalysis(
+  raw: Record<string, unknown>,
+  rawV4?: Record<string, unknown> | null,
+): NormalizedAnalysis {
+  // Prefer v4 if available
+  if (rawV4 && (rawV4.schema_version as number) === 4) {
+    const topics = (rawV4.topics as AnalysisTopicV1[]) || [];
+    const questionReadyChunks = (rawV4.question_ready_chunks as QuestionReadyChunk[]) || [];
+
+    // Derive chunk summaries from question_ready_chunks for backward compat
+    const chunkSummaries: ChunkSummary[] = questionReadyChunks.map((qrc) => ({
+      chunk_index: qrc.chunk_index,
+      chunk_type: qrc.chunk_type,
+      summary: qrc.summary,
+      key_terms: qrc.key_terms,
+    }));
+
+    return {
+      schema_version: 4,
+      topics: topics as AnalysisTopicV2[],
+      chunk_summaries: chunkSummaries,
+      question_ready_chunks: questionReadyChunks,
+    };
+  }
+
   const version = (raw.schema_version as number) || 1;
   const topics = (raw.topics as AnalysisTopicV1[]) || [];
   const chunkSummaries = (raw.chunk_summaries as ChunkSummary[]) || [];
@@ -218,6 +302,47 @@ const CANDIDATE_SCHEMA = `{
   ]
 }`;
 
+// V4 Question Schema with grounding requirements
+const CANDIDATE_SCHEMA_V4 = `{
+  "questions": [
+    {
+      "stem": "The question text",
+      "topic_title": "The topic this question belongs to",
+      "type": "mcq_single|mcq_multi|short_answer",
+      "choices": ["A) Option A", "B) Option B", "C) Option C", "D) Option D"],
+      "correct_answer": "The correct answer",
+      "correct_choice_index": 0,
+      "full_solution": "Step-by-step solution",
+      "solution_steps": ["Step 1", "Step 2", "Step 3"],
+      "hints": ["Hint 1", "Hint 2"],
+      "common_mistakes": ["Mistake 1"],
+      "tags": ["tag1"],
+      "difficulty": 1-5,
+      "objective_index": 0,
+
+      "source_evidence": {
+        "evidence_span_ids": ["e_0_1", "e_0_2"],
+        "fact_ids": ["f_0_1", "f_0_2"],
+        "page_refs": [0, 1]
+      },
+      "grounding_check": {
+        "all_facts_cited": true,
+        "uses_material_context": true,
+        "reasoning_steps": 2
+      },
+      "distractor_rationales": [
+        {
+          "choice_id": "A",
+          "rationale_type": "misconception|computation_error|partial_understanding",
+          "misconception_id": "m_0_1",
+          "error_description": "Why this is wrong"
+        }
+      ],
+      "why_this_question": "Links to specific extracted facts"
+    }
+  ]
+}`;
+
 const JUDGE_V2_SCHEMA = `{
   "judged_questions": [
     {
@@ -238,6 +363,29 @@ const JUDGE_V2_SCHEMA = `{
   ]
 }`;
 
+// V4 Judge Schema with 8 dimensions
+const JUDGE_V4_SCHEMA = `{
+  "judged_questions": [
+    {
+      "original_index": 0,
+      "binary": {
+        "grounded": 0 or 1,
+        "answerable_from_context": 0 or 1,
+        "has_single_clear_correct": 0 or 1,
+        "format_justified": 0 or 1
+      },
+      "likert": {
+        "non_trivial": 1-5,
+        "distractors_plausible": 1-5,
+        "clarity": 1-5,
+        "context_authentic": 1-5
+      },
+      "verdict": "keep|repair|reject",
+      "issues": ["issue 1", "issue 2"]
+    }
+  ]
+}`;
+
 // ---------- Judge Types ----------
 
 interface JudgeBinary {
@@ -246,16 +394,35 @@ interface JudgeBinary {
   format_justified: number;
 }
 
+interface JudgeBinaryV4 extends JudgeBinary {
+  grounded: number;
+}
+
 interface JudgeLikert {
   distractors_plausible: number;
   clarity: number;
   difficulty_appropriate: number;
 }
 
+interface JudgeLikertV4 {
+  non_trivial: number;
+  distractors_plausible: number;
+  clarity: number;
+  context_authentic: number;
+}
+
 interface JudgeResult {
   original_index: number;
   binary: JudgeBinary;
   likert: JudgeLikert;
+  verdict: "keep" | "repair" | "reject";
+  issues: string[];
+}
+
+interface JudgeResultV4 {
+  original_index: number;
+  binary: JudgeBinaryV4;
+  likert: JudgeLikertV4;
   verdict: "keep" | "repair" | "reject";
   issues: string[];
 }
@@ -280,6 +447,74 @@ function resolveVerdict(
   // Trust numeric scores over LLM labels
   if (score >= PIPELINE_CONFIG.KEEP_THRESHOLD) return "keep";
   if (score >= PIPELINE_CONFIG.REPAIR_THRESHOLD) return "repair";
+  return "reject";
+}
+
+/** V4 8-dimension scoring formula */
+function computeTotalScoreV4(binary: JudgeBinaryV4, likert: JudgeLikertV4): number {
+  // Binary dims: grounded + answerable + clear_correct + format_justified (max 6 with 1.5 weight)
+  const binaryScore =
+    (binary.grounded + binary.answerable_from_context + binary.has_single_clear_correct + binary.format_justified) * 1.5;
+  // Normalized Likert: average of 4 dims scaled to max 4
+  const avgLikert =
+    (likert.non_trivial + likert.distractors_plausible + likert.clarity + likert.context_authentic) / 4;
+  const likertScore = (avgLikert / 5) * 4;
+  return Math.round((binaryScore + likertScore) * 10) / 10; // total out of 10
+}
+
+/** V4 verdict resolution with hard rejection triggers */
+function resolveVerdictV4(
+  binary: JudgeBinaryV4,
+  likert: JudgeLikertV4,
+  question: Record<string, unknown>,
+): "keep" | "repair" | "reject" {
+  // HARD REJECTION TRIGGERS (v4)
+  const sourceEvidence = question.source_evidence as { evidence_span_ids?: string[] } | undefined;
+  const groundingCheck = question.grounding_check as { reasoning_steps?: number; uses_material_context?: boolean } | undefined;
+  const distractorRationales = question.distractor_rationales as unknown[] | undefined;
+  const qType = (question.type as string) || "mcq_single";
+
+  // 1. No evidence citations
+  if (!sourceEvidence?.evidence_span_ids || sourceEvidence.evidence_span_ids.length === 0) {
+    return "reject";
+  }
+
+  // 2. Non-trivial check (reasoning_steps < 2 for non-definition questions)
+  const isDefinitionQuestion = ((question.stem as string) || "").toLowerCase().includes("define");
+  if (!isDefinitionQuestion && (groundingCheck?.reasoning_steps || 0) < 2) {
+    return "reject";
+  }
+
+  // 3. Uses material context check
+  if (groundingCheck?.uses_material_context === false) {
+    return "reject";
+  }
+
+  // 4. MCQ without distractor rationales
+  if (qType === "mcq_single" && (!distractorRationales || distractorRationales.length === 0)) {
+    return "reject";
+  }
+
+  // Standard threshold-based verdict
+  const allBinaryPass = binary.grounded === 1 &&
+    binary.answerable_from_context === 1 &&
+    binary.has_single_clear_correct === 1 &&
+    binary.format_justified === 1;
+  const avgLikert = (likert.non_trivial + likert.distractors_plausible + likert.clarity + likert.context_authentic) / 4;
+
+  // Keep: ALL binary = 1 AND non_trivial >= 3 AND avg_likert >= 3.5
+  if (allBinaryPass && likert.non_trivial >= 3 && avgLikert >= 3.5) {
+    return "keep";
+  }
+
+  // Repair: At least 3 binary = 1 AND avg_likert >= 2.0
+  const binaryPassCount = binary.grounded + binary.answerable_from_context +
+    binary.has_single_clear_correct + binary.format_justified;
+  if (binaryPassCount >= 3 && avgLikert >= 2.0) {
+    return "repair";
+  }
+
+  // Otherwise reject
   return "reject";
 }
 
@@ -401,8 +636,15 @@ Deno.serve(async (req) => {
 
     console.log(`Starting question generation for material: ${material.title}`);
 
-    // Normalize analysis for v1/v2 compatibility
-    const analysis = normalizeAnalysis(material.analysis_json as Record<string, unknown>);
+    // Normalize analysis for v1/v2/v4 compatibility
+    // Prefer v4 if available (has question_ready_chunks for grounded generation)
+    const analysis = normalizeAnalysis(
+      material.analysis_json as Record<string, unknown>,
+      material.analysis_json_v4 as Record<string, unknown> | null,
+    );
+
+    const isV4Pipeline = analysis.schema_version === 4;
+    console.log(`Using pipeline version: ${analysis.schema_version}${isV4Pipeline ? ' (grounded generation)' : ''}`);
 
     // Get DB topics to generate for
     let topicsQuery = supabase
@@ -514,6 +756,7 @@ Deno.serve(async (req) => {
 
       // Build enriched context for this topic
       let enrichedContext = "";
+      let v4EvidenceContext = ""; // V4-specific grounding context
 
       if (analysisTopic) {
         // Key terms context
@@ -601,10 +844,165 @@ Deno.serve(async (req) => {
         }
       }
 
+      // V4: Build grounding context from question_ready_chunks
+      if (isV4Pipeline && analysis.question_ready_chunks && analysisTopic?.supporting_chunks) {
+        const relevantQRChunks = analysis.question_ready_chunks.filter((qrc) =>
+          analysisTopic.supporting_chunks!.includes(qrc.chunk_index),
+        );
+
+        if (relevantQRChunks.length > 0) {
+          // Evidence spans for citation
+          const evidenceSpans = relevantQRChunks.flatMap((qrc) =>
+            (qrc.evidence_spans || []).map((e) => `${e.span_id}: "${e.text}"`)
+          );
+          if (evidenceSpans.length > 0) {
+            v4EvidenceContext += "\n\n=== V4 GROUNDING CONTEXT (MUST CITE) ===\n";
+            v4EvidenceContext += "\nEVIDENCE SPANS (cite by span_id):\n";
+            v4EvidenceContext += evidenceSpans.join("\n");
+          }
+
+          // Atomic facts with IDs
+          const atomicFacts = relevantQRChunks.flatMap((qrc) =>
+            (qrc.atomic_facts || []).map((f) => `${f.fact_id} [${f.fact_type}]: ${f.statement} (evidence: ${f.evidence_span_id})`)
+          );
+          if (atomicFacts.length > 0) {
+            v4EvidenceContext += "\n\nATOMIC FACTS (cite by fact_id):\n";
+            v4EvidenceContext += atomicFacts.join("\n");
+          }
+
+          // V4 Formulas with variable bindings
+          const v4Formulas = relevantQRChunks.flatMap((qrc) =>
+            (qrc.formulas || []).map((f) => {
+              const vars = f.variables.map((v) => `${v.symbol}=${v.meaning}${v.domain ? ` ∈ ${v.domain}` : ""}`).join(", ");
+              const conds = f.conditions.length > 0 ? ` when: ${f.conditions.join("; ")}` : "";
+              return `- ${f.name}: ${f.expression} (${vars})${conds} [${f.evidence_span_id}]`;
+            })
+          );
+          if (v4Formulas.length > 0) {
+            v4EvidenceContext += "\n\nFORMULAS WITH VARIABLE BINDINGS:\n";
+            v4EvidenceContext += v4Formulas.join("\n");
+          }
+
+          // V4 Worked examples with steps
+          const v4Examples = relevantQRChunks.flatMap((qrc) =>
+            (qrc.worked_examples || []).map((we) => {
+              const given = we.given.map((g) => `${g.quantity}=${g.value}${g.unit ? ` ${g.unit}` : ""}`).join(", ");
+              const steps = we.steps.map((s) => `  ${s.step_number}. ${s.action}${s.formula_used ? ` (using ${s.formula_used})` : ""}${s.intermediate_result ? ` → ${s.intermediate_result}` : ""}`).join("\n");
+              return `Problem: ${we.problem_statement}\nGiven: ${given}\nFind: ${we.asked}\nSteps:\n${steps}\nAnswer: ${we.final_answer} [${we.evidence_span_id}]`;
+            })
+          );
+          if (v4Examples.length > 0) {
+            v4EvidenceContext += "\n\nWORKED EXAMPLES (use exact values):\n";
+            v4EvidenceContext += v4Examples.join("\n\n");
+          }
+
+          // V4 Misconceptions with IDs
+          const v4Misconceptions = relevantQRChunks.flatMap((qrc) =>
+            (qrc.common_misconceptions || []).map((m) => `${m.misconception_id}: Wrong: "${m.description}" → Correct: "${m.correct_concept}" [${m.evidence_span_id}]`)
+          );
+          if (v4Misconceptions.length > 0) {
+            v4EvidenceContext += "\n\nMISCONCEPTIONS (use as distractor basis, cite misconception_id):\n";
+            v4EvidenceContext += v4Misconceptions.join("\n");
+          }
+
+          v4EvidenceContext += "\n\n=== END V4 GROUNDING CONTEXT ===\n";
+        }
+      }
+
       // Request ~150% of desired count to account for rejection in judge pass
       const candidateCount = Math.ceil(quantityPerBucket * PIPELINE_CONFIG.OVERGENERATE_FACTOR);
 
-      const topicPrompt = `You are generating practice questions for a specific topic.
+      // Build prompt based on pipeline version
+      let topicPrompt: string;
+
+      if (isV4Pipeline && v4EvidenceContext) {
+        // V4 Pipeline: Grounded generation with mandatory citation
+        topicPrompt = `You are generating GROUNDED practice questions from pre-extracted material facts.
+
+TOPIC: ${dbTopic.title}
+DESCRIPTION: ${dbTopic.description || analysisTopic?.description || "N/A"}
+
+LEARNING OBJECTIVES:
+${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join("\n") : "- General understanding of the topic"}
+${enrichedContext}
+${v4EvidenceContext}
+
+Generate ${candidateCount} candidate questions. Some may be filtered out by a quality judge, so generate more than needed.
+
+=== V4 GROUNDING REQUIREMENTS (MANDATORY) ===
+
+EVERY question MUST include these V4-specific fields:
+
+1. source_evidence (REQUIRED):
+   - evidence_span_ids: Array of span IDs (e.g., ["e_0_1", "e_0_2"]) from EVIDENCE SPANS above
+   - fact_ids: Array of fact IDs (e.g., ["f_0_1"]) from ATOMIC FACTS above
+   - page_refs: Array of page numbers
+
+2. grounding_check (REQUIRED):
+   - all_facts_cited: true if question only uses facts from the material
+   - uses_material_context: true if using material's examples (not generic filler)
+   - reasoning_steps: Number of reasoning steps required (MUST be >= 2 for non-definition questions)
+
+3. distractor_rationales (REQUIRED for MCQ):
+   Array of objects with:
+   - choice_id: "A", "B", "C", or "D"
+   - rationale_type: "misconception" | "computation_error" | "partial_understanding"
+   - misconception_id: Reference to misconception (e.g., "m_0_1") if rationale_type is "misconception"
+   - error_description: What makes this wrong
+
+=== V4 GENERATION RULES ===
+
+1. GROUNDING (CRITICAL):
+   - Every question MUST cite evidence_span_ids in source_evidence
+   - You MUST use fact_ids from ATOMIC FACTS above
+   - Questions with evidence_span_ids.length === 0 will be REJECTED
+
+2. NON-TRIVIALITY:
+   - Questions MUST require >= 2 reasoning steps (except for "define/identify" objectives)
+   - Questions with reasoning_steps < 2 will be REJECTED (unless defining)
+   - Avoid definition-only questions
+
+3. AUTHENTIC CONTEXT:
+   - Use the material's specific examples from WORKED EXAMPLES
+   - Use exact values from the material
+   - DO NOT use generic filler contexts (coins, dice, laptops)
+   - uses_material_context MUST be true
+
+4. MCQ DISTRACTORS:
+   - Each wrong choice MUST have a distractor_rationale
+   - At least 1 distractor should be misconception-based (cite misconception_id)
+   - MCQs without distractor_rationales will be REJECTED
+
+BANNED PATTERNS:
+- Definition-only questions (unless objective is "define X")
+- Generic filler contexts (coins, dice, laptops)
+- Distractors without misconception basis
+- Questions with no evidence citations
+
+QUESTION TYPE DISTRIBUTION (MCQ FIRST):
+- 80-90% must be mcq_single (standard 4-choice MCQ)
+- mcq_multi ONLY for "select all that apply" concepts
+- short_answer ONLY for derivations/proofs
+
+DIFFICULTY DISTRIBUTION:
+- ~40% easy (difficulty 1-2)
+- ~40% medium (difficulty 3)
+- ~20% hard (difficulty 4-5)
+
+RULES:
+- Difficulty range: ${difficultyRange[0]}-${difficultyRange[1]}
+- topic_title MUST be exactly: "${dbTopic.title}"
+- Keep solutions concise (under 100 words each)
+- Keep hints short (one sentence each)
+
+CRITICAL: Your response MUST be complete valid JSON. Do not truncate.
+
+Return this exact JSON structure:
+${CANDIDATE_SCHEMA_V4}`;
+
+      } else {
+        // V2/V3 Pipeline: Original generation
+        topicPrompt = `You are generating practice questions for a specific topic.
 
 TOPIC: ${dbTopic.title}
 DESCRIPTION: ${dbTopic.description || analysisTopic?.description || "N/A"}
@@ -683,6 +1081,7 @@ CRITICAL: Your response MUST be complete valid JSON. Do not truncate.
 
 Return this exact JSON structure:
 ${CANDIDATE_SCHEMA}`;
+      }
 
       console.log(`Generating questions for topic: ${dbTopic.title}`);
 
@@ -733,7 +1132,47 @@ ${CANDIDATE_SCHEMA}`;
         let rejectedCount = 0;
 
         try {
-          const judgePrompt = `You are a strict quality judge for practice questions. Score each question on 6 dimensions.
+          let judgePrompt: string;
+
+          if (isV4Pipeline) {
+            // V4 Judge: 8 dimensions with grounding checks
+            judgePrompt = `You are a strict quality judge for GROUNDED practice questions. Score each question on 8 dimensions.
+
+BINARY DIMENSIONS (0 = fail, 1 = pass):
+- grounded: Does the question cite evidence_span_ids in source_evidence? (0 if no citations)
+- answerable_from_context: Can a student answer using ONLY the material? (0 if requires outside knowledge)
+- has_single_clear_correct: Is there exactly one unambiguous correct answer? (0 if ambiguous)
+- format_justified: Is the format optimal? (0 if MCQ trivializes it or short_answer used incorrectly)
+
+LIKERT DIMENSIONS (1-5 scale):
+- non_trivial: Does question require multiple reasoning steps? (1 = definition-only; 5 = multi-step synthesis)
+- distractors_plausible: For MCQs, are wrong choices based on documented misconceptions? (5 = uses misconception_ids; 1 = obviously wrong)
+- clarity: Clear stem, defined symbols? (5 = crystal clear; 1 = confusing)
+- context_authentic: Uses material's examples, not generic filler? (5 = all from material; 1 = generic coins/dice/laptops)
+
+HARD REJECTION RULES (auto-reject if ANY of these):
+- source_evidence.evidence_span_ids is empty or missing
+- reasoning_steps < 2 AND not a "define/identify" question
+- uses_material_context === false
+- MCQ without distractor_rationales array
+
+VERDICT RULES:
+- "keep": ALL binary = 1 AND non_trivial >= 3 AND avg_likert >= 3.5
+- "repair": At least 3 binary = 1 AND avg_likert >= 2.0
+- "reject": Everything else (or if any hard rejection trigger)
+
+LEARNING OBJECTIVES:
+${allObjectives.length > 0 ? allObjectives.map((o, idx) => `[${idx}] ${o}`).join("\n") : "- General understanding"}
+
+GENERATED QUESTIONS:
+${JSON.stringify(generatedData.questions, null, 2)}
+
+For each question, output ALL 8 dimension scores, the verdict, and a list of specific issues.
+Return ONLY valid JSON matching this schema:
+${JUDGE_V4_SCHEMA}`;
+          } else {
+            // V3 Judge: 6 dimensions
+            judgePrompt = `You are a strict quality judge for practice questions. Score each question on 6 dimensions.
 
 BINARY DIMENSIONS (0 = fail, 1 = pass):
 - answerable_from_context: Can a student answer this using ONLY the provided material? (0 if requires outside knowledge)
@@ -759,6 +1198,7 @@ ${JSON.stringify(generatedData.questions, null, 2)}
 For each question, output ALL 6 dimension scores, the verdict, and a list of specific issues.
 Return ONLY valid JSON matching this schema:
 ${JUDGE_V2_SCHEMA}`;
+          }
 
           const judgeResponse = await fetch(geminiUrl, {
             method: "POST",
@@ -778,28 +1218,91 @@ ${JUDGE_V2_SCHEMA}`;
             const judgeText = judgeResult.candidates?.[0]?.content?.parts?.[0]?.text;
             if (judgeText) {
               const cleanedJudgeText = judgeText.replace(/```json\n?|\n?```/g, "").trim();
-              const judgeData = JSON.parse(cleanedJudgeText) as { judged_questions: JudgeResult[] };
 
-              if (judgeData.judged_questions) {
-                for (const judged of judgeData.judged_questions) {
-                  const idx = judged.original_index;
-                  if (idx < 0 || idx >= generatedData.questions.length) continue;
+              if (isV4Pipeline) {
+                // V4 judge processing with 8 dimensions
+                const judgeData = JSON.parse(cleanedJudgeText) as { judged_questions: JudgeResultV4[] };
 
-                  const question = generatedData.questions[idx];
-                  const binary = judged.binary || { answerable_from_context: 0, has_single_clear_correct: 0, format_justified: 0 };
-                  const likert = judged.likert || { distractors_plausible: 1, clarity: 1, difficulty_appropriate: 1 };
-                  const score = computeTotalScore(binary, likert);
+                if (judgeData.judged_questions) {
+                  for (const judged of judgeData.judged_questions) {
+                    const idx = judged.original_index;
+                    if (idx < 0 || idx >= generatedData.questions.length) continue;
 
-                  // Override LLM verdict with numeric score
-                  const finalVerdict = resolveVerdict(judged.verdict, score);
-                  const result: JudgeResult = { ...judged, binary, likert, verdict: finalVerdict };
+                    const question = generatedData.questions[idx];
+                    const binary: JudgeBinaryV4 = judged.binary || {
+                      grounded: 0,
+                      answerable_from_context: 0,
+                      has_single_clear_correct: 0,
+                      format_justified: 0,
+                    };
+                    const likert: JudgeLikertV4 = judged.likert || {
+                      non_trivial: 1,
+                      distractors_plausible: 1,
+                      clarity: 1,
+                      context_authentic: 1,
+                    };
+                    const score = computeTotalScoreV4(binary, likert);
 
-                  if (finalVerdict === "keep") {
-                    kept.push({ question, judgeData: result });
-                  } else if (finalVerdict === "repair") {
-                    toRepair.push({ question, judgeData: result });
-                  } else {
-                    rejectedCount++;
+                    // V4: Use hard rejection triggers + score-based verdict
+                    const finalVerdict = resolveVerdictV4(binary, likert, question);
+
+                    // Convert to JudgeResult for storage (with v4 fields in extended form)
+                    const result: JudgeResult = {
+                      original_index: judged.original_index,
+                      binary: {
+                        answerable_from_context: binary.answerable_from_context,
+                        has_single_clear_correct: binary.has_single_clear_correct,
+                        format_justified: binary.format_justified,
+                      },
+                      likert: {
+                        distractors_plausible: likert.distractors_plausible,
+                        clarity: likert.clarity,
+                        difficulty_appropriate: Math.round((likert.non_trivial + likert.context_authentic) / 2), // Map v4 to v3 compat
+                      },
+                      verdict: finalVerdict,
+                      issues: [
+                        ...judged.issues,
+                        // Add v4-specific fields as issues for visibility
+                        `v4_grounded:${binary.grounded}`,
+                        `v4_non_trivial:${likert.non_trivial}`,
+                        `v4_context_authentic:${likert.context_authentic}`,
+                      ],
+                    };
+
+                    if (finalVerdict === "keep") {
+                      kept.push({ question, judgeData: result });
+                    } else if (finalVerdict === "repair") {
+                      toRepair.push({ question, judgeData: result });
+                    } else {
+                      rejectedCount++;
+                    }
+                  }
+                }
+              } else {
+                // V3 judge processing with 6 dimensions
+                const judgeData = JSON.parse(cleanedJudgeText) as { judged_questions: JudgeResult[] };
+
+                if (judgeData.judged_questions) {
+                  for (const judged of judgeData.judged_questions) {
+                    const idx = judged.original_index;
+                    if (idx < 0 || idx >= generatedData.questions.length) continue;
+
+                    const question = generatedData.questions[idx];
+                    const binary = judged.binary || { answerable_from_context: 0, has_single_clear_correct: 0, format_justified: 0 };
+                    const likert = judged.likert || { distractors_plausible: 1, clarity: 1, difficulty_appropriate: 1 };
+                    const score = computeTotalScore(binary, likert);
+
+                    // Override LLM verdict with numeric score
+                    const finalVerdict = resolveVerdict(judged.verdict, score);
+                    const result: JudgeResult = { ...judged, binary, likert, verdict: finalVerdict };
+
+                    if (finalVerdict === "keep") {
+                      kept.push({ question, judgeData: result });
+                    } else if (finalVerdict === "repair") {
+                      toRepair.push({ question, judgeData: result });
+                    } else {
+                      rejectedCount++;
+                    }
                   }
                 }
               }
@@ -808,16 +1311,22 @@ ${JUDGE_V2_SCHEMA}`;
             // Judge call failed — treat all candidates as kept with default scores
             console.warn(`Judge API failed for "${dbTopic.title}", keeping all candidates`);
             for (const question of generatedData.questions) {
-              kept.push({
-                question,
-                judgeData: {
-                  original_index: 0,
-                  binary: { answerable_from_context: 1, has_single_clear_correct: 1, format_justified: 1 },
-                  likert: { distractors_plausible: 3, clarity: 3, difficulty_appropriate: 3 },
-                  verdict: "keep",
-                  issues: ["judge_pass_skipped"],
-                },
-              });
+              const defaultJudgeData: JudgeResult = isV4Pipeline
+                ? {
+                    original_index: 0,
+                    binary: { answerable_from_context: 1, has_single_clear_correct: 1, format_justified: 1 },
+                    likert: { distractors_plausible: 3, clarity: 3, difficulty_appropriate: 3 },
+                    verdict: "keep",
+                    issues: ["judge_pass_skipped", "v4_grounded:1", "v4_non_trivial:3", "v4_context_authentic:3"],
+                  }
+                : {
+                    original_index: 0,
+                    binary: { answerable_from_context: 1, has_single_clear_correct: 1, format_justified: 1 },
+                    likert: { distractors_plausible: 3, clarity: 3, difficulty_appropriate: 3 },
+                    verdict: "keep",
+                    issues: ["judge_pass_skipped"],
+                  };
+              kept.push({ question, judgeData: defaultJudgeData });
             }
           }
         } catch (judgeError) {
@@ -982,19 +1491,63 @@ Return the repaired questions in this JSON structure:
 
           // Compute quality metadata
           const qualityScore = computeTotalScore(judgeData.binary, judgeData.likert);
-          const qualityFlags = {
-            answerable_from_context: judgeData.binary.answerable_from_context,
-            has_single_clear_correct: judgeData.binary.has_single_clear_correct,
-            format_justified: judgeData.binary.format_justified,
-            distractors_plausible: judgeData.likert.distractors_plausible,
-            clarity: judgeData.likert.clarity,
-            difficulty_appropriate: judgeData.likert.difficulty_appropriate,
-            issues: judgeData.issues,
-            pipeline_version: 3,
-            was_repaired: wasRepaired,
-          };
 
-          const { error: insertError } = await supabase.from("questions").insert({
+          // Build quality flags based on pipeline version
+          let qualityFlags: Record<string, unknown>;
+          let sourceEvidence: Record<string, unknown> | null = null;
+          let groundingScore: number | null = null;
+
+          if (isV4Pipeline) {
+            // V4: Extended quality flags with grounding dimensions
+            const qSourceEvidence = q.source_evidence as { evidence_span_ids?: string[]; fact_ids?: string[]; page_refs?: number[] } | undefined;
+            const qGroundingCheck = q.grounding_check as { all_facts_cited?: boolean; uses_material_context?: boolean; reasoning_steps?: number } | undefined;
+
+            // Compute grounding score (0-1)
+            const hasEvidence = (qSourceEvidence?.evidence_span_ids?.length || 0) > 0;
+            const hasFacts = (qSourceEvidence?.fact_ids?.length || 0) > 0;
+            const usesMaterialContext = qGroundingCheck?.uses_material_context ?? false;
+            const reasoningSteps = qGroundingCheck?.reasoning_steps ?? 0;
+            groundingScore = (
+              (hasEvidence ? 0.3 : 0) +
+              (hasFacts ? 0.3 : 0) +
+              (usesMaterialContext ? 0.2 : 0) +
+              (Math.min(reasoningSteps, 3) / 3 * 0.2)
+            );
+
+            sourceEvidence = qSourceEvidence || null;
+
+            qualityFlags = {
+              // Binary (v4)
+              grounded: hasEvidence && hasFacts ? 1 : 0,
+              answerable_from_context: judgeData.binary.answerable_from_context,
+              has_single_clear_correct: judgeData.binary.has_single_clear_correct,
+              format_justified: judgeData.binary.format_justified,
+              // Likert (v4)
+              non_trivial: reasoningSteps >= 2 ? Math.min(5, reasoningSteps + 2) : 1,
+              distractors_plausible: judgeData.likert.distractors_plausible,
+              clarity: judgeData.likert.clarity,
+              context_authentic: usesMaterialContext ? 5 : 2,
+              // Meta
+              issues: judgeData.issues,
+              pipeline_version: 4,
+              was_repaired: wasRepaired,
+            };
+          } else {
+            // V3: Original quality flags
+            qualityFlags = {
+              answerable_from_context: judgeData.binary.answerable_from_context,
+              has_single_clear_correct: judgeData.binary.has_single_clear_correct,
+              format_justified: judgeData.binary.format_justified,
+              distractors_plausible: judgeData.likert.distractors_plausible,
+              clarity: judgeData.likert.clarity,
+              difficulty_appropriate: judgeData.likert.difficulty_appropriate,
+              issues: judgeData.issues,
+              pipeline_version: 3,
+              was_repaired: wasRepaired,
+            };
+          }
+
+          const insertData: Record<string, unknown> = {
             course_pack_id: material.course_pack_id,
             topic_ids: [dbTopic.id],
             prompt: q.stem,
@@ -1014,7 +1567,17 @@ Return the repaired questions in this JSON structure:
             needs_review: true,
             quality_score: qualityScore,
             quality_flags: qualityFlags,
-          });
+          };
+
+          // Add v4-specific fields if available
+          if (sourceEvidence) {
+            insertData.source_evidence = sourceEvidence;
+          }
+          if (groundingScore !== null) {
+            insertData.grounding_score = groundingScore;
+          }
+
+          const { error: insertError } = await supabase.from("questions").insert(insertData);
 
           if (insertError) {
             console.error("Error inserting question:", insertError);

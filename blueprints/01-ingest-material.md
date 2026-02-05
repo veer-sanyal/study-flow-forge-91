@@ -6,13 +6,57 @@ Goal: Add PDFs/slides without wasting Gemini credits.
 2) Check Supabase for existing source_hash
 3) If exists -> link + stop
 4) Else -> create source_material + extraction_job (pending)
-5) Analyze (three-phase Gemini pipeline) -> store analysis_json
-6) Generate questions -> per-topic Gemini calls with enriched context
+5) Analyze (v4 pipeline by default) -> store analysis_json + analysis_json_v4
+6) Generate questions -> per-topic Gemini calls with grounded context
 7) Mark job complete/fail
 
-## Analysis Pipeline (v2, schema_version: 2)
+---
 
-Three sequential phases replace the original single Gemini call:
+## Analysis Pipeline (v4, schema_version: 4) — DEFAULT
+
+The v4 pipeline fixes the root cause of low-quality questions: shallow chunk summarization that loses question-ready details. V4 extracts **atomic facts with evidence grounding** in Phase A while we still have access to the PDF.
+
+### Phase A: Question-Ready Extraction (sends base64)
+- **Only call that sends the base64 document** to Gemini
+- Output: `QuestionReadyChunk[]` with:
+  - `evidence_spans[]`: Exact text excerpts (<= 50 words) with span_ids
+  - `atomic_facts[]`: Single testable statements with fact_ids, linked to evidence
+  - `definitions[]`: Term + definition pairs with evidence links
+  - `formulas[]`: Complete formulas with variable bindings and conditions
+  - `constraints[]`: Rules, limits, conditions
+  - `worked_examples[]`: Full problems with given values, steps, final answer
+  - `common_misconceptions[]`: What students get wrong, with misconception_ids
+  - `content_density`: sparse | normal | dense
+  - `question_potential`: low | medium | high
+- Config: temperature 0.1, maxOutputTokens 65536
+- Stored in `analysis_json_v4.question_ready_chunks`
+- Also populates backward-compat `ChunkSummary[]` in `analysis_json`
+
+### Phase B: Coarse Outline
+- Text-only call using Phase A summaries (no base64)
+- Output: `OutlineSection[]` (section_title, page_range, subtopics) + course_guess
+- Config: temperature 0.1, maxOutputTokens 4096
+- Stored in `analysis_json_v4.outline`
+
+### Phase C: Topic Mapping (parallel)
+- Uses **pre-extracted facts** from Phase A (not thin summaries)
+- Maps facts to topic structure with learning objectives
+- Light extraction: organizes already-extracted content
+- Config: temperature 0.2, maxOutputTokens 8192 per section
+- Stored in `analysis_json_v4.topics`
+
+### Evidence Linking Validation
+After Phase A:
+- Every atomic_fact must have valid evidence_span_id
+- Every formula must have variable bindings
+- Every worked_example must have steps and final_answer
+- Warnings logged if links broken; repair call attempted
+
+---
+
+## Analysis Pipeline (v2, schema_version: 2) — LEGACY
+
+Available via `pipelineVersion: 2` parameter. Uses shallow chunk summarization.
 
 ### Phase A: Chunk Summarization
 - **Only call that sends the base64 document** to Gemini
@@ -45,9 +89,58 @@ After each phase's JSON parse:
 
 ## Question Generation
 
-### Question Generation Pipeline (v3, 3-stage)
+### Question Generation Pipeline (v4, 4-stage) — DEFAULT
 
-Three-stage pipeline replacing the v2 generate-and-rewrite-in-place approach:
+Four-stage pipeline with mandatory grounding when v4 analysis available.
+
+#### Stage 1: Grounded Generation (temp 0.5)
+- Uses `QuestionReadyChunk[]` context with evidence_span_ids and fact_ids
+- **Mandatory citation**: Every question must include `source_evidence` with:
+  - `evidence_span_ids[]`: References to evidence spans
+  - `fact_ids[]`: References to atomic facts
+  - `page_refs[]`: Page numbers
+- **Grounding check**: `grounding_check` with:
+  - `all_facts_cited`: boolean
+  - `uses_material_context`: boolean (not generic filler)
+  - `reasoning_steps`: number (>= 2 for non-definition questions)
+- **Distractor rationales**: Array with `misconception_id` references
+- Uses `CANDIDATE_SCHEMA_V4`
+- Generates ~150% of desired count
+
+#### Stage 2: 8-Dimension Quality Judge (temp 0.2)
+- Binary (0/1):
+  - `grounded`: Has evidence_span_ids citations
+  - `answerable_from_context`: Can answer from material only
+  - `has_single_clear_correct`: Unambiguous correct answer
+  - `format_justified`: Optimal question format
+- Likert (1-5):
+  - `non_trivial`: Requires multiple reasoning steps
+  - `distractors_plausible`: Based on documented misconceptions
+  - `clarity`: Clear stem, defined symbols
+  - `context_authentic`: Uses material examples, not filler
+- **V4 Scoring**: binary_score (max 6 @ 1.5 weight) + likert_score (max 4) = total /10
+- **Hard rejection triggers**:
+  - `evidence_span_ids.length === 0`
+  - `reasoning_steps < 2` (unless definition question)
+  - `uses_material_context === false`
+  - MCQ without `distractor_rationales[]`
+- Verdict: keep (ALL binary=1, non_trivial>=3, avg_likert>=3.5), repair (3+ binary=1, avg>=2.0), reject
+
+#### Stage 3: Repair Pass (temp 0.4)
+- Same as v3, plus v4-specific repairs:
+  - Add missing evidence citations
+  - Improve reasoning steps
+  - Add distractor rationales
+
+#### Stage 4: Insert
+- Stores `source_evidence` jsonb and `grounding_score` numeric
+- Stores v4 `quality_flags` with 8 dimensions + `pipeline_version: 4`
+
+---
+
+### Question Generation Pipeline (v3, 3-stage) — LEGACY
+
+Used when only v2 analysis available.
 
 #### Stage A: Generation (temp 0.5)
 - Generates ~150% of desired count to account for rejection
@@ -95,11 +188,21 @@ Per-topic Gemini prompts include: key_terms, formulas, common_misconceptions (as
 ## Schema Versioning
 - `schema_version: 1` = legacy single-call analysis (flat topics)
 - `schema_version: 2` = three-phase pipeline (enriched topics, chunk_summaries, outline)
-- `normalizeAnalysis()` in generate-questions wraps v1 data with empty v2 fields for backward compatibility
+- `schema_version: 4` = question-ready facts pipeline (atomic_facts, evidence_spans, formulas with bindings)
+- `normalizeAnalysis()` in generate-questions:
+  - Prefers `analysis_json_v4` if available
+  - Falls back to `analysis_json` (v2) or wraps v1 data
+
+## Database Columns (v4)
+- `course_materials.analysis_json_v4`: V4 analysis with question_ready_chunks
+- `chunk_extraction_cache`: Cached extracted chunks by doc_hash
+- `questions.source_evidence`: Evidence span/fact IDs cited by question
+- `questions.grounding_score`: 0-1 score based on evidence citations
 
 ## Edge Cases
 - Huge PDFs -> chunked base64 encoding (32KB chunks)
 - Re-uploads with new name -> hash catches it
 - Invalid model JSON -> one repair retry then accept best-effort with warnings
 - Phase C section failure -> fallback stub topic from outline data
-- V1 analysis data -> normalizeAnalysis wraps with defaults, no crash
+- V1/V2 analysis data -> normalizeAnalysis wraps with defaults, uses v3 question pipeline
+- V4 analysis without evidence -> question rejected by hard triggers
