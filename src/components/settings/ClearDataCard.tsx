@@ -73,10 +73,11 @@ export function ClearDataCard() {
       if (settingsError) throw settingsError;
 
       // Invalidate all relevant queries to refresh the UI
-      queryClient.invalidateQueries({ queryKey: ['srs-state'] });
-      queryClient.invalidateQueries({ queryKey: ['attempts'] });
-      queryClient.invalidateQueries({ queryKey: ['topic-mastery'] });
-      queryClient.invalidateQueries({ queryKey: ['enrollments'] });
+      await queryClient.resetQueries({ queryKey: ['srs-state'] });
+      await queryClient.resetQueries({ queryKey: ['attempts'] });
+      await queryClient.resetQueries({ queryKey: ['topic-mastery'] });
+      await queryClient.resetQueries({ queryKey: ['enrollments'] });
+      await queryClient.resetQueries({ queryKey: ['study-dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['user-settings'] });
       queryClient.invalidateQueries({ queryKey: ['daily-plan'] });
       queryClient.invalidateQueries({ queryKey: ['study-recommendations'] });

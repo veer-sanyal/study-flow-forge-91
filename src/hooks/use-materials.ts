@@ -423,3 +423,27 @@ export async function computeSha256(file: File): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
+
+// =====================================================
+// ANALYZE MATERIAL
+// =====================================================
+
+/**
+ * Trigger analysis/processing for a material via the process-exam-pdf edge function.
+ */
+export function useAnalyzeMaterial() {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: async (materialId: string) => {
+      const { error } = await supabase.functions.invoke('process-exam-pdf', {
+        body: { materialId }
+      });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["course-material"] });
+    },
+  });
+}
