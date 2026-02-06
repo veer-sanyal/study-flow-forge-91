@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.daily-fsrs-maintenance]
 verify_jwt = false
+
+[functions.generate-one-question]
+verify_jwt = false
