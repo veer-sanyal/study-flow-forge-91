@@ -24,12 +24,6 @@ verify_jwt = false
 [functions.process-choice-image]
 verify_jwt = false
 
-[functions.analyze-material]
-verify_jwt = false
-
-[functions.generate-questions]
-verify_jwt = false
-
 [functions.daily-fsrs-maintenance]
 verify_jwt = false
 
