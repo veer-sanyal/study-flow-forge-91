@@ -73,16 +73,19 @@ export function ClearDataCard() {
       if (settingsError) throw settingsError;
 
       // Invalidate all relevant queries to refresh the UI
+      // Reset all critical queries to force fresh data
       await queryClient.resetQueries({ queryKey: ['srs-state'] });
       await queryClient.resetQueries({ queryKey: ['attempts'] });
       await queryClient.resetQueries({ queryKey: ['topic-mastery'] });
       await queryClient.resetQueries({ queryKey: ['enrollments'] });
       await queryClient.resetQueries({ queryKey: ['study-dashboard'] });
-      queryClient.invalidateQueries({ queryKey: ['user-settings'] });
-      queryClient.invalidateQueries({ queryKey: ['daily-plan'] });
-      queryClient.invalidateQueries({ queryKey: ['study-recommendations'] });
-      queryClient.invalidateQueries({ queryKey: ['progress-stats'] });
-      queryClient.invalidateQueries({ queryKey: ['review-forecast'] });
+      await queryClient.resetQueries({ queryKey: ['upcoming-exams'] });
+      await queryClient.resetQueries({ queryKey: ['user-settings'] });
+      await queryClient.resetQueries({ queryKey: ['daily-plan'] });
+      await queryClient.resetQueries({ queryKey: ['study-recommendations'] });
+      await queryClient.resetQueries({ queryKey: ['progress-stats'] });
+      await queryClient.resetQueries({ queryKey: ['review-forecast'] });
+      await queryClient.resetQueries({ queryKey: ['study-questions'] });
 
       toast({
         title: 'Data cleared',
