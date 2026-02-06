@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Calendar, RefreshCw, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFocusContext } from '@/contexts/FocusContext';
+import { useEnrollments } from '@/hooks/use-enrollments';
 import { useCourses, useUpcomingExams } from '@/hooks/use-focus';
 import { fadeSlideUp, duration, easing } from '@/lib/motion';
 import { cn } from '@/lib/utils';
@@ -17,7 +18,14 @@ export function StudyFocusBar({ overdueCount, className }: StudyFocusBarProps) {
   const navigate = useNavigate();
   const { filters } = useFocusContext();
   const { data: courses = [] } = useCourses();
-  const { data: upcomingExams = [] } = useUpcomingExams(filters.courseIds);
+  const { enrolledCourseIdsArray } = useEnrollments();
+  
+  // Use enrolled courses when no specific course filter is set
+  const effectiveCourseIds = filters.courseIds.length > 0 
+    ? filters.courseIds 
+    : enrolledCourseIdsArray;
+  
+  const { data: upcomingExams = [] } = useUpcomingExams(effectiveCourseIds);
 
   // Get selected course name
   const courseLabel = useMemo(() => {
@@ -29,7 +37,7 @@ export function StudyFocusBar({ overdueCount, className }: StudyFocusBarProps) {
     return `${filters.courseIds.length} Courses`;
   }, [filters.courseIds, courses]);
 
-  // Get next exam
+  // Get next exam from enrolled courses only
   const nextExam = useMemo(() => {
     const upcoming = upcomingExams
       .filter(e => e.daysUntil !== null && e.daysUntil >= 0)
