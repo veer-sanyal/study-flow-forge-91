@@ -110,21 +110,19 @@ function validateQuestion(question: unknown): ValidationResult {
 /**
  * Builds the prompt for generating one high-quality MCQ.
  */
-function buildPrompt(lectureContent: string, existingQuestions?: string[]): string {
+function buildPrompt(existingQuestions?: string[]): string {
   const existingSection =
     existingQuestions && existingQuestions.length > 0
       ? `\nDO NOT DUPLICATE THESE EXISTING QUESTIONS (avoid similar stems):\n${existingQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n`
       : "";
 
-  return `You are an expert educational assessment designer. Create ONE high-quality MCQ.
-
-LECTURE CONTENT:
-${lectureContent}
+  return `You are an expert educational assessment designer. Analyze the lecture material provided and create ONE high-quality MCQ.
 ${existingSection}
 REQUIREMENTS:
-1. Test understanding of a CONCEPT, not just memorization
+1. Test understanding of a CONCEPT from the lecture, not just memorization
 2. Exactly 4 choices (A, B, C, D), exactly ONE correct
-3. All info needed must be in the lecture content
+3. All info needed to answer must be in the lecture content
+4. Pay attention to diagrams, charts, formulas, and visual elements in the slides
 
 DISTRACTOR DESIGN (CRITICAL):
 - DO NOT create obviously wrong answers
@@ -142,67 +140,7 @@ QUALITY SELF-CHECK (verify before responding):
 - [ ] Tests understanding, not recall
 - [ ] Each distractor represents a real misconception
 
-RESPOND WITH JSON: { stem, choices, difficulty, topic }`;
-}
-
-/**
- * Extract text from PDF using Gemini vision.
- */
-async function extractTextFromPdf(
-  pdfBase64: string,
-  geminiApiKey: string
-): Promise<string> {
-  const response = await fetch(
-    "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + geminiApiKey,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                inlineData: {
-                  mimeType: "application/pdf",
-                  data: pdfBase64,
-                },
-              },
-              {
-                text: `Extract ALL text content from this lecture PDF.
-Include:
-- All headings, subheadings, and body text
-- All formulas and equations (use LaTeX notation)
-- All definitions and key terms
-- All examples and explanations
-
-Output the text in a clean, readable format preserving the logical structure.
-Do NOT summarize - extract the complete text content.`,
-              },
-            ],
-          },
-        ],
-        generationConfig: {
-          temperature: 0.1,
-          maxOutputTokens: 30000,
-        },
-      }),
-    }
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`PDF extraction failed: ${response.status} ${errorText}`);
-  }
-
-  const result = await response.json();
-  const extractedText = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-  if (!extractedText) {
-    throw new Error("No text extracted from PDF");
-  }
-
-  return extractedText;
+Generate the question using the generate_question function.`;
 }
 
 serve(async (req) => {
@@ -234,106 +172,16 @@ serve(async (req) => {
 
     // Parse request body
     const body = await req.json();
-    const { lectureContent, materialId, existingQuestions } = body as {
-      lectureContent?: string;
+    const { materialId, existingQuestions } = body as {
       materialId?: string;
       existingQuestions?: string[];
     };
 
-    let contentToUse = lectureContent;
-
-    // If materialId provided, fetch and extract content from the PDF
-    if (materialId && !contentToUse) {
-      console.log(`Fetching material: ${materialId}`);
-
-      // Get material record
-      const { data: material, error: materialError } = await supabase
-        .from("course_materials")
-        .select("storage_path, title, extracted_text")
-        .eq("id", materialId)
-        .single();
-
-      if (materialError || !material) {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: `Material not found: ${materialError?.message || "Unknown error"}`,
-            retryable: false,
-          }),
-          {
-            status: 404,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-
-      // Check if we have cached extracted text
-      if (material.extracted_text) {
-        console.log("Using cached extracted text");
-        contentToUse = material.extracted_text as string;
-      } else if (material.storage_path) {
-        // Download PDF and extract text
-        console.log("Downloading PDF from storage...");
-        const { data: pdfData, error: downloadError } = await supabase.storage
-          .from("course-materials")
-          .download(material.storage_path);
-
-        if (downloadError || !pdfData) {
-          return new Response(
-            JSON.stringify({
-              success: false,
-              error: `Failed to download PDF: ${downloadError?.message || "Unknown error"}`,
-              retryable: true,
-            }),
-            {
-              status: 500,
-              headers: { ...corsHeaders, "Content-Type": "application/json" },
-            }
-          );
-        }
-
-        // Convert to base64
-        const arrayBuffer = await pdfData.arrayBuffer();
-        const uint8Array = new Uint8Array(arrayBuffer);
-        let binary = "";
-        const chunkSize = 32768;
-        for (let i = 0; i < uint8Array.length; i += chunkSize) {
-          const chunk = uint8Array.slice(i, i + chunkSize);
-          binary += String.fromCharCode(...chunk);
-        }
-        const pdfBase64 = btoa(binary);
-
-        console.log("Extracting text from PDF...");
-        contentToUse = await extractTextFromPdf(pdfBase64, GEMINI_API_KEY);
-
-        // Cache the extracted text for future calls
-        await supabase
-          .from("course_materials")
-          .update({ extracted_text: contentToUse })
-          .eq("id", materialId);
-
-        console.log(`Extracted ${contentToUse.length} chars from PDF`);
-      } else {
-        return new Response(
-          JSON.stringify({
-            success: false,
-            error: "Material has no storage path or extracted text",
-            retryable: false,
-          }),
-          {
-            status: 400,
-            headers: { ...corsHeaders, "Content-Type": "application/json" },
-          }
-        );
-      }
-    }
-
-    // Validate we have content to work with
-    if (!contentToUse || typeof contentToUse !== "string") {
+    if (!materialId) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Either lectureContent or materialId is required",
+          error: "materialId is required",
           retryable: false,
         }),
         {
@@ -343,18 +191,80 @@ serve(async (req) => {
       );
     }
 
-    // Truncate lecture content to max 30,000 chars
-    const truncatedContent =
-      contentToUse.length > 30000 ? contentToUse.slice(0, 30000) + "\n[Content truncated...]" : contentToUse;
+    console.log(`Generating question for material: ${materialId}`);
 
-    console.log(
-      `Generating question from ${truncatedContent.length} chars of content, ${existingQuestions?.length || 0} existing questions`
-    );
+    // Get material record
+    const { data: material, error: materialError } = await supabase
+      .from("course_materials")
+      .select("storage_path, title")
+      .eq("id", materialId)
+      .single();
+
+    if (materialError || !material) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Material not found: ${materialError?.message || "Unknown error"}`,
+          retryable: false,
+        }),
+        {
+          status: 404,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    if (!material.storage_path) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Material has no storage path",
+          retryable: false,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Download PDF from storage
+    console.log("Downloading PDF from storage...");
+    const { data: pdfData, error: downloadError } = await supabase.storage
+      .from("course-materials")
+      .download(material.storage_path);
+
+    if (downloadError || !pdfData) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `Failed to download PDF: ${downloadError?.message || "Unknown error"}`,
+          retryable: true,
+        }),
+        {
+          status: 500,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
+
+    // Convert PDF to base64
+    const arrayBuffer = await pdfData.arrayBuffer();
+    const uint8Array = new Uint8Array(arrayBuffer);
+    let binary = "";
+    const chunkSize = 32768;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.slice(i, i + chunkSize);
+      binary += String.fromCharCode(...chunk);
+    }
+    const pdfBase64 = btoa(binary);
+
+    console.log(`PDF loaded: ${Math.round(arrayBuffer.byteLength / 1024)}KB, generating question...`);
 
     // Build the prompt
-    const prompt = buildPrompt(truncatedContent, existingQuestions);
+    const prompt = buildPrompt(existingQuestions);
 
-    // Call Gemini API with function calling
+    // Call Gemini API with PDF directly for visual understanding
     const geminiResponse = await fetch(
       "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + GEMINI_API_KEY,
       {
@@ -366,7 +276,17 @@ serve(async (req) => {
           contents: [
             {
               role: "user",
-              parts: [{ text: prompt }],
+              parts: [
+                {
+                  inlineData: {
+                    mimeType: "application/pdf",
+                    data: pdfBase64,
+                  },
+                },
+                {
+                  text: prompt,
+                },
+              ],
             },
           ],
           tools: [
@@ -457,7 +377,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "AI generation failed",
+          error: `AI generation failed: ${geminiResponse.status}`,
           retryable: true,
         }),
         {
