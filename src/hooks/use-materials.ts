@@ -414,64 +414,6 @@ export function useObjectivesForMaterial(materialId: string | null) {
 }
 
 // =====================================================
-// ANALYSIS & GENERATION TRIGGERS
-// =====================================================
-
-export function useAnalyzeMaterial() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (materialId: string) => {
-      const { data, error } = await supabase.functions.invoke('analyze-material', {
-        body: { materialId },
-      });
-      
-      if (error) throw error;
-      
-      // Immediately invalidate queries to show the new job
-      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
-      
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
-      queryClient.invalidateQueries({ queryKey: ["course-material"] });
-      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
-    },
-  });
-}
-
-export function useGenerateQuestions() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (params: {
-      materialId: string;
-      topicIds?: string[];
-      questionTypeIds?: string[];
-      difficultyRange?: [number, number];
-      quantityPerBucket?: number;
-    }) => {
-      const { data, error } = await supabase.functions.invoke('generate-questions', {
-        body: params,
-      });
-      
-      if (error) throw error;
-      
-      // Immediately invalidate queries to show the new job
-      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
-      
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
-      queryClient.invalidateQueries({ queryKey: ["questions"] });
-      queryClient.invalidateQueries({ queryKey: ["material-jobs-active"] });
-    },
-  });
-}
-
-// =====================================================
 // SHA256 HASHING UTILITY
 // =====================================================
 

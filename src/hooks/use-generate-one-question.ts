@@ -10,30 +10,34 @@ import type {
  * Parameters for generating a single question.
  */
 interface GenerateOneParams {
-  lectureContent: string;
+  lectureContent?: string;
+  materialId?: string;
   existingQuestions?: string[];
 }
 
 /**
- * Hook for generating a single MCQ from lecture content.
+ * Hook for generating a single MCQ from lecture content or a material ID.
  *
  * @example
  * ```tsx
  * const { mutate, isPending, data, error } = useGenerateOneQuestion();
  *
- * const handleGenerate = () => {
- *   mutate({ lectureContent: "..." });
- * };
+ * // From raw content
+ * mutate({ lectureContent: "..." });
+ *
+ * // From uploaded material
+ * mutate({ materialId: "uuid-..." });
  * ```
  */
 export function useGenerateOneQuestion() {
   return useMutation<GenerateOneQuestionResult, Error, GenerateOneParams>({
-    mutationFn: async ({ lectureContent, existingQuestions }) => {
+    mutationFn: async ({ lectureContent, materialId, existingQuestions }) => {
       const { data, error } = await supabase.functions.invoke<GenerateOneQuestionResult>(
         "generate-one-question",
         {
           body: {
             lectureContent,
+            materialId,
             existingQuestions,
           },
         }
@@ -64,7 +68,8 @@ interface GenerateMultipleResult {
  * Parameters for generating multiple questions.
  */
 interface GenerateMultipleParams {
-  lectureContent: string;
+  lectureContent?: string;
+  materialId?: string;
   count: number;
   existingQuestions?: string[];
   delayMs?: number;  // Delay between calls (default: 500ms)
@@ -125,6 +130,7 @@ export function useGenerateMultipleQuestions() {
   const generate = useCallback(
     async ({
       lectureContent,
+      materialId,
       count,
       existingQuestions = [],
       delayMs = 500,
@@ -146,6 +152,7 @@ export function useGenerateMultipleQuestions() {
             {
               body: {
                 lectureContent,
+                materialId,
                 existingQuestions: stemsToAvoid,
               },
             }
@@ -214,16 +221,16 @@ export function useGenerateAndSaveQuestions() {
   const generateAndSave = useCallback(
     async ({
       lectureContent,
+      materialId,
       count,
       coursePackId,
-      topicId,
       existingQuestions = [],
     }: GenerateMultipleParams & {
       coursePackId: string;
-      topicId?: string;
     }): Promise<{ saved: number; errors: string[] }> => {
       const result = await generate({
         lectureContent,
+        materialId,
         count,
         existingQuestions,
       });
@@ -250,8 +257,8 @@ export function useGenerateAndSaveQuestions() {
             })),
             correct_answer: question.choices.find((c) => c.isCorrect)?.id.toLowerCase() || "a",
             difficulty: question.difficulty,
-            topic_ids: topicId ? [topicId] : [],
             source_type: "generated",
+            source_material_id: materialId || null,
             status: "draft",
             // Set answer_spec for MCQ
             answer_spec: {
@@ -279,8 +286,29 @@ export function useGenerateAndSaveQuestions() {
         }
       }
 
-      // Invalidate questions cache
+      // Update material's questions_generated_count
+      if (materialId && savedCount > 0) {
+        const { data: material } = await supabase
+          .from("course_materials")
+          .select("questions_generated_count")
+          .eq("id", materialId)
+          .single();
+
+        const currentCount = (material?.questions_generated_count as number) || 0;
+
+        await supabase
+          .from("course_materials")
+          .update({
+            questions_generated_count: currentCount + savedCount,
+            status: "ready",
+          })
+          .eq("id", materialId);
+      }
+
+      // Invalidate queries
       queryClient.invalidateQueries({ queryKey: ["questions"] });
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["course-material"] });
 
       return {
         saved: savedCount,
