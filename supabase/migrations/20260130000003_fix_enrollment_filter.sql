@@ -2,6 +2,9 @@
 -- Previously, when p_course_id was NULL (user enrolled in multiple courses),
 -- questions from ALL courses would be returned regardless of enrollment.
 
+DROP FUNCTION IF EXISTS public.get_recommended_questions(uuid, integer, integer, integer, integer, uuid, text, uuid[], uuid, boolean, uuid[]);
+DROP FUNCTION IF EXISTS public.get_recommended_questions(uuid, integer, integer, integer, integer, uuid, text, uuid[], uuid, boolean);
+
 CREATE OR REPLACE FUNCTION public.get_recommended_questions(
   p_user_id uuid,
   p_limit integer DEFAULT 10,

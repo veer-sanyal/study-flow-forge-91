@@ -69,6 +69,8 @@ TRUNCATE srs_state;
 -- 2e. Drop SM-2 trigger and functions
 -- ============================================================
 DROP TRIGGER IF EXISTS trg_update_srs_after_attempt ON attempts;
+DROP TRIGGER IF EXISTS after_attempt_insert ON attempts;
+DROP TRIGGER IF EXISTS trigger_update_srs_after_attempt ON attempts;
 DROP FUNCTION IF EXISTS update_srs_after_attempt();
 DROP FUNCTION IF EXISTS compute_quality_score(boolean, text, boolean, boolean);
 

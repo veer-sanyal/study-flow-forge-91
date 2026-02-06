@@ -266,7 +266,7 @@ serve(async (req) => {
 
     // Call Gemini API with PDF directly for visual understanding
     const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + GEMINI_API_KEY,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + GEMINI_API_KEY,
       {
         method: "POST",
         headers: {
@@ -377,7 +377,7 @@ serve(async (req) => {
       return new Response(
         JSON.stringify({
           success: false,
-          error: `AI generation failed: ${geminiResponse.status}`,
+          error: `AI generation failed: ${geminiResponse.status} - ${errorText}`,
           retryable: true,
         }),
         {

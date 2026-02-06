@@ -1,4 +1,4 @@
-project_id = "mhwofcvmwfsvblsbfgvc"
+project_id = "jrudoteduleeytotmuoy"
 
 [functions.process-exam-pdf]
 verify_jwt = false
@@ -25,7 +25,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.daily-fsrs-maintenance]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-one-question]
 verify_jwt = false

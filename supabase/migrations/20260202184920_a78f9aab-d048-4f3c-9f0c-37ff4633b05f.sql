@@ -21,13 +21,16 @@ COMMENT ON COLUMN public.srs_state.learning_steps IS 'Current learning/relearnin
 COMMENT ON COLUMN public.srs_state.state IS 'Card state: 0=New, 1=Learning, 2=Review, 3=Relearning';
 
 -- Migrate existing data: convert SM-2 ease/interval to FSRS stability/difficulty
-UPDATE public.srs_state
-SET
-  stability = GREATEST(0.1, interval_days),  -- Use interval as stability approximation
-  difficulty = LEAST(10, GREATEST(1, (3.0 - ease) / 0.08 + 5)),  -- Convert ease to difficulty
-  scheduled_days = interval_days,
-  state = CASE WHEN reps > 0 THEN 2 ELSE 0 END  -- 2=Review if has reps, else 0=New
-WHERE stability = 1.0;  -- Only update rows with default values
+-- Migrate existing data: convert SM-2 ease/interval to FSRS stability/difficulty
+-- SKIPPED: Columns interval_days and ease were dropped in 20260130000004_fsrs_migration.sql
+-- and the table was truncated.
+-- UPDATE public.srs_state
+-- SET
+--   stability = GREATEST(0.1, interval_days),  -- Use interval as stability approximation
+--   difficulty = LEAST(10, GREATEST(1, (3.0 - ease) / 0.08 + 5)),  -- Convert ease to difficulty
+--   scheduled_days = interval_days,
+--   state = CASE WHEN reps > 0 THEN 2 ELSE 0 END  -- 2=Review if has reps, else 0=New
+-- WHERE stability = 1.0;  -- Only update rows with default values
 
 -- Update the recalculate function to work with new columns
 CREATE OR REPLACE FUNCTION public.recalculate_fsrs_for_user(
