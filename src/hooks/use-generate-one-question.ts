@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import type {
   SimplifiedQuestion,
   GenerateOneQuestionResult,
+  GenerateOneQuestionError,
 } from "@/types/simplified-question";
 
 /**
@@ -163,7 +164,7 @@ export function useGenerateMultipleQuestions() {
           } else if (!data) {
             generationErrors.push(`Question ${i + 1}: No response from function`);
           } else if (!data.success) {
-            generationErrors.push(`Question ${i + 1}: ${data.error}`);
+            generationErrors.push(`Question ${i + 1}: ${(data as GenerateOneQuestionError).error}`);
           } else {
             generatedQuestions.push(data.question);
             stemsToAvoid.push(data.question.stem);
@@ -271,9 +272,10 @@ export function useGenerateAndSaveQuestions() {
             },
           };
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const { error: insertError } = await supabase
             .from("questions")
-            .insert(dbQuestion as unknown);
+            .insert(dbQuestion as any);
 
           if (insertError) {
             insertErrors.push(`Failed to save question: ${insertError.message}`);
