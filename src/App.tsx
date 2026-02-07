@@ -9,7 +9,9 @@ import { ProtectedRoute } from "@/components/layout/ProtectedRoute";
 import { AdminRoute } from "@/components/layout/AdminRoute";
 import { SidebarProvider } from "@/hooks/use-sidebar";
 import { FocusProvider } from "@/contexts/FocusContext";
+import { EnrollmentGuard } from "@/components/layout/EnrollmentGuard";
 import Auth from "@/pages/Auth";
+import Onboarding from "@/pages/Onboarding";
 import Study from "@/pages/Study";
 import StudyFocus from "@/pages/StudyFocus";
 import StudentCalendar from "@/pages/StudentCalendar";
@@ -39,32 +41,38 @@ const App = () => (
             <Routes>
               {/* Public route */}
               <Route path="/auth" element={<Auth />} />
-              
+
               {/* Protected routes */}
               <Route element={<ProtectedRoute />}>
-                <Route element={<AppLayout />}>
-                <Route path="/" element={<Navigate to="/study" replace />} />
-                  <Route path="/study" element={<Study />} />
-                  <Route path="/study/focus" element={<StudyFocus />} />
-                  <Route path="/calendar" element={<StudentCalendar />} />
-                  <Route path="/progress" element={<Progress />} />
-                  <Route path="/settings" element={<Settings />} />
-                  
-                  {/* Admin routes */}
-                  <Route element={<AdminRoute />}>
-                    <Route path="/admin/calendar" element={<AdminCalendar />} />
-                    <Route path="/admin/ingestion" element={<AdminIngestion />} />
-                    <Route path="/admin/materials" element={<Navigate to="/admin/questions" replace />} />
-                    <Route path="/admin/questions" element={<AdminCoursesList />} />
-                    <Route path="/admin/question-types" element={<AdminQuestionTypes />} />
-                    <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
-                    <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
-                    <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
-                    <Route path="/admin/questions/:courseId/:examName/:questionId/subpart/:subpartId" element={<AdminSubpartDetail />} />
+                {/* Onboarding is protected (needs auth) but sits outside EnrollmentGuard */}
+                <Route path="/onboarding" element={<Onboarding />} />
+
+                {/* Main App Routes require at least one enrollment */}
+                <Route element={<EnrollmentGuard />}>
+                  <Route element={<AppLayout />}>
+                    <Route path="/" element={<Navigate to="/study" replace />} />
+                    <Route path="/study" element={<Study />} />
+                    <Route path="/study/focus" element={<StudyFocus />} />
+                    <Route path="/calendar" element={<StudentCalendar />} />
+                    <Route path="/progress" element={<Progress />} />
+                    <Route path="/settings" element={<Settings />} />
+
+                    {/* Admin routes */}
+                    <Route element={<AdminRoute />}>
+                      <Route path="/admin/calendar" element={<AdminCalendar />} />
+                      <Route path="/admin/ingestion" element={<AdminIngestion />} />
+                      <Route path="/admin/materials" element={<Navigate to="/admin/questions" replace />} />
+                      <Route path="/admin/questions" element={<AdminCoursesList />} />
+                      <Route path="/admin/question-types" element={<AdminQuestionTypes />} />
+                      <Route path="/admin/questions/:courseId" element={<AdminExamsList />} />
+                      <Route path="/admin/questions/:courseId/:examName" element={<AdminQuestionsEditor />} />
+                      <Route path="/admin/questions/:courseId/:examName/:questionId" element={<AdminQuestionDetail />} />
+                      <Route path="/admin/questions/:courseId/:examName/:questionId/subpart/:subpartId" element={<AdminSubpartDetail />} />
+                    </Route>
                   </Route>
                 </Route>
               </Route>
-              
+
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

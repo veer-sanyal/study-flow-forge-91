@@ -25,8 +25,10 @@ import { useUserSettings } from "@/hooks/use-settings";
 import { useQueryClient } from "@tanstack/react-query";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { SubpartResult } from "@/types/study";
+import { useDiagnosticData, useSubmitDiagnostic } from "@/hooks/use-diagnostic";
+import { Loader2 } from "lucide-react";
 
-type StudyPhase = "today_plan" | "keep_practicing";
+type StudyPhase = "today_plan" | "keep_practicing" | "diagnostic";
 type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
 
 const KEEP_PRACTICING_BATCH = 5;
@@ -90,18 +92,18 @@ export default function Study() {
   // Use enrolled courses as default if no specific course filter is set
   const studyQueryParams = useMemo(() => {
     // Determine course filter: use focus filter if set, otherwise use first enrolled course
-    const effectiveCourseId = filters.courseIds.length === 1 
-      ? filters.courseIds[0] 
-      : enrolledCourseIdsArray.length === 1 
-        ? enrolledCourseIdsArray[0] 
+    const effectiveCourseId = filters.courseIds.length === 1
+      ? filters.courseIds[0]
+      : enrolledCourseIdsArray.length === 1
+        ? enrolledCourseIdsArray[0]
         : null;
-    
+
     // Check if user has active custom focus filters
-    const hasCustomFilters = filters.examNames.length > 0 || 
-                              filters.topicIds.length > 0 || 
-                              filters.questionTypeId !== null ||
-                              filters.midtermNumber !== null;
-    
+    const hasCustomFilters = filters.examNames.length > 0 ||
+      filters.topicIds.length > 0 ||
+      filters.questionTypeId !== null ||
+      filters.midtermNumber !== null;
+
     return {
       limit: studyPhase === "today_plan" ? dailyGoal : (hasCustomFilters ? 100 : KEEP_PRACTICING_BATCH),
       paceOffset: settings.pace_offset,
@@ -118,7 +120,26 @@ export default function Study() {
 
   // Fetch questions based on current phase and filters
   const { data: questions, isLoading, error, refetch } = useStudyQuestions(studyQueryParams);
+
+  // Diagnostic Data
+  const { data: diagnosticData } = useDiagnosticData(enrolledCourseIdsArray[0] || null);
+  const submitDiagnostic = useSubmitDiagnostic();
+  const [diagnosticResults, setDiagnosticResults] = useState<Array<{ topicId: string, isCorrect: boolean }>>([]);
+
+  const activeQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : questions;
+
   const submitAttempt = useSubmitAttempt();
+
+  const handleStartDiagnostic = useCallback(() => {
+    if (!diagnosticData?.questions || diagnosticData.questions.length === 0) return;
+    setStudyState("playing");
+    setStudyPhase("diagnostic");
+    setCurrentIndex(0);
+    setCompletedIndices([]);
+    setSessionResults({ correct: 0, total: 0 });
+    setDiagnosticResults([]);
+    questionStartTime.current = Date.now();
+  }, [diagnosticData]);
 
   const handleQuestionComplete = useCallback(
     async (result: {
@@ -129,12 +150,16 @@ export default function Study() {
       skipped: boolean;
       selectedChoiceId: string | null;
     }) => {
-      if (!questions) return;
+      // Determine active questions based on phase
+      const currentQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : questions;
 
-      const currentQuestion = questions[currentIndex];
+      if (!currentQuestions) return;
+
+      const currentQuestion = currentQuestions[currentIndex];
       const timeSpentMs = Date.now() - questionStartTime.current;
 
-      if (!result.skipped) {
+      // Logic for standard study phase
+      if (studyPhase !== "diagnostic" && !result.skipped) {
         console.log('[Study] Submitting attempt for question:', currentQuestion.id, {
           isCorrect: result.isCorrect,
           selectedChoiceId: result.selectedChoiceId,
@@ -151,84 +176,117 @@ export default function Study() {
         });
       }
 
+      // Logic for diagnostic phase results
+      if (studyPhase === "diagnostic") {
+        const topicId = diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId;
+        if (topicId) {
+          setDiagnosticResults(prev => [...prev, { topicId, isCorrect: result.isCorrect }]);
+        }
+      }
+
       const newResults = {
         correct: sessionResults.correct + (result.isCorrect ? 1 : 0),
         total: sessionResults.total + 1,
       };
       setSessionResults(newResults);
-      
+
       // Mark current question as completed
-      setCompletedIndices(prev => 
+      setCompletedIndices(prev =>
         prev.includes(currentIndex) ? prev : [...prev, currentIndex]
       );
 
-      if (currentIndex < questions.length - 1) {
+      if (currentIndex < currentQuestions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
         questionStartTime.current = Date.now();
       } else {
+        // Session Complete
         if (studyPhase === "today_plan") {
           setTodayPlanResults(newResults);
+          setStudyState("plan_complete");
+        } else if (studyPhase === "diagnostic") {
+          // Submit diagnostic results
+          const finalResults = [
+            ...diagnosticResults,
+            ...(diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId
+              ? [{ topicId: diagnosticData.topicDetails.find(d => d.question.id === currentQuestion.id)!.topicId, isCorrect: result.isCorrect }]
+              : [])
+          ];
+          await submitDiagnostic.mutateAsync({ results: finalResults });
           setStudyState("plan_complete");
         } else {
           setStudyState("session_pause");
         }
       }
     },
-    [currentIndex, questions, submitAttempt, studyPhase, sessionResults]
+    [currentIndex, questions, diagnosticData, submitAttempt, studyPhase, sessionResults, diagnosticResults, submitDiagnostic]
   );
 
   // Handle multi-part question completion
   const handleMultiPartComplete = useCallback(
     async (results: SubpartResult[]) => {
-      if (!questions) return;
+      const currentQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : questions;
+      if (!currentQuestions) return;
 
-      const currentQuestion = questions[currentIndex];
+      const currentQuestion = currentQuestions[currentIndex];
       const timeSpentMs = Date.now() - questionStartTime.current;
 
-      // Submit attempt for each subpart
-      for (const result of results) {
-        if (!result.skipped) {
-          console.log('[Study] Submitting multi-part attempt:', {
-            questionId: currentQuestion.id,
-            subpartId: result.subpartId,
-            isCorrect: result.isCorrect,
-          });
-          submitAttempt.mutate({
-            questionId: currentQuestion.id,
-            subpartId: result.subpartId,
-            selectedChoiceId: result.selectedChoiceId || null,
-            isCorrect: result.isCorrect,
-            confidence: result.confidence,
-            hintUsed: result.hintsUsed,
-            guideUsed: result.guideUsed,
-            timeSpentMs: Math.floor(timeSpentMs / results.length), // Approximate per subpart
-          });
+      // Submit attempt for each subpart if NOT diagnostic
+      if (studyPhase !== "diagnostic") {
+        for (const result of results) {
+          if (!result.skipped) {
+            submitAttempt.mutate({
+              questionId: currentQuestion.id,
+              subpartId: result.subpartId,
+              selectedChoiceId: result.selectedChoiceId || null,
+              isCorrect: result.isCorrect,
+              confidence: result.confidence,
+              hintUsed: result.hintsUsed,
+              guideUsed: result.guideUsed,
+              timeSpentMs: Math.floor(timeSpentMs / results.length),
+            });
+          }
         }
       }
 
-      // Calculate overall correctness (all subparts correct = question correct)
+      // Calculate overall correctness
       const allCorrect = results.every(r => r.isCorrect);
-      const correctCount = results.filter(r => r.isCorrect).length;
-      
+
+      if (studyPhase === "diagnostic") {
+        const topicId = diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId;
+        if (topicId) {
+          setDiagnosticResults(prev => [...prev, { topicId, isCorrect: allCorrect }]);
+        }
+      }
+
       const newResults = {
         correct: sessionResults.correct + (allCorrect ? 1 : 0),
         total: sessionResults.total + 1,
       };
       setSessionResults(newResults);
 
-      if (currentIndex < questions.length - 1) {
+      if (currentIndex < currentQuestions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
         questionStartTime.current = Date.now();
       } else {
         if (studyPhase === "today_plan") {
           setTodayPlanResults(newResults);
           setStudyState("plan_complete");
+        } else if (studyPhase === "diagnostic") {
+          // Submit diagnostic
+          const finalResults = [
+            ...diagnosticResults,
+            ...(diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId
+              ? [{ topicId: diagnosticData.topicDetails.find(d => d.question.id === currentQuestion.id)!.topicId, isCorrect: allCorrect }]
+              : [])
+          ];
+          await submitDiagnostic.mutateAsync({ results: finalResults });
+          setStudyState("plan_complete");
         } else {
           setStudyState("session_pause");
         }
       }
     },
-    [currentIndex, questions, submitAttempt, studyPhase, sessionResults]
+    [currentIndex, questions, diagnosticData, submitAttempt, studyPhase, sessionResults, diagnosticResults, submitDiagnostic]
   );
 
   const handleStartTodayPlan = useCallback(async () => {
@@ -290,11 +348,11 @@ export default function Study() {
 
   // Navigate to specific question index
   const handleNavigateQuestion = useCallback((index: number) => {
-    if (index >= 0 && questions && index < questions.length) {
+    if (index >= 0 && activeQuestions && index < activeQuestions.length) {
       setCurrentIndex(index);
       questionStartTime.current = Date.now();
     }
-  }, [questions]);
+  }, [activeQuestions]);
 
   const handleSimilar = useCallback(() => {
     console.log("Similar clicked");
@@ -407,7 +465,7 @@ export default function Study() {
               <div>
                 <h1 className="text-h1 font-semibold tracking-tight">Study</h1>
                 <p className="text-meta text-muted-foreground">
-                  {todayPlan.completedQuestions > 0 
+                  {todayPlan.completedQuestions > 0
                     ? `${todayPlan.completedQuestions} of ${dailyGoal} completed today`
                     : 'Ready to learn something new?'
                   }
@@ -415,9 +473,25 @@ export default function Study() {
               </div>
             </div>
 
+            {/* Diagnostic Quiz Callout */}
+            {diagnosticData?.questions && diagnosticData.questions.length > 0 && (
+              <div className="bg-primary/10 border border-primary/20 rounded-lg p-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-lg font-semibold text-primary">Diagnostic Quiz Available</h3>
+                  <p className="text-muted-foreground mt-1">
+                    We found {diagnosticData.questions.length} topics from your course schedule that you haven't mastered yet.
+                    Take a quick quiz to skip ahead!
+                  </p>
+                </div>
+                <Button onClick={handleStartDiagnostic} className="shrink-0">
+                  Start Diagnostic
+                </Button>
+              </div>
+            )}
+
             {/* Focus Bar with course/exam context */}
-            <StudyFocusBar 
-              overdueCount={stats.reviewsDue} 
+            <StudyFocusBar
+              overdueCount={stats.reviewsDue}
             />
 
             {/* Stats strip - full width */}
@@ -500,7 +574,7 @@ export default function Study() {
   }
 
   // No questions available
-  if ((!questions || questions.length === 0) && studyState === "playing") {
+  if ((!activeQuestions || activeQuestions.length === 0) && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
         <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
@@ -529,11 +603,11 @@ export default function Study() {
   }
 
   // PLAYING state
-  if (studyState === "playing" && questions && questions.length > 0) {
-    const currentQuestion = questions[currentIndex];
+  if (studyState === "playing" && activeQuestions && activeQuestions.length > 0) {
+    const currentQuestion = activeQuestions[currentIndex];
     const showTotalProgress = studyPhase === "today_plan";
     const hasSubparts = currentQuestion.subparts && Array.isArray(currentQuestion.subparts) && currentQuestion.subparts.length > 0;
-    
+
     console.log('[Study] Current question:', {
       id: currentQuestion.id,
       format: currentQuestion.questionFormat,
@@ -547,7 +621,7 @@ export default function Study() {
         <FocusBar
           showProgress={showTotalProgress}
           questionsCompleted={currentIndex}
-          questionsTotal={questions.length}
+          questionsTotal={activeQuestions.length}
         />
 
         {/* Header with back button */}
@@ -557,15 +631,16 @@ export default function Study() {
             <span className="text-meta">Exit</span>
           </Button>
           <span className="text-meta text-muted-foreground">
-            Question {currentIndex + 1}{showTotalProgress ? ` of ${questions.length}` : ""}
+            {studyPhase === "diagnostic" ? "Diagnostic Quiz" : `Question ${currentIndex + 1}`}
+            {showTotalProgress ? ` of ${activeQuestions.length}` : ""}
           </span>
         </div>
 
         {/* Question navigation - allows jumping to any question */}
-        {questions.length > 1 && (
+        {activeQuestions.length > 1 && (
           <div className="px-4 border-b">
             <QuestionNav
-              totalQuestions={questions.length}
+              totalQuestions={activeQuestions.length}
               currentIndex={currentIndex}
               completedIndices={completedIndices}
               onNavigate={handleNavigateQuestion}
@@ -581,7 +656,7 @@ export default function Study() {
                 key={`multi-${currentQuestion.id}`}
                 question={currentQuestion}
                 questionNumber={currentIndex + 1}
-                totalQuestions={showTotalProgress ? questions.length : undefined}
+                totalQuestions={showTotalProgress ? activeQuestions.length : undefined}
                 onComplete={handleMultiPartComplete}
                 onSimilar={handleSimilar}
               />
@@ -590,7 +665,7 @@ export default function Study() {
                 key={currentQuestion.id}
                 question={currentQuestion}
                 questionNumber={currentIndex + 1}
-                totalQuestions={showTotalProgress ? questions.length : undefined}
+                totalQuestions={showTotalProgress ? activeQuestions.length : undefined}
                 onComplete={handleQuestionComplete}
                 onSimilar={handleSimilar}
               />
@@ -603,14 +678,15 @@ export default function Study() {
 
   // PLAN_COMPLETE state
   if (studyState === "plan_complete") {
+    const isDiagnostic = studyPhase === "diagnostic";
     return (
       <PageTransition className="flex-1">
         <CompletionCard
-          title="Today's Plan Complete! 🎉"
-          subtitle="Great work on your daily goal"
-          correctCount={todayPlanResults?.correct || 0}
-          totalCount={todayPlanResults?.total || 0}
-          suggestions={completionSuggestions}
+          title={isDiagnostic ? "Diagnostic Complete!" : "Today's Plan Complete! 🎉"}
+          subtitle={isDiagnostic ? "We've calibrated your study plan." : "Great work on your daily goal"}
+          correctCount={isDiagnostic ? sessionResults.correct : (todayPlanResults?.correct || 0)}
+          totalCount={isDiagnostic ? sessionResults.total : (todayPlanResults?.total || 0)}
+          suggestions={isDiagnostic ? [] : completionSuggestions}
           onDone={handleGoHome}
           variant="plan_complete"
         />
