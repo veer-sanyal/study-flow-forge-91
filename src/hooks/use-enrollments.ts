@@ -25,7 +25,7 @@ export function useEnrollments() {
     queryKey: ['enrollments', user?.id],
     queryFn: async () => {
       if (!user) return [];
-      
+
       const { data, error } = await supabase
         .from('user_enrollments')
         .select(`

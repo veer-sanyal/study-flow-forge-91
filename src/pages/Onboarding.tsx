@@ -69,6 +69,11 @@ export default function Onboarding() {
             navigate("/study", { replace: true });
         } catch (error) {
             console.error("Onboarding error:", error);
+            // Log specific error details
+            if (error instanceof Error) {
+                console.error("Error message:", error.message);
+                console.error("Error stack:", error.stack);
+            }
             toast.error("Something went wrong. Please try again.");
             setIsFinishing(false);
         }
