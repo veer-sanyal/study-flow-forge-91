@@ -89,7 +89,8 @@ export function useUserSettings() {
     },
     isLoading: query.isLoading,
     error: query.error,
-    updateSettings: updateMutation.mutate,
+    // Make awaitable (Onboarding uses `await updateSettings(...)`)
+    updateSettings: updateMutation.mutateAsync,
     isUpdating: updateMutation.isPending,
   };
 }

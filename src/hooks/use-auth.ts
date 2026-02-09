@@ -1,35 +1,74 @@
-import { useState, useEffect, useCallback } from 'react';
-import { User, Session } from '@supabase/supabase-js';
-import { supabase } from '@/integrations/supabase/client';
+import { useCallback, useEffect, useState } from "react";
+import { Session, User } from "@supabase/supabase-js";
+import { supabase } from "@/integrations/supabase/client";
+
+type AuthSnapshot = {
+  user: User | null;
+  session: Session | null;
+  loading: boolean;
+};
+
+let snapshot: AuthSnapshot = {
+  user: null,
+  session: null,
+  loading: true,
+};
+
+let initialized = false;
+const listeners = new Set<() => void>();
+
+function emit() {
+  for (const l of listeners) l();
+}
+
+function setSnapshot(next: Partial<AuthSnapshot>) {
+  snapshot = { ...snapshot, ...next };
+  emit();
+}
+
+function ensureInitialized() {
+  if (initialized) return;
+  initialized = true;
+
+  // Keep a single, global subscription so all components share the same auth state.
+  supabase.auth.onAuthStateChange((_event, session) => {
+    setSnapshot({
+      session,
+      user: session?.user ?? null,
+      loading: false,
+    });
+  });
+
+  // Hydrate initial session
+  supabase.auth.getSession().then(({ data: { session } }) => {
+    setSnapshot({
+      session,
+      user: session?.user ?? null,
+      loading: false,
+    });
+  });
+}
 
 export function useAuth() {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [state, setState] = useState<AuthSnapshot>(snapshot);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
+    ensureInitialized();
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    const onChange = () => setState(snapshot);
+    listeners.add(onChange);
 
-    return () => subscription.unsubscribe();
+    // Sync immediately in case init updated before subscription was added
+    setState(snapshot);
+
+    return () => {
+      listeners.delete(onChange);
+    };
   }, []);
 
   const signUp = useCallback(async (email: string, password: string, fullName?: string) => {
     const redirectUrl = `${window.location.origin}/`;
-    
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
@@ -53,9 +92,9 @@ export function useAuth() {
 
   const signInWithGoogle = useCallback(async () => {
     const redirectUrl = `${window.location.origin}/`;
-    
+
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+      provider: "google",
       options: {
         redirectTo: redirectUrl,
       },
@@ -69,13 +108,13 @@ export function useAuth() {
   }, []);
 
   return {
-    user,
-    session,
-    loading,
+    user: state.user,
+    session: state.session,
+    loading: state.loading,
     signUp,
     signIn,
     signInWithGoogle,
     signOut,
-    isAuthenticated: !!session,
+    isAuthenticated: !!state.session,
   };
 }

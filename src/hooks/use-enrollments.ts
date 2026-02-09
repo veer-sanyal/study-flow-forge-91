@@ -112,12 +112,14 @@ export function useEnrollments() {
   return {
     enrollments: enrollmentsQuery.data || [],
     isLoadingEnrollments: enrollmentsQuery.isLoading,
+    isFetchingEnrollments: enrollmentsQuery.isFetching,
     coursePacks: coursePacksQuery.data || [],
     isLoadingCoursePacks: coursePacksQuery.isLoading,
     enrolledCourseIds,
     enrolledCourseIdsArray,
-    enroll: enrollMutation.mutate,
-    unenroll: unenrollMutation.mutate,
+    // Make these awaitable so callers can reliably gate navigation + show errors
+    enroll: enrollMutation.mutateAsync,
+    unenroll: unenrollMutation.mutateAsync,
     isEnrolling: enrollMutation.isPending,
     isUnenrolling: unenrollMutation.isPending,
   };
