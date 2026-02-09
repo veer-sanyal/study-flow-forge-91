@@ -1,12 +1,18 @@
-import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useEnrollments } from "@/hooks/use-enrollments";
+import { Navigate, Outlet } from "react-router-dom";
 import { Loader2 } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { useEnrollments } from "@/hooks/use-enrollments";
 
 export function EnrollmentGuard() {
-    const { enrollments, isLoadingEnrollments } = useEnrollments();
-    const location = useLocation();
+    const { loading: authLoading, user } = useAuth();
+    const { enrollments, isLoadingEnrollments, isFetchingEnrollments } = useEnrollments();
 
-    if (isLoadingEnrollments) {
+    // Wait for auth + enrollments to resolve before gating.
+    // Important: if enrollments are being refetched and the current cached value is empty,
+    // don't redirect yet—show a spinner until the fetch resolves.
+    const waitingOnEnrollments = isLoadingEnrollments || (isFetchingEnrollments && enrollments.length === 0);
+
+    if (authLoading || !user || waitingOnEnrollments) {
         return (
             <div className="h-screen w-full flex items-center justify-center bg-background">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />

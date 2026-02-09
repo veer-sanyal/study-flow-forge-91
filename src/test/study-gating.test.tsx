@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router-dom';
 import Study from '@/pages/Study';
 
@@ -17,6 +18,15 @@ vi.mock('react-router-dom', async () => {
 
 vi.mock('@/hooks/use-auth', () => ({
   useAuth: () => ({ user: { id: 'test-user' } }),
+}));
+
+vi.mock('@/hooks/use-diagnostic', () => ({
+  useDiagnosticData: () => ({ data: null, isLoading: false, error: null }),
+  useSubmitDiagnostic: () => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 
 vi.mock('@/hooks/use-settings', () => ({
@@ -78,13 +88,6 @@ vi.mock('@/hooks/use-sidebar', () => ({
   useSidebar: () => ({ collapse: vi.fn(), expand: vi.fn() }),
 }));
 
-vi.mock('@tanstack/react-query', async () => {
-  const actual = await vi.importActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
-  return {
-    ...actual,
-    useQueryClient: () => ({ invalidateQueries: vi.fn() }),
-  };
-});
 
 // Stub child components to isolate gating logic
 vi.mock('@/components/study/TodayPlanCard', () => ({
@@ -129,10 +132,20 @@ vi.mock('@/components/motion/PageTransition', () => ({
 // ---- Helpers ----
 
 function renderStudy(): ReturnType<typeof render> {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: {
+        retry: false,
+      },
+    },
+  });
+
   return render(
-    <MemoryRouter initialEntries={['/study']}>
-      <Study />
-    </MemoryRouter>,
+    <QueryClientProvider client={queryClient}>
+      <MemoryRouter initialEntries={['/study']}>
+        <Study />
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
