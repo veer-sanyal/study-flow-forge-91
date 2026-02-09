@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { useEnrollments } from "@/hooks/use-enrollments";
 import { useUserSettings } from "@/hooks/use-settings";
 import { Button } from "@/components/ui/button";
@@ -13,6 +14,7 @@ import { toast } from "sonner";
 
 export default function Onboarding() {
     const navigate = useNavigate();
+    const queryClient = useQueryClient();
     const {
         coursePacks,
         isLoadingCoursePacks,
@@ -20,12 +22,12 @@ export default function Onboarding() {
         isEnrolling
     } = useEnrollments();
     const {
-        settings,
         updateSettings,
         isUpdating: isUpdatingSettings
     } = useUserSettings();
 
     const [step, setStep] = useState(1);
+    const [isFinishing, setIsFinishing] = useState(false);
     const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
     const [localSettings, setLocalSettings] = useState({
         daily_goal: 10,
@@ -44,6 +46,7 @@ export default function Onboarding() {
 
     // Submit Logic
     const handleFinish = async () => {
+        setIsFinishing(true);
         try {
             // 1. Save Settings
             await updateSettings({
@@ -52,17 +55,22 @@ export default function Onboarding() {
                 notifications_enabled: localSettings.notifications_enabled
             });
 
-            // 2. Enroll in courses
-            // We do this sequentially to avoid race conditions or overwhelming the server
+            // 2. Enroll in courses sequentially
             for (const courseId of selectedCourses) {
                 await enroll(courseId);
             }
 
+            // 3. Wait for enrollments cache to be refreshed before navigating
+            // This prevents the EnrollmentGuard from redirecting back
+            await queryClient.invalidateQueries({ queryKey: ['enrollments'] });
+            await queryClient.refetchQueries({ queryKey: ['enrollments'] });
+
             toast.success("All set! Welcome to your study space.");
-            navigate("/study");
+            navigate("/study", { replace: true });
         } catch (error) {
             console.error("Onboarding error:", error);
             toast.error("Something went wrong. Please try again.");
+            setIsFinishing(false);
         }
     };
 
@@ -218,8 +226,8 @@ export default function Onboarding() {
                             Next
                         </Button>
                     ) : (
-                        <Button onClick={handleFinish} disabled={isEnrolling || isUpdatingSettings} className="min-w-[120px]">
-                            {(isEnrolling || isUpdatingSettings) ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Get Started"}
+                        <Button onClick={handleFinish} disabled={isFinishing || isEnrolling || isUpdatingSettings} className="min-w-[120px]">
+                            {isFinishing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : "Get Started"}
                         </Button>
                     )}
                 </CardFooter>
