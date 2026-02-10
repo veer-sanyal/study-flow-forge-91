@@ -369,6 +369,47 @@ export type Database = {
         }
         Relationships: []
       }
+      diagnostic_completions: {
+        Row: {
+          completed_at: string
+          course_pack_id: string
+          created_at: string
+          id: string
+          questions_answered: number
+          questions_correct: number
+          skipped: boolean
+          user_id: string
+        }
+        Insert: {
+          completed_at?: string
+          course_pack_id: string
+          created_at?: string
+          id?: string
+          questions_answered?: number
+          questions_correct?: number
+          skipped?: boolean
+          user_id: string
+        }
+        Update: {
+          completed_at?: string
+          course_pack_id?: string
+          created_at?: string
+          id?: string
+          questions_answered?: number
+          questions_correct?: number
+          skipped?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "diagnostic_completions_course_pack_id_fkey"
+            columns: ["course_pack_id"]
+            isOneToOne: false
+            referencedRelation: "course_packs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ingestion_jobs: {
         Row: {
           answer_key_file_name: string | null
