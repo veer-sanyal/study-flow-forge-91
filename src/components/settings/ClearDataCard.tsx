@@ -52,14 +52,21 @@ export function ClearDataCard() {
         .eq('user_id', user.id);
       if (masteryError) throw masteryError;
 
-      // 4. Delete course enrollments
+      // 4. Delete diagnostic completions
+      const { error: diagnosticError } = await supabase
+        .from('diagnostic_completions')
+        .delete()
+        .eq('user_id', user.id);
+      if (diagnosticError) throw diagnosticError;
+
+      // 5. Delete course enrollments
       const { error: enrollmentError } = await supabase
         .from('user_enrollments')
         .delete()
         .eq('user_id', user.id);
       if (enrollmentError) throw enrollmentError;
 
-      // 5. Reset user settings to defaults (but keep the row)
+      // 6. Reset user settings to defaults (but keep the row)
       const { error: settingsError } = await supabase
         .from('user_settings')
         .update({
@@ -78,6 +85,8 @@ export function ClearDataCard() {
       await queryClient.resetQueries({ queryKey: ['attempts'] });
       await queryClient.resetQueries({ queryKey: ['topic-mastery'] });
       await queryClient.resetQueries({ queryKey: ['enrollments'] });
+      await queryClient.resetQueries({ queryKey: ['diagnostic-completions'] });
+      await queryClient.resetQueries({ queryKey: ['diagnostic-data'] });
       await queryClient.resetQueries({ queryKey: ['study-dashboard'] });
       await queryClient.resetQueries({ queryKey: ['upcoming-exams'] });
       await queryClient.resetQueries({ queryKey: ['user-settings'] });
@@ -134,6 +143,7 @@ export function ClearDataCard() {
                   <li>All your question attempts and answer history</li>
                   <li>Your spaced repetition progress (SRS state)</li>
                   <li>Topic mastery scores</li>
+                  <li>Diagnostic quiz completions</li>
                   <li>Course enrollments</li>
                   <li>Study preferences (reset to defaults)</li>
                 </ul>

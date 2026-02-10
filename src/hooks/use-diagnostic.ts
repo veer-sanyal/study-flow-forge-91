@@ -19,21 +19,57 @@ export function useDiagnosticData(coursePackId: string | null) {
 
             const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
-            // 1. Get covered topics from topics.scheduled_date (primary source)
-            // Topics with scheduled_date <= today are considered "covered"
-            const { data: coveredTopics, error: topicsError } = await supabase
+            // 1. Get covered topics by finding topics with scheduled_date <= today
+            // First try topics with course_pack_id, then try via questions if that's empty
+            let coveredTopicIds = new Set<string>();
+
+            // Try 1: Topics directly linked to course_pack_id
+            const { data: directTopics, error: directError } = await supabase
                 .from('topics')
                 .select('id')
                 .eq('course_pack_id', coursePackId)
                 .lte('scheduled_date', today)
                 .not('scheduled_date', 'is', null);
 
-            if (topicsError) throw topicsError;
+            if (directError) {
+                console.error('Error fetching direct topics:', directError);
+            } else if (directTopics && directTopics.length > 0) {
+                directTopics.forEach(t => coveredTopicIds.add(t.id));
+            }
 
-            // Extract unique topic IDs
-            const coveredTopicIds = new Set<string>(
-                coveredTopics?.map(t => t.id) || []
-            );
+            // Try 2: If no direct topics found, find topics through questions for this course
+            if (coveredTopicIds.size === 0) {
+                // Get all questions for this course
+                const { data: courseQuestions, error: qError } = await supabase
+                    .from('questions')
+                    .select('topic_ids')
+                    .eq('course_pack_id', coursePackId)
+                    .not('topic_ids', 'is', null);
+
+                if (qError) {
+                    console.error('Error fetching course questions:', qError);
+                } else if (courseQuestions) {
+                    // Collect all unique topic IDs from questions
+                    const allTopicIds = new Set<string>();
+                    courseQuestions.forEach(q => {
+                        q.topic_ids?.forEach((id: string) => allTopicIds.add(id));
+                    });
+
+                    if (allTopicIds.size > 0) {
+                        // Now check which of these topics are covered (scheduled_date <= today)
+                        const { data: coveredTopics, error: coveredError } = await supabase
+                            .from('topics')
+                            .select('id')
+                            .in('id', Array.from(allTopicIds))
+                            .lte('scheduled_date', today)
+                            .not('scheduled_date', 'is', null);
+
+                        if (!coveredError && coveredTopics) {
+                            coveredTopics.forEach(t => coveredTopicIds.add(t.id));
+                        }
+                    }
+                }
+            }
 
             if (coveredTopicIds.size === 0) return { questions: [], topicCount: 0, topicDetails: [] };
 
