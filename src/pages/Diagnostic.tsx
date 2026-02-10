@@ -440,10 +440,10 @@ export default function Diagnostic() {
         </div>
 
         {/* Skip warning */}
-        <div className="flex items-start gap-3 p-4 rounded-lg bg-warning/10 border border-warning/20">
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-muted border border-border">
           <AlertTriangle className="h-5 w-5 text-warning shrink-0 mt-0.5" />
           <div className="text-sm">
-            <p className="font-medium text-warning-foreground">About skipping</p>
+            <p className="font-medium text-foreground">About skipping</p>
             <p className="text-muted-foreground mt-1">
               Skipping the diagnostic means your study plan won't be personalized to your current knowledge.
               You can always take it later from Settings.
