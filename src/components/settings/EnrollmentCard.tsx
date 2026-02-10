@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,10 +17,11 @@ import {
 } from "@/components/ui/dialog";
 
 export function EnrollmentCard() {
-  const { 
-    enrollments, 
-    isLoadingEnrollments, 
-    coursePacks, 
+  const navigate = useNavigate();
+  const {
+    enrollments,
+    isLoadingEnrollments,
+    coursePacks,
     isLoadingCoursePacks,
     enrolledCourseIds,
     enroll,
@@ -37,13 +39,16 @@ export function EnrollmentCard() {
       await enroll(coursePack.id);
       toast({
         title: "Enrolled!",
-        description: `You've been enrolled in ${coursePack.title}`,
+        description: `You've been enrolled in ${coursePack.title}. Complete the diagnostic quiz to personalize your study plan.`,
       });
       setAddDialogOpen(false);
-    } catch (error: any) {
+      // Navigate to diagnostic page to complete diagnostic for the new course
+      navigate("/diagnostic", { state: { newCourseId: coursePack.id } });
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       toast({
         title: "Enrollment failed",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
@@ -59,10 +64,11 @@ export function EnrollmentCard() {
         title: "Removed",
         description: `You've been unenrolled from ${title}`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : "Unknown error";
       toast({
         title: "Failed to remove",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
     } finally {
