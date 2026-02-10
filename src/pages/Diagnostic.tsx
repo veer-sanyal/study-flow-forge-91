@@ -79,12 +79,17 @@ export default function Diagnostic() {
   const handleSkipCourse = useCallback(async () => {
     if (!currentCourse) return;
 
-    await recordCompletion({
-      coursePackId: currentCourse.id,
-      questionsAnswered: 0,
-      questionsCorrect: 0,
-      skipped: true,
-    });
+    try {
+      await recordCompletion({
+        coursePackId: currentCourse.id,
+        questionsAnswered: 0,
+        questionsCorrect: 0,
+        skipped: true,
+      });
+    } catch (error) {
+      console.error("Failed to record diagnostic skip:", error);
+      // Continue anyway
+    }
 
     if (currentCourseIndex < pendingCourses.length - 1) {
       setCurrentCourseIndex(prev => prev + 1);
@@ -100,12 +105,17 @@ export default function Diagnostic() {
   const handleAutoCompleteCourse = useCallback(async () => {
     if (!currentCourse) return;
 
-    await recordCompletion({
-      coursePackId: currentCourse.id,
-      questionsAnswered: 0,
-      questionsCorrect: 0,
-      skipped: false,
-    });
+    try {
+      await recordCompletion({
+        coursePackId: currentCourse.id,
+        questionsAnswered: 0,
+        questionsCorrect: 0,
+        skipped: false,
+      });
+    } catch (error) {
+      console.error("Failed to record diagnostic completion:", error);
+      // Continue anyway - the guard will handle retry if needed
+    }
 
     if (currentCourseIndex < pendingCourses.length - 1) {
       setCurrentCourseIndex(prev => prev + 1);

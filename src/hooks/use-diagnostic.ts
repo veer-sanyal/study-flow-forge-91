@@ -17,25 +17,25 @@ export function useDiagnosticData(coursePackId: string | null) {
         queryFn: async () => {
             if (!user || !coursePackId) return null;
 
-            const now = new Date().toISOString();
+            const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
 
-            // 1. Get covered topics from past calendar events
-            const { data: events, error: eventsError } = await supabase
-                .from('calendar_events')
-                .select('topics_covered')
+            // 1. Get covered topics from topics.scheduled_date (primary source)
+            // Topics with scheduled_date <= today are considered "covered"
+            const { data: coveredTopics, error: topicsError } = await supabase
+                .from('topics')
+                .select('id')
                 .eq('course_pack_id', coursePackId)
-                .lte('event_date', now)
-                .not('topics_covered', 'is', null);
+                .lte('scheduled_date', today)
+                .not('scheduled_date', 'is', null);
 
-            if (eventsError) throw eventsError;
+            if (topicsError) throw topicsError;
 
             // Extract unique topic IDs
-            const coveredTopicIds = new Set<string>();
-            events?.forEach(e => {
-                e.topics_covered?.forEach(id => coveredTopicIds.add(id));
-            });
+            const coveredTopicIds = new Set<string>(
+                coveredTopics?.map(t => t.id) || []
+            );
 
-            if (coveredTopicIds.size === 0) return { questions: [], topicCount: 0 };
+            if (coveredTopicIds.size === 0) return { questions: [], topicCount: 0, topicDetails: [] };
 
             // 2. Check which topics are ALREADY mastered/attempted
             const { data: interactionData, error: masteryError } = await supabase
@@ -51,7 +51,7 @@ export function useDiagnosticData(coursePackId: string | null) {
             // Filter for unassessed topics
             const unassessedTopicIds = Array.from(coveredTopicIds).filter(id => !masteredTopicIds.has(id));
 
-            if (unassessedTopicIds.length === 0) return { questions: [], topicCount: 0 };
+            if (unassessedTopicIds.length === 0) return { questions: [], topicCount: 0, topicDetails: [] };
 
             // 3. Rate limit: Max 10 topics for diagnostic to keep it short
             const targetTopicIds = unassessedTopicIds.slice(0, 10);
