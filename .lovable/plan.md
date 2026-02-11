@@ -1,107 +1,148 @@
+Tech Debt Cleanup + Feature Enablement Plan (Improved)
+Guiding rules (to prevent new debt)
 
+Pick one source of truth per concept (answers, dates, types). Remove or freeze the duplicates.
 
-# Fix Plan: Build Errors, Missing Hooks, and Clear Data Issues
+Data fixes before schema drops. Column drops happen last and only after code no longer reads/writes them.
 
-## Issues Identified
+Every migration is reversible (snapshot + idempotent scripts + needs_review flags instead of destructive overwrites when uncertain).
 
-### 1. Build Errors - Missing `useAnalyzeMaterial` Hook
-**Root Cause:** Two pages (`AdminMaterials.tsx` and `AdminExamsList.tsx`) import `useAnalyzeMaterial` from `@/hooks/use-materials`, but this hook does not exist in the file.
+Add constraints only after backfills (NOT NULL, FK, CHECK).
 
-**Files affected:**
-- `src/pages/AdminMaterials.tsx` (line 3)
-- `src/pages/AdminExamsList.tsx` (line 76)
+Phase 0 — Baseline + Safety Net (Immediate)
 
-### 2. Build Errors - Type Mismatches in `use-generate-one-question.ts`
-**Root Cause:** 
-- Line 166: Accessing `.error` on `GenerateOneQuestionResult`, but that property only exists on the error variant (`GenerateOneQuestionError`)
-- Line 276: Inserting `dbQuestion as unknown` which doesn't match the expected insert type
+Goal: Make everything measurable and safe to change.
 
-### 3. Clear Data Not Fully Working
-**Root Cause:** The `ClearDataCard` deletes data from `srs_state`, `attempts`, `topic_mastery`, and `user_enrollments`, but:
-- The "Pick up where you left off" card derives from the `attempts` table - if `attempts` are deleted but the query cache isn't properly refreshed, old data persists
-- The "overdue reviews" count comes from `srs_state` - same issue with cache
-- The query invalidation keys may not match what the dashboard hook uses (`study-dashboard`)
+Tasks
 
-**Missing invalidation:** The key `study-dashboard` is not being invalidated after clearing data.
+✅ Fix build/test failures (CalendarStudyRow shape changes, newCount expectations).
 
-### 4. Edge Function Visibility
-**Finding:** The `generate-one-question` edge function **does exist** in `supabase/functions/generate-one-question/index.ts` and is configured in `supabase/config.toml`. It should be deployed. The old functions `analyze-material` and `generate-questions` are NOT in the current file listing, suggesting they were already removed.
+Add lightweight profiling:
 
----
+progress page load time (client + server)
 
-## Fix Plan
+recommendations/daily plan call duration
 
-### Step 1: Create Missing `useAnalyzeMaterial` Hook
-Add the `useAnalyzeMaterial` mutation hook to `src/hooks/use-materials.ts`. This hook should call an edge function or update the material status to trigger analysis.
+calendar query duration
 
-```typescript
-// Add to use-materials.ts
-export function useAnalyzeMaterial() {
-  const queryClient = useQueryClient();
-  
-  return useMutation({
-    mutationFn: async (materialId: string) => {
-      // Call the appropriate edge function or update status
-      const { error } = await supabase.functions.invoke('process-exam-pdf', {
-        body: { materialId }
-      });
-      if (error) throw error;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
-    },
-  });
-}
-```
+Add data quality checks you can run as scripts:
 
-### Step 2: Fix Type Errors in `use-generate-one-question.ts`
-**Line 166:** Use the type guard or check `success` before accessing `error`:
-```typescript
-} else if (!data.success) {
-  generationErrors.push(`Question ${i + 1}: ${(data as GenerateOneQuestionError).error}`);
-}
-```
+MCQ has exactly one correct choice
 
-**Line 276:** Use proper typing for the insert:
-```typescript
-const { error: insertError } = await supabase
-  .from("questions")
-  .insert(dbQuestion as any);  // or properly type the object
-```
+every question has ≥ 1 topic
 
-### Step 3: Fix Clear Data Cache Invalidation
-Add `study-dashboard` to the list of invalidated query keys in `ClearDataCard.tsx`:
-```typescript
-queryClient.invalidateQueries({ queryKey: ['study-dashboard'] });
-```
+topic/date mapping exists for topics expected by diagnostic
 
-Also ensure we're clearing and refreshing data atomically by using `await queryClient.resetQueries()` for critical keys.
+Exit criteria
 
-### Step 4: Verify Edge Function Deployment
-Trigger a redeployment of `generate-one-question` to ensure it's live.
+CI green
 
----
+You can quantify “progress page takes Xs” and identify top slow query(s).
 
-## Technical Details
+Phase 1 — “Source of Truth” Decisions (Do before touching data)
 
-### Files to Modify
+This prevents you from fixing data into a schema you’ll later change.
 
-| File | Change |
-|------|--------|
-| `src/hooks/use-materials.ts` | Add `useAnalyzeMaterial` hook |
-| `src/hooks/use-generate-one-question.ts` | Fix type error on line 166, fix insert type on line 276 |
-| `src/components/settings/ClearDataCard.tsx` | Add `study-dashboard` query invalidation |
-| `supabase/functions/generate-one-question/index.ts` | Trigger redeployment (no code changes needed) |
+1A) Answers: choose canonical representation
 
-### Query Keys That Need Invalidation After Clear Data
-Current:
-- `srs-state`, `attempts`, `topic-mastery`, `enrollments`, `user-settings`, `daily-plan`, `study-recommendations`, `progress-stats`, `review-forecast`
+Recommendation (min debt):
 
-Missing:
-- `study-dashboard` (powers the "pick up where you left off" and "overdue reviews" UI)
+MCQ correctness lives in one place:
 
-### Edge Function Status
-- `generate-one-question` - EXISTS, needs deployment verification
-- `analyze-material` - Does NOT exist (may have been renamed/merged)
-- `generate-questions` - Does NOT exist (replaced by V5 evidence-based pipeline in `process-exam-pdf`)
+Either choices[].isCorrect OR answer_spec.correct_choice_ids
 
+If you keep correct_answer, it must be derived, not authored.
+
+Decision
+
+If you want editable answers + consistent grading across formats: make answer_spec canonical and treat choices.isCorrect as derived for rendering.
+
+If you want simplest: keep choices.isCorrect canonical and drop/deprecate correct_answer.
+
+1B) Dates: calendar truth
+
+calendar_events.event_date is the only truth.
+
+week_number / day_of_week become derived display fields (or dropped later).
+
+1C) “Question type” semantics
+
+question_format = input/response format (mcq/numeric/short_answer)
+
+question_type_id = variant/skill category (what you want)
+
+Exit criteria
+
+You’ve documented these decisions in code comments + a short docs/data-model.md.
+
+Phase 2 — Calendar Events Cleanup + Topic Dating (Foundational)
+
+Your “topic exact date” and diagnostic correctness depend on this.
+
+Tasks
+
+Repair calendar consistency
+
+Identify course packs where day_of_week disagrees with event_date → fix upstream ingestion logic.
+
+Add a check to block future bad inserts (or mark them invalid_event=true).
+
+Implement topic last-covered date
+
+Add topics.last_covered_date (or covered_end_date).
+
+Compute as MAX(event_date) for all lecture events that include that topic.
+
+If a topic appears across multiple lectures → use the last date (your requirement).
+
+Update extract-topics pipeline
+
+When generating topics from lecture material/calendar: automatically assign/update last_covered_date.
+
+Exit criteria
+
+For each topic, you can display a real date (not “Week X”).
+
+“Covered topics as of today” is correct for all course packs.
+
+Phase 3 — Questions Data Consistency Fixes (SQL, guarded)
+
+Goal: eliminate contradictions and fix known bad rows without guesswork.
+
+3A) Fix MCQ answer inconsistencies (guarded)
+
+For MCQ rows:
+
+If exactly one choices[].isCorrect=true → update canonical answer representation
+
+If 0 or >1 correct → do not auto-fix; set needs_review=true + reason
+
+3B) Fix answer_format_enum mismatch safely
+
+Don’t blindly set answer_format_enum = question_format.
+
+Do an explicit mapping OR deprecate answer_format_enum if redundant.
+
+3C) Fix questions with empty topics
+
+Find all topic_ids = []
+
+Set needs_review=true + reason (missing_topics)
+
+(Optional) attempt auto-attach topics only if you have reliable signals; otherwise keep human review.
+
+3D) Add/standardize review flags (supports future admin workflows)
+
+Add:
+
+needs_review boolean default false
+
+needs_review_reason text
+
+(optional) review_status enum ('new','needs_review','approved')
+
+Exit criteria
+
+Zero contradictory MCQ correctness (or flagged for review).
+
+No “silent” questions with no topics; they’re all flagged.
