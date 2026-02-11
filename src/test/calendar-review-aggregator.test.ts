@@ -14,7 +14,8 @@ describe('aggregateCalendarReviewData', () => {
         topic_id: 't1',
         topic_title: 'Derivatives',
         course_pack_id: 'c1',
-        due_count: 7,
+        status: 'review' as const,
+        count: 7,
         is_overdue: false,
       },
     ]);
@@ -28,15 +29,16 @@ describe('aggregateCalendarReviewData', () => {
       topicId: 't1',
       topicTitle: 'Derivatives',
       dueCount: 7,
+      newCount: 0,
     });
   });
 
   it('keeps only top 3 topics sorted by dueCount descending', () => {
     const result = aggregateCalendarReviewData([
-      { due_date: '2026-02-05', topic_id: 't1', topic_title: 'A', course_pack_id: 'c1', due_count: 2, is_overdue: false },
-      { due_date: '2026-02-05', topic_id: 't2', topic_title: 'B', course_pack_id: 'c1', due_count: 10, is_overdue: false },
-      { due_date: '2026-02-05', topic_id: 't3', topic_title: 'C', course_pack_id: 'c1', due_count: 5, is_overdue: false },
-      { due_date: '2026-02-05', topic_id: 't4', topic_title: 'D', course_pack_id: 'c1', due_count: 1, is_overdue: false },
+      { due_date: '2026-02-05', topic_id: 't1', topic_title: 'A', course_pack_id: 'c1', status: 'review' as const, count: 2, is_overdue: false },
+      { due_date: '2026-02-05', topic_id: 't2', topic_title: 'B', course_pack_id: 'c1', status: 'review' as const, count: 10, is_overdue: false },
+      { due_date: '2026-02-05', topic_id: 't3', topic_title: 'C', course_pack_id: 'c1', status: 'review' as const, count: 5, is_overdue: false },
+      { due_date: '2026-02-05', topic_id: 't4', topic_title: 'D', course_pack_id: 'c1', status: 'review' as const, count: 1, is_overdue: false },
     ]);
 
     const day = result.get('2026-02-05')!;
@@ -50,8 +52,8 @@ describe('aggregateCalendarReviewData', () => {
 
   it('counts overdue rows correctly', () => {
     const result = aggregateCalendarReviewData([
-      { due_date: '2026-02-02', topic_id: 't1', topic_title: 'X', course_pack_id: 'c1', due_count: 3, is_overdue: true },
-      { due_date: '2026-02-02', topic_id: 't2', topic_title: 'Y', course_pack_id: 'c1', due_count: 5, is_overdue: false },
+      { due_date: '2026-02-02', topic_id: 't1', topic_title: 'X', course_pack_id: 'c1', status: 'review' as const, count: 3, is_overdue: true },
+      { due_date: '2026-02-02', topic_id: 't2', topic_title: 'Y', course_pack_id: 'c1', status: 'review' as const, count: 5, is_overdue: false },
     ]);
 
     const day = result.get('2026-02-02')!;
@@ -61,9 +63,9 @@ describe('aggregateCalendarReviewData', () => {
 
   it('creates separate map entries for different dates', () => {
     const result = aggregateCalendarReviewData([
-      { due_date: '2026-02-03', topic_id: 't1', topic_title: 'A', course_pack_id: 'c1', due_count: 4, is_overdue: false },
-      { due_date: '2026-02-04', topic_id: 't2', topic_title: 'B', course_pack_id: 'c1', due_count: 6, is_overdue: false },
-      { due_date: '2026-02-03', topic_id: 't3', topic_title: 'C', course_pack_id: 'c1', due_count: 2, is_overdue: true },
+      { due_date: '2026-02-03', topic_id: 't1', topic_title: 'A', course_pack_id: 'c1', status: 'review' as const, count: 4, is_overdue: false },
+      { due_date: '2026-02-04', topic_id: 't2', topic_title: 'B', course_pack_id: 'c1', status: 'review' as const, count: 6, is_overdue: false },
+      { due_date: '2026-02-03', topic_id: 't3', topic_title: 'C', course_pack_id: 'c1', status: 'review' as const, count: 2, is_overdue: true },
     ]);
 
     expect(result.size).toBe(2);
@@ -81,8 +83,8 @@ describe('aggregateCalendarReviewData', () => {
 
   it('merges duplicate topic rows within the same date', () => {
     const result = aggregateCalendarReviewData([
-      { due_date: '2026-02-05', topic_id: 't1', topic_title: 'A', course_pack_id: 'c1', due_count: 3, is_overdue: false },
-      { due_date: '2026-02-05', topic_id: 't1', topic_title: 'A', course_pack_id: 'c2', due_count: 4, is_overdue: true },
+      { due_date: '2026-02-05', topic_id: 't1', topic_title: 'A', course_pack_id: 'c1', status: 'review' as const, count: 3, is_overdue: false },
+      { due_date: '2026-02-05', topic_id: 't1', topic_title: 'A', course_pack_id: 'c2', status: 'review' as const, count: 4, is_overdue: true },
     ]);
 
     const day = result.get('2026-02-05')!;

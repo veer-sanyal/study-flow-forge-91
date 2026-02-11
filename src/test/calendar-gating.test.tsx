@@ -158,8 +158,9 @@ describe('Calendar page gating', () => {
     reviewMap.set('2026-02-03', {
       date: '2026-02-03',
       totalDue: 5,
+      totalNew: 0,
       overdueCount: 0,
-      topTopics: [{ topicId: 't1', topicTitle: 'Limits', dueCount: 5 }],
+      topTopics: [{ topicId: 't1', topicTitle: 'Limits', dueCount: 5, newCount: 0 }],
     });
     mockCalendarReviewData.mockReturnValue({
       data: reviewMap,
