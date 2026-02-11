@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { startOfWeek, endOfWeek, addWeeks, format, differenceInDays, parseISO, isAfter, isBefore, addDays } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
+import { logger } from "@/lib/logger";
 import type { CalendarDayReviewData } from "@/types/progress";
 
 interface CalendarEvent {
@@ -285,16 +286,18 @@ export function useCalendarReviewData({
     queryFn: async () => {
       if (!user) return [];
 
-      const { data, error } = await (supabase.rpc as any)('get_calendar_study_data', {
-        p_user_id: user.id,
-        p_course_ids: courseIds.length > 0 ? courseIds : null,
-        p_start_date: startDate,
-        p_end_date: endDate,
-        p_include_overdue: includeOverdue,
-      });
+      return logger.time('calendar-study-data RPC', async () => {
+        const { data, error } = await (supabase.rpc as any)('get_calendar_study_data', {
+          p_user_id: user.id,
+          p_course_ids: courseIds.length > 0 ? courseIds : null,
+          p_start_date: startDate,
+          p_end_date: endDate,
+          p_include_overdue: includeOverdue,
+        });
 
-      if (error) throw error;
-      return (data || []) as CalendarStudyRow[];
+        if (error) throw error;
+        return (data || []) as CalendarStudyRow[];
+      });
     },
     enabled: !!user,
     staleTime: 60_000,

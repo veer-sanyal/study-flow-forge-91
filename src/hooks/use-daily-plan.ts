@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
+import { logger } from '@/lib/logger';
 import { useUserSettings } from '@/hooks/use-settings';
 import { Tables } from '@/integrations/supabase/types';
 
@@ -68,6 +69,7 @@ export function useDailyPlan(params: UseDailyPlanParams = {}) {
     queryFn: async (): Promise<DailyPlanData> => {
       if (!user) throw new Error('User not authenticated');
 
+      return logger.time('build_daily_plan', async () => {
       // Call the new build_daily_plan RPC
       const { data: planData, error: planError } = await supabase
         .rpc('build_daily_plan', {
@@ -149,6 +151,7 @@ export function useDailyPlan(params: UseDailyPlanParams = {}) {
         isBehind,
         estimatedMinutes,
       };
+      }); // end logger.time
     },
     enabled: (params.enabled ?? true) && !!user,
     staleTime: 2 * 60 * 1000, // 2 minutes
