@@ -258,7 +258,7 @@ export function useGenerateAndSaveQuestions() {
             })),
             correct_answer: question.choices.find((c) => c.isCorrect)?.id.toLowerCase() || "a",
             difficulty: question.difficulty,
-            source_type: "generated",
+            source: "generated",
             source_material_id: materialId || null,
             status: "draft",
             // Set answer_spec for MCQ
