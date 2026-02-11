@@ -103,30 +103,53 @@ export function DayDetailPanel({
           </div>
         )}
 
-        {/* Review topics */}
-        {hasReviews && (
-          <div className="space-y-2">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Reviews due ({reviewData.totalDue} total
-              {reviewData.overdueCount > 0 && `, ${reviewData.overdueCount} overdue`})
-            </h4>
-            <div className="space-y-1">
-              {reviewData.topTopics.map(topic => (
-                <div key={topic.topicId} className="flex items-center justify-between text-sm">
-                  <span className="truncate">{topic.topicTitle}</span>
-                  <span className="text-xs text-muted-foreground shrink-0 ml-2">
-                    {topic.dueCount} questions due
+        {/* Study Plan */}
+        {(hasReviews || (reviewData && reviewData.totalNew > 0)) && (
+          <div className="space-y-3 pt-2 border-t text-sm">
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Study Plan
+              </h4>
+              <div className="flex gap-2 text-xs">
+                {reviewData?.totalDue > 0 && (
+                  <span className="font-medium text-primary">
+                    {reviewData.totalDue} review
                   </span>
+                )}
+                {reviewData?.totalNew > 0 && (
+                  <span className="font-medium text-blue-600 dark:text-blue-400">
+                    {reviewData.totalNew} new
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              {reviewData?.topTopics.map(topic => (
+                <div key={topic.topicId} className="flex items-center justify-between p-2 rounded-md bg-muted/40 text-sm">
+                  <span className="truncate font-medium">{topic.topicTitle}</span>
+                  <div className="flex gap-2 shrink-0 text-xs">
+                    {topic.dueCount > 0 && (
+                      <Badge variant="secondary" className="h-5 px-1.5 font-normal">
+                        {topic.dueCount} review
+                      </Badge>
+                    )}
+                    {topic.newCount > 0 && (
+                      <Badge variant="outline" className="h-5 px-1.5 font-normal border-blue-200 text-blue-600 bg-blue-50/50">
+                        {topic.newCount} new
+                      </Badge>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
+
             <Button
-              size="sm"
-              className="gap-1.5 mt-2"
+              className="w-full gap-2"
               onClick={handleStartReviews}
             >
               <PlayCircle className="h-4 w-4" />
-              Start reviews for {format(dateObj, 'MMM d')}
+              Start Session ({((reviewData?.totalDue || 0) + (reviewData?.totalNew || 0))} q)
             </Button>
           </div>
         )}

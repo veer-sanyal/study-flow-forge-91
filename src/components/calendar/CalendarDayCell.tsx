@@ -47,39 +47,52 @@ export function CalendarDayCell({
         {dayNum}
       </span>
 
-      {/* Due badge */}
-      {reviewData && reviewData.totalDue > 0 && (
-        <Badge
-          variant="secondary"
-          className={cn(
-            'text-[10px] px-1 py-0 h-4 leading-tight',
-            reviewData.overdueCount > 0
-              ? 'bg-destructive/10 text-destructive border-destructive/20'
-              : 'bg-primary/10 text-primary border-primary/20',
-          )}
-        >
-          {reviewData.totalDue} due
-        </Badge>
-      )}
+      {/* Stats Badges */}
+      <div className="flex gap-1 flex-wrap mb-1">
+        {/* Review Badge */}
+        {reviewData && reviewData.totalDue > 0 && (
+          <Badge
+            variant="secondary"
+            className={cn(
+              'text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap',
+              reviewData.overdueCount > 0
+                ? 'bg-destructive/10 text-destructive border-destructive/20'
+                : 'bg-primary/10 text-primary border-primary/20',
+            )}
+          >
+            {reviewData.totalDue} review
+          </Badge>
+        )}
 
-      {/* Top topic chips (max 2 on mobile, 3 on desktop) */}
+        {/* New Content Badge */}
+        {reviewData && reviewData.totalNew > 0 && (
+          <Badge
+            variant="secondary"
+            className="text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+          >
+            {reviewData.totalNew} new
+          </Badge>
+        )}
+      </div>
+
+      {/* Top topic chips */}
       <div className="flex flex-col gap-0.5 w-full overflow-hidden">
         {reviewData?.topTopics.slice(0, 3).map((topic, i) => (
           <span
             key={topic.topicId}
             className={cn(
-              'text-[9px] sm:text-[10px] leading-tight truncate text-muted-foreground max-w-full',
+              'text-[9px] sm:text-[10px] leading-tight truncate text-muted-foreground w-full block',
               i >= 2 && 'hidden sm:block',
             )}
-            title={`${topic.topicTitle} (${topic.dueCount})`}
+            title={`${topic.topicTitle} (Reviews: ${topic.dueCount}, New: ${topic.newCount})`}
           >
             {topic.topicTitle}
           </span>
         ))}
       </div>
 
-      {/* Event dot indicator */}
-      {eventCount > 0 && (
+      {/* Event dot (only if not covered by badges) */}
+      {eventCount > 0 && (!reviewData || (reviewData.totalDue === 0 && reviewData.totalNew === 0)) && (
         <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
       )}
     </button>

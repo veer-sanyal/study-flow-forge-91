@@ -70,9 +70,15 @@ export interface ExamProjection {
 /** Aggregated review data for a single calendar day */
 export interface CalendarDayReviewData {
   date: string;           // YYYY-MM-DD
-  totalDue: number;
+  totalDue: number;       // Review items
+  totalNew: number;       // New items to study
   overdueCount: number;
-  topTopics: Array<{ topicId: string; topicTitle: string; dueCount: number }>;
+  topTopics: Array<{
+    topicId: string;
+    topicTitle: string;
+    dueCount: number;     // Review items 
+    newCount: number;     // New items
+  }>;
 }
 
 /** Sort options for the topic risk list */

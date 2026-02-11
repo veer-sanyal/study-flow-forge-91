@@ -79,11 +79,11 @@ export function useStudentCalendarEvents(filters: CalendarFilters) {
       let filteredEvents = events;
 
       if (filters.timeRange !== 'all') {
-        const rangeEnd = filters.timeRange === 'this_week' 
+        const rangeEnd = filters.timeRange === 'this_week'
           ? endOfWeek(now)
           : filters.timeRange === 'next_2_weeks'
-          ? endOfWeek(addWeeks(now, 1))
-          : addDays(now, 30); // this_month
+            ? endOfWeek(addWeeks(now, 1))
+            : addDays(now, 30); // this_month
 
         filteredEvents = events.filter(event => {
           if (!event.event_date) return true;
@@ -195,18 +195,19 @@ export function getEventTypeColor(eventType: string): string {
 
 // ---- Calendar Review Data (FSRS per-day aggregation) ----
 
-interface CalendarReviewRow {
+interface CalendarStudyRow {
   due_date: string;
   topic_id: string;
   topic_title: string;
   course_pack_id: string;
-  due_count: number;
+  status: 'review' | 'new';
+  count: number;
   is_overdue: boolean;
 }
 
 /** Pure function: aggregate raw RPC rows into a Map keyed by YYYY-MM-DD */
 export function aggregateCalendarReviewData(
-  rows: CalendarReviewRow[]
+  rows: CalendarStudyRow[]
 ): Map<string, CalendarDayReviewData> {
   const map = new Map<string, CalendarDayReviewData>();
 
@@ -214,31 +215,46 @@ export function aggregateCalendarReviewData(
     const dateKey = row.due_date;
     let entry = map.get(dateKey);
     if (!entry) {
-      entry = { date: dateKey, totalDue: 0, overdueCount: 0, topTopics: [] };
+      entry = {
+        date: dateKey,
+        totalDue: 0,
+        totalNew: 0,
+        overdueCount: 0,
+        topTopics: []
+      };
       map.set(dateKey, entry);
     }
 
-    entry.totalDue += row.due_count;
-    if (row.is_overdue) {
-      entry.overdueCount += row.due_count;
+    if (row.status === 'review') {
+      entry.totalDue += row.count;
+      if (row.is_overdue) {
+        entry.overdueCount += row.count;
+      }
+    } else {
+      entry.totalNew += row.count;
     }
 
     // Accumulate topics (will trim to top 3 after loop)
     const existing = entry.topTopics.find(t => t.topicId === row.topic_id);
     if (existing) {
-      existing.dueCount += row.due_count;
+      if (row.status === 'review') {
+        existing.dueCount += row.count;
+      } else {
+        existing.newCount += row.count;
+      }
     } else {
       entry.topTopics.push({
         topicId: row.topic_id,
         topicTitle: row.topic_title,
-        dueCount: row.due_count,
+        dueCount: row.status === 'review' ? row.count : 0,
+        newCount: row.status === 'new' ? row.count : 0,
       });
     }
   }
 
-  // Sort topics by dueCount descending and keep top 3
+  // Sort topics by total activity (due + new) descending and keep top 3
   for (const entry of map.values()) {
-    entry.topTopics.sort((a, b) => b.dueCount - a.dueCount);
+    entry.topTopics.sort((a, b) => (b.dueCount + b.newCount) - (a.dueCount + a.newCount));
     entry.topTopics = entry.topTopics.slice(0, 3);
   }
 
@@ -265,11 +281,11 @@ export function useCalendarReviewData({
   const { user } = useAuth();
 
   const query = useQuery({
-    queryKey: ['calendar-review-data', user?.id, courseIds, startDate, endDate, includeOverdue],
+    queryKey: ['calendar-study-data', user?.id, courseIds, startDate, endDate, includeOverdue],
     queryFn: async () => {
       if (!user) return [];
 
-      const { data, error } = await (supabase.rpc as any)('get_calendar_review_data', {
+      const { data, error } = await (supabase.rpc as any)('get_calendar_study_data', {
         p_user_id: user.id,
         p_course_ids: courseIds.length > 0 ? courseIds : null,
         p_start_date: startDate,
@@ -278,7 +294,7 @@ export function useCalendarReviewData({
       });
 
       if (error) throw error;
-      return (data || []) as CalendarReviewRow[];
+      return (data || []) as CalendarStudyRow[];
     },
     enabled: !!user,
     staleTime: 60_000,
