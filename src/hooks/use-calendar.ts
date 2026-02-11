@@ -5,6 +5,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { logger } from "@/lib/logger";
 import type { CalendarDayReviewData } from "@/types/progress";
 
+/**
+ * Calendar event shape.
+ *
+ * DATE CANONICAL RULE (see docs/data-model.md):
+ * `event_date` is the single source of truth for when an event occurs.
+ * `week_number` and `day_of_week` are derived display fields — a DB trigger
+ * auto-derives `day_of_week` from `event_date` on INSERT/UPDATE.
+ */
 interface CalendarEvent {
   id: string;
   title: string;

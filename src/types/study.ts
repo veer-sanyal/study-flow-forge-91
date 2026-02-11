@@ -9,7 +9,16 @@ export type DbAttempt = Tables<'attempts'>;
 export type DbSrsState = Tables<'srs_state'>;
 export type DbTopicMastery = Tables<'topic_mastery'>;
 
-// Choice type from JSONB
+/**
+ * Choice type from JSONB.
+ *
+ * ANSWER EXTRACTION (canonical rules — see docs/data-model.md):
+ * - MCQ: `choices[].isCorrect` is the source of truth (exactly one must be true).
+ *   `correct_answer` may duplicate it for convenience but is NOT authoritative for MCQ.
+ * - Non-MCQ (short_answer, numeric): `correct_answer` is the source of truth;
+ *   `choices` is null/empty.
+ * - `answer_format_enum` is DEPRECATED — do not rely on it.
+ */
 export interface QuestionChoice {
   id: string;
   text: string;

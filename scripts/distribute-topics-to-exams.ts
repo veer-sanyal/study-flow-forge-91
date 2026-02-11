@@ -51,6 +51,13 @@ async function main() {
     }
     console.log(`Updated dates for ${backfillResult} topics.`);
 
+    // 1b. Log how many topics now have last_covered_date populated
+    const { count: lastCoveredCount } = await supabase
+        .from('topics')
+        .select('id', { count: 'exact', head: true })
+        .not('last_covered_date', 'is', null);
+    console.log(`Topics with last_covered_date: ${lastCoveredCount ?? 0}`);
+
     // 2. Fetch all exams
     const { data: exams, error: examsError } = await supabase
         .from('calendar_events')

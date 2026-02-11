@@ -818,20 +818,21 @@ Now generate the analysis and return using analyze_question.`;
         questionTypeId = matchedTypeId;
         console.log(`Matched question type by name: ${analysis.questionTypeName}`);
       } else {
-        // Create new question type
+        // Taxonomy stability guard: insert new types as 'proposed' to prevent
+        // unreviewed taxonomy sprawl. See docs/data-model.md.
         const { data: newType, error: typeError } = await supabase
           .from("question_types")
           .insert({
             name: analysis.questionTypeName,
             course_pack_id: question.course_pack_id,
-            status: "active",
+            status: "proposed",
           })
           .select("id")
           .single();
 
         if (!typeError && newType) {
           questionTypeId = newType.id;
-          console.log(`Created new question type: ${analysis.questionTypeName}`);
+          console.log(`Created new question type (proposed): ${analysis.questionTypeName}`);
         }
       }
     }

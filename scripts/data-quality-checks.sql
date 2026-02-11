@@ -4,7 +4,15 @@
  * Run via Supabase SQL editor or as a script with service-role access.
  * Each query returns rows that violate the invariant — 0 rows = pass.
  *
- * Usage (from Lovable Cloud → Run SQL):
+ * CANONICAL RULES (see docs/data-model.md):
+ * - Answers: choices[].isCorrect is canonical for MCQ; correct_answer for non-MCQ.
+ *   answer_format_enum is DEPRECATED.
+ * - Dates: calendar_events.event_date is the single source of truth.
+ *   day_of_week is auto-derived via trigger.
+ * - Question types: question_format = input format (how student answers);
+ *   question_type_id = skill/variant category (what's tested).
+ *
+ * Usage (Supabase SQL editor):
  *   Copy-paste any section below and run it.
  */
 
@@ -26,7 +34,7 @@ SELECT
 FROM questions q
 WHERE q.choices IS NOT NULL
   AND jsonb_array_length(q.choices) > 0
-  AND COALESCE(q.question_format, 'mcq') = 'mcq'
+  AND COALESCE(q.question_format, 'multiple_choice') = 'multiple_choice'
   AND (
     SELECT count(*)
     FROM jsonb_array_elements(q.choices) elem
@@ -62,3 +70,22 @@ WHERE t.scheduled_week IS NOT NULL
       AND ce.event_date IS NOT NULL
       AND t.title = ANY(ce.topics_covered)
   );
+
+-- ============================================================
+-- CHECK 4: Orphaned needs_review flags (review=true but no reason)
+-- ============================================================
+-- Questions flagged for review should always have a reason.
+
+SELECT id, prompt, source_exam, needs_review_reason
+FROM questions
+WHERE needs_review = true
+  AND (needs_review_reason IS NULL OR needs_review_reason = '');
+
+-- ============================================================
+-- CHECK 5: Deprecated answer_format_enum still in use
+-- ============================================================
+-- answer_format_enum is DEPRECATED. Rows still using it should be migrated.
+
+SELECT id, prompt, answer_format_enum, question_format
+FROM questions
+WHERE answer_format_enum IS NOT NULL;

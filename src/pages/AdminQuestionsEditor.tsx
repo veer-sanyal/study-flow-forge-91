@@ -97,6 +97,7 @@ interface Question {
   topic_ids: string[];
   unmapped_topic_suggestions: string[] | null;
   needs_review: boolean;
+  needs_review_reason?: string | null;
   question_order: number | null;
   image_url: string | null;
   question_type_id: string | null;
@@ -630,6 +631,16 @@ function QuestionCard({
                   <Badge variant="secondary" className="gap-1 bg-amber-500/20 text-amber-700 dark:text-amber-300">
                     <AlertCircle className="h-3 w-3" />
                     Needs Analysis
+                  </Badge>
+                )}
+                {question.needs_review && question.needs_review_reason && (
+                  <Badge
+                    variant="secondary"
+                    className="gap-1 bg-red-500/20 text-red-700 dark:text-red-300"
+                    title={question.needs_review_reason}
+                  >
+                    <AlertCircle className="h-3 w-3" />
+                    {question.needs_review_reason.split(';')[0].trim()}
                   </Badge>
                 )}
                 {/* Status badges for generated questions */}
