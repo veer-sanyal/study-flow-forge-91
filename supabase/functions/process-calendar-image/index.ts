@@ -135,7 +135,7 @@ serve(async (req) => {
 
     const topicList = existingTopics?.map(t => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics yet";
 
-    // Call Gemini Vision API via Lovable AI Gateway
+    // Call Gemini Vision API
     const systemPrompt = `You are an expert at extracting DISTINCT TOPICS from course calendar images.
 
 Your PRIMARY goal is to extract every unique TOPIC that will be covered in the course, along with the EXACT DATE it is covered.
@@ -236,15 +236,12 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error("AI Gateway error:", response.status, errorText);
-      
+      console.error("Gemini API error:", response.status, errorText);
+
       if (response.status === 429) {
         throw new Error("Rate limit exceeded. Please try again later.");
       }
-      if (response.status === 402) {
-        throw new Error("Payment required. Please add credits to your workspace.");
-      }
-      throw new Error(`AI Gateway error: ${response.status}`);
+      throw new Error(`Gemini API error: ${response.status}`);
     }
 
     const aiResult = await response.json();
