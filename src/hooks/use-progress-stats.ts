@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { logger } from '@/lib/logger';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/use-auth';
 import {
@@ -44,13 +45,13 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
     queryKey: ['progress-stats', user?.id, courseIds, daysBack],
     queryFn: async () => {
       if (!user) return [];
-      // Type assertion needed - RPC not yet in generated types
-      const { data, error } = await (supabase.rpc as any)('get_progress_stats', {
-        p_user_id: user.id,
-        p_course_ids: courseIds.length > 0 ? courseIds : undefined,
-        p_days_back: daysBack,
-      });
-      if (error) throw error;
+      return logger.time('progress-stats RPC', async () => {
+        const { data, error } = await (supabase.rpc as any)('get_progress_stats', {
+          p_user_id: user.id,
+          p_course_ids: courseIds.length > 0 ? courseIds : undefined,
+          p_days_back: daysBack,
+        });
+        if (error) throw error;
       return (data ?? []) as Array<{
         topic_id: string;
         topic_title: string;
@@ -69,6 +70,7 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
         total_reps: number;
         total_lapses: number;
       }>;
+      });
     },
     enabled: !!user && courseIds.length > 0,
     staleTime: 60_000,
@@ -79,19 +81,20 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
     queryKey: ['review-forecast', user?.id, courseIds],
     queryFn: async () => {
       if (!user) return [];
-      // Type assertion needed - RPC not yet in generated types
-      const { data, error } = await (supabase.rpc as any)('get_review_forecast', {
-        p_user_id: user.id,
-        p_course_ids: courseIds.length > 0 ? courseIds : undefined,
-        p_days_ahead: 14,
-      });
+      return logger.time('review-forecast RPC', async () => {
+        const { data, error } = await (supabase.rpc as any)('get_review_forecast', {
+          p_user_id: user.id,
+          p_course_ids: courseIds.length > 0 ? courseIds : undefined,
+          p_days_ahead: 14,
+        });
       if (error) throw error;
-      return (data ?? []) as Array<{
-        due_date: string;
-        course_pack_id: string | null;
-        review_count: number;
-        is_overdue: boolean;
-      }>;
+        return (data ?? []) as Array<{
+          due_date: string;
+          course_pack_id: string | null;
+          review_count: number;
+          is_overdue: boolean;
+        }>;
+      });
     },
     enabled: !!user && courseIds.length > 0,
     staleTime: 60_000,
