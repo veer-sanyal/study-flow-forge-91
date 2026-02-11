@@ -357,8 +357,8 @@ serve(async (req) => {
                         },
                       },
                       difficulty: {
-                        type: "number",
-                        enum: [1, 2, 3],
+                        type: "string",
+                        enum: ["1", "2", "3"],
                         description: "1 = Basic, 2 = Intermediate, 3 = Advanced",
                       },
                       topic: {
@@ -423,7 +423,12 @@ serve(async (req) => {
     try {
       const functionCall = geminiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
       if (functionCall?.name === "generate_question" && functionCall?.args) {
-        question = functionCall.args as SimplifiedQuestion;
+        const args = functionCall.args;
+        // Gemini returns difficulty as string due to enum constraint; convert back to number
+        if (typeof args.difficulty === "string") {
+          args.difficulty = parseInt(args.difficulty, 10);
+        }
+        question = args as SimplifiedQuestion;
       } else {
         console.error("No function call found:", JSON.stringify(geminiResult));
       }
