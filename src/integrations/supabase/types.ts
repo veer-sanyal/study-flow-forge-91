@@ -667,7 +667,6 @@ export type Database = {
           is_published: boolean | null
           midterm_number: number | null
           needs_review: boolean
-          needs_review_reason: string | null
           objective_id: string | null
           parent_question_id: string | null
           prompt: string
@@ -715,7 +714,6 @@ export type Database = {
           is_published?: boolean | null
           midterm_number?: number | null
           needs_review?: boolean
-          needs_review_reason?: string | null
           objective_id?: string | null
           parent_question_id?: string | null
           prompt: string
@@ -763,7 +761,6 @@ export type Database = {
           is_published?: boolean | null
           midterm_number?: number | null
           needs_review?: boolean
-          needs_review_reason?: string | null
           objective_id?: string | null
           parent_question_id?: string | null
           prompt?: string
@@ -958,7 +955,6 @@ export type Database = {
           description: string | null
           edition_id: string | null
           id: string
-          last_covered_date: string | null
           midterm_coverage: number | null
           prerequisite_topic_ids: string[] | null
           scheduled_week: number | null
@@ -973,7 +969,6 @@ export type Database = {
           description?: string | null
           edition_id?: string | null
           id?: string
-          last_covered_date?: string | null
           midterm_coverage?: number | null
           prerequisite_topic_ids?: string[] | null
           scheduled_week?: number | null
@@ -988,7 +983,6 @@ export type Database = {
           description?: string | null
           edition_id?: string | null
           id?: string
-          last_covered_date?: string | null
           midterm_coverage?: number | null
           prerequisite_topic_ids?: string[] | null
           scheduled_week?: number | null
