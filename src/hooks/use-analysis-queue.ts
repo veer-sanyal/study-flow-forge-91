@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 import { useEffect } from "react";
 
 export interface QueuedExam {
@@ -72,7 +72,7 @@ export function useAnalysisQueue() {
 
       for (const exam of exams) {
         try {
-          const { data, error } = await supabase.functions.invoke("batch-analyze-questions", {
+          const { data, error } = await invokeEdgeFunction<{ error?: string; jobId?: string }>("batch-analyze-questions", {
             body: {
               coursePackId: exam.coursePackId,
               sourceExam: exam.sourceExam,

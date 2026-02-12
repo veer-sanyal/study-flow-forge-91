@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { EXTERNAL_SUPABASE_URL, getExternalServiceRoleKey } from "../_shared/external-db.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -12,8 +13,8 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = EXTERNAL_SUPABASE_URL;
+    const supabaseServiceKey = getExternalServiceRoleKey();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
     if (!GEMINI_API_KEY) {
@@ -429,8 +430,8 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
     try {
       const { jobId } = await req.clone().json().catch(() => ({}));
       if (jobId) {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabaseUrl = EXTERNAL_SUPABASE_URL;
+        const supabaseServiceKey = getExternalServiceRoleKey();
         const supabase = createClient(supabaseUrl, supabaseServiceKey);
         
         await supabase
