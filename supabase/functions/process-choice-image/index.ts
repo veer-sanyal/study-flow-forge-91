@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { EXTERNAL_SUPABASE_URL, getExternalServiceRoleKey } from "../_shared/external-db.ts";
+
 import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 const corsHeaders = {
@@ -20,8 +20,8 @@ serve(async (req: Request) => {
   }
 
   try {
-    const SUPABASE_URL = EXTERNAL_SUPABASE_URL;
-    const SUPABASE_SERVICE_ROLE_KEY = getExternalServiceRoleKey();
+    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 

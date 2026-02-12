@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { startOfWeek, endOfWeek, addWeeks, format, differenceInDays, parseISO, isAfter, isBefore, addDays } from "date-fns";
 import { useAuth } from "@/hooks/use-auth";
 import { logger } from "@/lib/logger";

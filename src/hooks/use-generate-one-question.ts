@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState, useCallback } from "react";
-import { supabase, invokeEdgeFunction } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import type {
   SimplifiedQuestion,
   GenerateOneQuestionResult,
@@ -33,7 +33,7 @@ interface GenerateOneParams {
 export function useGenerateOneQuestion() {
   return useMutation<GenerateOneQuestionResult, Error, GenerateOneParams>({
     mutationFn: async ({ lectureContent, materialId, existingQuestions }) => {
-      const { data, error } = await invokeEdgeFunction<GenerateOneQuestionResult>(
+      const { data, error } = await supabase.functions.invoke(
         "generate-one-question",
         {
           body: {
@@ -148,7 +148,7 @@ export function useGenerateMultipleQuestions() {
 
       for (let i = 0; i < count; i++) {
         try {
-          const { data, error } = await invokeEdgeFunction<GenerateOneQuestionResult>(
+          const { data, error } = await supabase.functions.invoke(
             "generate-one-question",
             {
               body: {

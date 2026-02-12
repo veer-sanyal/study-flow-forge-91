@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, useCallback } from "react";
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 
 type Theme = "light" | "dark";
 

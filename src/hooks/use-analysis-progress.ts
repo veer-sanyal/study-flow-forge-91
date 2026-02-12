@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase, invokeEdgeFunction } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 
 export interface AnalysisJob {
   id: string;
@@ -75,7 +75,7 @@ export function useAnalysisProgress() {
       sourceExam: string;
       questionIds: string[];
     }) => {
-      const { data, error } = await invokeEdgeFunction<{ error?: string }>("batch-analyze-questions", {
+      const { data, error } = await supabase.functions.invoke("batch-analyze-questions", {
         body: params,
       });
 

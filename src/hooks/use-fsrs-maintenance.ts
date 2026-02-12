@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from './use-auth';
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Hook that runs FSRS maintenance on app load/reload
