@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { supabase, invokeEdgeFunction } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import type { Tables } from "@/integrations/supabase/types";
 import { formatExamType } from "@/lib/examUtils";
 
@@ -225,7 +225,7 @@ export function useProcessJob() {
     mutationFn: async ({ jobId, kind = "pdf" }: { jobId: string; kind?: IngestionKind }) => {
       const functionName = kind === "calendar" ? "process-calendar-image" : "process-exam-pdf";
 
-      const { data, error } = await invokeEdgeFunction(functionName, {
+      const { data, error } = await supabase.functions.invoke(functionName, {
         body: { jobId },
       });
 

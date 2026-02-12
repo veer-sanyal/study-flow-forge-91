@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from "@/lib/supabase";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from '@/hooks/use-auth';
 import { useUserSettings } from '@/hooks/use-settings';
 import { useEnrollments } from '@/hooks/use-enrollments';

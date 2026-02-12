@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { EXTERNAL_SUPABASE_URL, getExternalServiceRoleKey } from "../_shared/external-db.ts";
+
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -20,8 +20,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = EXTERNAL_SUPABASE_URL;
-    const supabaseServiceKey = getExternalServiceRoleKey();
+    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+    const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify user is admin
