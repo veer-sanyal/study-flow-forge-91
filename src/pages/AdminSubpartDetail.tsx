@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -153,7 +153,7 @@ export default function AdminSubpartDetail() {
       const processedPath = `subparts/${questionId}_${subpartId}_${Date.now()}_processed.png`;
 
       try {
-        const { data: processData, error: processError } = await supabase.functions.invoke(
+        const { data: processData, error: processError } = await invokeEdgeFunction<{ processedUrl?: string }>(
           "process-image-background",
           {
             body: {

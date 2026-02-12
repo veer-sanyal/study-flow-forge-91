@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 import type { Tables, Json } from "@/integrations/supabase/types";
 
 type Question = Tables<"questions">;
@@ -246,7 +246,7 @@ export function useUploadQuestionImage() {
 
       // Process the image to remove background
       try {
-        const { data: processData, error: processError } = await supabase.functions.invoke(
+        const { data: processData, error: processError } = await invokeEdgeFunction<{ processedUrl?: string }>(
           'process-question-image',
           {
             body: { imageUrl: publicUrl, questionId }

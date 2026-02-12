@@ -1,5 +1,5 @@
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 
 /**
  * Hook for uploading and processing choice images.
@@ -24,7 +24,7 @@ export function useUploadChoiceImage() {
 
       // Process the image to remove background
       try {
-        const { data: processData, error: processError } = await supabase.functions.invoke(
+        const { data: processData, error: processError } = await invokeEdgeFunction<{ processedUrl?: string }>(
           'process-choice-image',
           {
             body: { imageUrl: publicUrl, choiceId }

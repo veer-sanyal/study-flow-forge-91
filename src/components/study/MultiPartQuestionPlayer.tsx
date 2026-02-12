@@ -15,7 +15,7 @@ import { GuideMePlayer } from "./GuideMePlayer";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { StudyQuestion, StudySubpart, SubpartResult } from "@/types/study";
 import { generateGuideStepsFromSolution, GuideMe } from "@/types/guide";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 import { ChevronRight, SkipForward, Lightbulb, Loader2, Compass, ChevronDown, ChevronUp } from "lucide-react";
 
 interface MultiPartQuestionPlayerProps {
@@ -155,7 +155,7 @@ export function MultiPartQuestionPlayer({
       setIsGrading(true);
 
       try {
-        const { data, error } = await supabase.functions.invoke("grade-answer", {
+        const { data, error } = await invokeEdgeFunction<{ isCorrect: boolean; score: number; feedback: string }>("grade-answer", {
           body: {
             questionPrompt: question.prompt,
             subpartPrompt: currentSubpart.prompt,

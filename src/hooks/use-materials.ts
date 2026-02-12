@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/lib/supabase";
+import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 import type { CourseMaterial, CourseEdition, MaterialChunk, Objective, MaterialType } from "@/types/materials";
 
 // =====================================================
@@ -436,7 +436,7 @@ export function useAnalyzeMaterial() {
 
   return useMutation({
     mutationFn: async (materialId: string) => {
-      const { error } = await supabase.functions.invoke('process-exam-pdf', {
+      const { error } = await invokeEdgeFunction('process-exam-pdf', {
         body: { materialId }
       });
       if (error) throw error;
