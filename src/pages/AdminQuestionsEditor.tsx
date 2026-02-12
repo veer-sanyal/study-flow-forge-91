@@ -1,6 +1,6 @@
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { 
+import {
   ChevronLeft,
   ChevronRight,
   Check,
@@ -157,11 +157,11 @@ function useQuestionsForExam(courseId: string, sourceExam: string) {
       const { data, error } = await query.order("question_order", { ascending: true, nullsFirst: false });
 
       if (error) throw error;
-      
+
       return data.map((q) => ({
         ...q,
-        choices: Array.isArray(q.choices) 
-          ? (q.choices as unknown as QuestionChoice[]) 
+        choices: Array.isArray(q.choices)
+          ? (q.choices as unknown as QuestionChoice[])
           : null,
         solution_steps: Array.isArray(q.solution_steps)
           ? (q.solution_steps as string[])
@@ -190,7 +190,7 @@ function useIngestionJobForExam(courseId: string, sourceExam: string) {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      
+
       // Find job that matches this source_exam
       const matchingJob = data?.find(job => {
         const parts: string[] = [];
@@ -203,7 +203,7 @@ function useIngestionJobForExam(courseId: string, sourceExam: string) {
         }
         return parts.join(" ") === sourceExam;
       });
-      
+
       return matchingJob || null;
     },
     enabled: !!courseId && !!sourceExam,
@@ -213,18 +213,18 @@ function useIngestionJobForExam(courseId: string, sourceExam: string) {
 // Create ingestion job for legacy exams (exams created without PDF ingestion)
 function useCreateLegacyIngestionJob() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
-    mutationFn: async ({ 
-      coursePackId, 
-      sourceExam 
-    }: { 
-      coursePackId: string; 
+    mutationFn: async ({
+      coursePackId,
+      sourceExam
+    }: {
+      coursePackId: string;
       sourceExam: string;
     }) => {
       // Parse the exam name to extract metadata
       const parsed = parseExamName(sourceExam);
-      
+
       // Map exam type to storage format
       let examType: string | null = null;
       if (parsed.examType === "Midterm" && parsed.midtermNumber) {
@@ -232,7 +232,7 @@ function useCreateLegacyIngestionJob() {
       } else if (parsed.examType === "Final") {
         examType = "f";
       }
-      
+
       const { data, error } = await supabase
         .from("ingestion_jobs")
         .insert({
@@ -249,7 +249,7 @@ function useCreateLegacyIngestionJob() {
         })
         .select()
         .single();
-        
+
       if (error) throw error;
       return data;
     },
@@ -264,7 +264,7 @@ function useUpdateQuestion() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, ...updates }: { id: string; [key: string]: unknown }) => {
+    mutationFn: async ({ id, ...updates }: { id: string;[key: string]: unknown }) => {
       const { data, error } = await supabase
         .from("questions")
         .update(updates as Record<string, unknown>)
@@ -332,10 +332,10 @@ function useAnalyzeQuestion() {
 }
 
 // Guide Me Step Card
-function GuideMeStepCard({ 
-  step, 
-  stepIndex 
-}: { 
+function GuideMeStepCard({
+  step,
+  stepIndex
+}: {
   step: {
     stepNumber?: number;
     prompt?: string;
@@ -349,7 +349,7 @@ function GuideMeStepCard({
   const [revealedHints, setRevealedHints] = useState(0);
   const [showExplanation, setShowExplanation] = useState(false);
   const [showKeyTakeaway, setShowKeyTakeaway] = useState(false);
-  
+
   const totalHints = step.hints?.length || 0;
 
   return (
@@ -357,25 +357,24 @@ function GuideMeStepCard({
       <div className="px-4 py-3 bg-primary/10 border-b flex items-center gap-2">
         <Badge variant="default" className="text-xs">Step {step.stepNumber || stepIndex + 1}</Badge>
       </div>
-      
+
       <div className="p-4 border-b bg-card">
         <div className="prose prose-sm dark:prose-invert">
           <MathRenderer content={step.prompt || ''} />
         </div>
       </div>
-      
+
       {step.choices && step.choices.length > 0 && (
         <div className="p-4 border-b bg-muted/30">
           <div className="text-xs font-medium text-muted-foreground mb-2">Choices</div>
           <div className="space-y-1.5">
             {step.choices.map((choice) => (
-              <div 
-                key={choice.id} 
-                className={`flex items-center gap-2 text-sm p-2 rounded ${
-                  choice.isCorrect 
-                    ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30' 
+              <div
+                key={choice.id}
+                className={`flex items-center gap-2 text-sm p-2 rounded ${choice.isCorrect
+                    ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30'
                     : 'bg-background text-muted-foreground border border-transparent'
-                }`}
+                  }`}
               >
                 {/* Extract just the first letter from IDs like "a_correct" */}
                 <span className="font-medium w-6">{choice.id.charAt(0).toUpperCase()}.</span>
@@ -386,7 +385,7 @@ function GuideMeStepCard({
           </div>
         </div>
       )}
-      
+
       {totalHints > 0 && (
         <div className="p-4 border-b bg-blue-500/5">
           <div className="flex items-center justify-between mb-3">
@@ -397,9 +396,9 @@ function GuideMeStepCard({
               </span>
             </div>
             {revealedHints < totalHints && (
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 className="h-7 text-xs gap-1 border-blue-500/30 text-blue-600 hover:bg-blue-500/10"
                 onClick={() => setRevealedHints(prev => prev + 1)}
               >
@@ -424,7 +423,7 @@ function GuideMeStepCard({
           )}
         </div>
       )}
-      
+
       {step.explanation && (
         <div className="p-4 border-b bg-amber-500/5">
           <div className="flex items-center justify-between mb-2">
@@ -432,9 +431,9 @@ function GuideMeStepCard({
               <MessageSquare className="h-4 w-4 text-amber-600" />
               <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Explanation</span>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="h-7 text-xs gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
               onClick={() => setShowExplanation(!showExplanation)}
             >
@@ -449,7 +448,7 @@ function GuideMeStepCard({
           )}
         </div>
       )}
-      
+
       {step.keyTakeaway && (
         <div className="p-4 bg-green-500/5">
           <div className="flex items-center justify-between mb-2">
@@ -457,9 +456,9 @@ function GuideMeStepCard({
               <BookOpen className="h-4 w-4 text-green-600" />
               <span className="text-xs font-medium text-green-700 dark:text-green-400">Key Takeaway</span>
             </div>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               className="h-7 text-xs gap-1 border-green-500/30 text-green-600 hover:bg-green-500/10"
               onClick={() => setShowKeyTakeaway(!showKeyTakeaway)}
             >
@@ -494,7 +493,7 @@ function QuestionCard({
   onReject,
   onPublish,
   isAnalyzing,
-}: { 
+}: {
   question: Question;
   index: number;
   topics: Map<string, string>;
@@ -519,7 +518,7 @@ function QuestionCard({
     }
     return [];
   };
-  
+
   const guideSteps = getGuideSteps(question.guide_me_steps);
   const hasGuideMe = guideSteps.length > 0;
   const needsAnalysis = !question.correct_answer || !hasGuideMe;
@@ -560,12 +559,12 @@ function QuestionCard({
     if (!guideMeSteps) return { steps: [], methodSummary: null };
     if (Array.isArray(guideMeSteps)) return { steps: guideMeSteps, methodSummary: null };
     if (typeof guideMeSteps === 'object') {
-      const data = guideMeSteps as { 
-        steps?: unknown[]; 
+      const data = guideMeSteps as {
+        steps?: unknown[];
         methodSummary?: { bullets?: string[]; proTip?: string };
       };
-      return { 
-        steps: data.steps || [], 
+      return {
+        steps: data.steps || [],
         methodSummary: data.methodSummary || null,
       };
     }
@@ -576,14 +575,13 @@ function QuestionCard({
 
   return (
     <motion.div variants={staggerItem}>
-      <Card 
-        className={`relative transition-all ${
-          isDragging 
-            ? 'border-primary border-2 bg-primary/5' 
-            : needsAnalysis 
-              ? 'border-amber-500/50 bg-amber-500/5' 
+      <Card
+        className={`relative transition-all ${isDragging
+            ? 'border-primary border-2 bg-primary/5'
+            : needsAnalysis
+              ? 'border-amber-500/50 bg-amber-500/5'
               : 'border-green-500/30 bg-green-500/5'
-        }`}
+          }`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -673,18 +671,18 @@ function QuestionCard({
               {/* Approve/Reject buttons for draft questions */}
               {question.status === 'draft' && (
                 <>
-                  <Button 
-                    variant="default" 
-                    size="sm" 
+                  <Button
+                    variant="default"
+                    size="sm"
                     className="gap-1 bg-green-600 hover:bg-green-700"
                     onClick={onApprove}
                   >
                     <Check className="h-4 w-4" />
                     Approve
                   </Button>
-                  <Button 
-                    variant="destructive" 
-                    size="sm" 
+                  <Button
+                    variant="destructive"
+                    size="sm"
                     className="gap-1"
                     onClick={onReject}
                   >
@@ -695,9 +693,9 @@ function QuestionCard({
               )}
               {/* Publish button for approved questions */}
               {question.status === 'approved' && (
-                <Button 
-                  variant={question.is_published ? "outline" : "default"} 
-                  size="sm" 
+                <Button
+                  variant={question.is_published ? "outline" : "default"}
+                  size="sm"
                   className="gap-1"
                   onClick={onPublish}
                 >
@@ -714,9 +712,9 @@ function QuestionCard({
                   )}
                 </Button>
               )}
-              <Button 
-                variant={needsAnalysis ? "default" : "outline"} 
-                size="sm" 
+              <Button
+                variant={needsAnalysis ? "default" : "outline"}
+                size="sm"
                 className="gap-1"
                 onClick={onAnalyze}
                 disabled={isAnalyzing}
@@ -738,16 +736,16 @@ function QuestionCard({
                 className="hidden"
                 onChange={handleFileChange}
               />
-              <Button 
-                variant="ghost" 
+              <Button
+                variant="ghost"
                 size="icon"
                 onClick={() => fileInputRef.current?.click()}
               >
                 <Upload className="h-4 w-4" />
               </Button>
-              <Button 
-                variant="ghost" 
-                size="icon" 
+              <Button
+                variant="ghost"
+                size="icon"
                 className="text-destructive hover:text-destructive"
                 onClick={onDelete}
               >
@@ -764,8 +762,8 @@ function QuestionCard({
           {/* Image */}
           {question.image_url && (
             <div className="relative group max-w-sm mx-auto">
-              <QuestionImage 
-                src={question.image_url} 
+              <QuestionImage
+                src={question.image_url}
                 alt="Question diagram"
               />
               <Button
@@ -785,17 +783,15 @@ function QuestionCard({
               {question.choices.map((choice) => (
                 <div
                   key={choice.id}
-                  className={`flex items-start gap-3 p-4 rounded-lg border ${
-                    choice.isCorrect 
-                      ? 'bg-green-500/10 border-green-500/50' 
+                  className={`flex items-start gap-3 p-4 rounded-lg border ${choice.isCorrect
+                      ? 'bg-green-500/10 border-green-500/50'
                       : 'bg-muted/30 border-border'
-                  }`}
+                    }`}
                 >
-                  <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium flex-shrink-0 ${
-                    choice.isCorrect
+                  <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium flex-shrink-0 ${choice.isCorrect
                       ? 'bg-green-500 text-white'
                       : 'bg-muted text-muted-foreground'
-                  }`}>
+                    }`}>
                     {choice.isCorrect ? <Check className="h-4 w-4" /> : choice.id.toUpperCase()}
                   </div>
                   <div className="flex-1 pt-1">
@@ -918,7 +914,7 @@ function QuestionCard({
                 }>).map((step, idx) => (
                   <GuideMeStepCard key={idx} step={step} stepIndex={idx} />
                 ))}
-                
+
                 {guideData.methodSummary?.bullets && guideData.methodSummary.bullets.length > 0 && (
                   <div className="rounded-lg border bg-primary/5 p-4 space-y-3">
                     <div className="flex items-center gap-2">
@@ -1046,9 +1042,8 @@ function EditQuestionDialog({
             <div className="space-y-2">
               <Label>Question Image</Label>
               <div
-                className={`border-2 border-dashed rounded-lg p-4 transition-colors cursor-pointer ${
-                  isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
-                }`}
+                className={`border-2 border-dashed rounded-lg p-4 transition-colors cursor-pointer ${isDragging ? 'border-primary bg-primary/10' : 'border-border hover:border-primary/50'
+                  }`}
                 onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
                 onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
                 onDrop={handleDrop}
@@ -1069,8 +1064,8 @@ function EditQuestionDialog({
                 ) : editedQuestion.image_url ? (
                   <div className="space-y-3">
                     <div className="relative group">
-                      <QuestionImage 
-                        src={editedQuestion.image_url} 
+                      <QuestionImage
+                        src={editedQuestion.image_url}
                         alt="Question diagram"
                         className="max-w-sm mx-auto"
                       />
@@ -1101,7 +1096,7 @@ function EditQuestionDialog({
                 )}
               </div>
             </div>
-            
+
             {/* Prompt */}
             <div className="space-y-2">
               <Label>Question Prompt</Label>
@@ -1122,9 +1117,8 @@ function EditQuestionDialog({
               {editedQuestion.choices?.map((choice, idx) => (
                 <div key={choice.id} className="space-y-2 p-3 rounded-lg border bg-muted/30">
                   <div className="flex items-center gap-2">
-                    <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${
-                      choice.isCorrect ? 'bg-success text-success-foreground' : 'bg-muted'
-                    }`}>
+                    <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-medium ${choice.isCorrect ? 'bg-success text-success-foreground' : 'bg-muted'
+                      }`}>
                       {choice.id.toUpperCase()}
                     </div>
                     <Input
@@ -1152,7 +1146,7 @@ function EditQuestionDialog({
                       {choice.isCorrect ? <Check className="h-4 w-4" /> : "Set Correct"}
                     </Button>
                   </div>
-                  
+
                   {/* Choice Image Section */}
                   <div className="ml-10 flex items-center gap-2">
                     <input
@@ -1180,7 +1174,7 @@ function EditQuestionDialog({
                         }
                       }}
                     />
-                    
+
                     {choice.imageUrl ? (
                       <div className="flex items-center gap-2">
                         <div className="border rounded p-1 bg-background">
@@ -1326,7 +1320,7 @@ export default function AdminQuestionsEditor() {
   const { courseId, examName } = useParams<{ courseId: string; examName: string }>();
   const navigate = useNavigate();
   const decodedExamName = decodeURIComponent(examName || "");
-  
+
   const { data: course } = useCoursePack(courseId!);
   const { data: questions, isLoading } = useQuestionsForExam(courseId!, decodedExamName);
   const { data: ingestionJob } = useIngestionJobForExam(courseId!, decodedExamName);
@@ -1384,7 +1378,7 @@ export default function AdminQuestionsEditor() {
 
   const runBatchAnalysis = async (questionsToAnalyze: Question[]) => {
     if (!courseId || !decodedExamName) return;
-    
+
     setIsAnalyzingAll(true);
     setAnalyzeAllProgress({ current: 0, total: questionsToAnalyze.length });
 
@@ -1394,7 +1388,7 @@ export default function AdminQuestionsEditor() {
         sourceExam: decodedExamName,
         questionIds: questionsToAnalyze.map(q => q.id),
       });
-      
+
       toast.success(`Started batch analysis of ${questionsToAnalyze.length} questions. Progress will continue even if you close this page.`);
     } catch (error) {
       toast.error(`Failed to start batch analysis: ${error instanceof Error ? error.message : "Unknown error"}`);
@@ -1434,8 +1428,8 @@ export default function AdminQuestionsEditor() {
 
   // Approve a draft question
   const handleApprove = (questionId: string) => {
-    updateQuestion.mutate({ 
-      id: questionId, 
+    updateQuestion.mutate({
+      id: questionId,
       status: 'approved',
       needs_review: false
     });
@@ -1443,8 +1437,8 @@ export default function AdminQuestionsEditor() {
 
   // Reject a draft question
   const handleReject = (questionId: string) => {
-    updateQuestion.mutate({ 
-      id: questionId, 
+    updateQuestion.mutate({
+      id: questionId,
       status: 'rejected',
       needs_review: false
     });
@@ -1452,8 +1446,8 @@ export default function AdminQuestionsEditor() {
 
   // Publish an approved question
   const handlePublishQuestion = (questionId: string, currentlyPublished: boolean) => {
-    updateQuestion.mutate({ 
-      id: questionId, 
+    updateQuestion.mutate({
+      id: questionId,
       is_published: !currentlyPublished
     });
   };
@@ -1461,9 +1455,9 @@ export default function AdminQuestionsEditor() {
   const handleTogglePublish = async () => {
     if (ingestionJob) {
       // Existing ingestion job - toggle its publish state
-      publishExam.mutate({ 
-        jobId: ingestionJob.id, 
-        isPublished: !ingestionJob.is_published 
+      publishExam.mutate({
+        jobId: ingestionJob.id,
+        isPublished: !ingestionJob.is_published
       });
     } else if (courseId && decodedExamName) {
       // No ingestion job exists - create one for this legacy exam and publish it
@@ -1491,14 +1485,14 @@ export default function AdminQuestionsEditor() {
           <div className="container max-w-5xl py-4">
             {/* Breadcrumb */}
             <div className="flex items-center gap-2 text-sm mb-2">
-              <Link 
-                to="/admin/questions" 
+              <Link
+                to="/admin/questions"
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
                 Courses
               </Link>
               <ChevronRight className="h-4 w-4 text-muted-foreground" />
-              <Link 
+              <Link
                 to={`/admin/questions/${courseId}`}
                 className="text-muted-foreground hover:text-foreground transition-colors"
               >
@@ -1511,8 +1505,8 @@ export default function AdminQuestionsEditor() {
             {/* Title and actions */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="icon"
                   onClick={() => navigate(`/admin/questions/${courseId}`)}
                 >
@@ -1539,8 +1533,8 @@ export default function AdminQuestionsEditor() {
               <div className="flex items-center gap-2">
                 {/* Analyze All / Re-analyze All button */}
                 {needsAnalysisCount > 0 ? (
-                  <Button 
-                    variant="default" 
+                  <Button
+                    variant="default"
                     size="sm"
                     onClick={handleAnalyzeAll}
                     disabled={isAnalyzingAll}
@@ -1559,8 +1553,8 @@ export default function AdminQuestionsEditor() {
                     )}
                   </Button>
                 ) : questions && questions.length > 0 && (
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={handleReanalyzeAll}
                     disabled={isAnalyzingAll}
@@ -1581,8 +1575,8 @@ export default function AdminQuestionsEditor() {
                 )}
 
                 {/* Publish toggle - always show, create ingestion job if needed */}
-                <Button 
-                  variant={ingestionJob?.is_published ? "secondary" : "outline"} 
+                <Button
+                  variant={ingestionJob?.is_published ? "secondary" : "outline"}
                   size="sm"
                   onClick={handleTogglePublish}
                   disabled={needsAnalysisCount > 0 || publishExam.isPending || createLegacyJob.isPending}

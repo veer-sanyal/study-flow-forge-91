@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { useEffect } from "react";
 
 export interface QueuedExam {
@@ -88,9 +88,9 @@ export function useAnalysisQueue() {
             results.push({ sourceExam: exam.sourceExam, jobId: data.jobId });
           }
         } catch (err) {
-          results.push({ 
-            sourceExam: exam.sourceExam, 
-            error: err instanceof Error ? err.message : "Unknown error" 
+          results.push({
+            sourceExam: exam.sourceExam,
+            error: err instanceof Error ? err.message : "Unknown error"
           });
         }
       }

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -151,14 +151,14 @@ export default function AdminSubpartDetail() {
 
       // Process image for background removal
       const processedPath = `subparts/${questionId}_${subpartId}_${Date.now()}_processed.png`;
-      
+
       try {
         const { data: processData, error: processError } = await supabase.functions.invoke(
           "process-image-background",
           {
-            body: { 
-              imageUrl: originalUrl, 
-              outputPath: processedPath 
+            body: {
+              imageUrl: originalUrl,
+              outputPath: processedPath
             },
           }
         );
@@ -204,8 +204,8 @@ export default function AdminSubpartDetail() {
             prompt,
             points,
             correctAnswer: correctAnswer || null,
-            solutionSteps: solutionSteps.trim() 
-              ? solutionSteps.split(/\n\n+/).filter(Boolean) 
+            solutionSteps: solutionSteps.trim()
+              ? solutionSteps.split(/\n\n+/).filter(Boolean)
               : null,
             imageUrl: imageUrl || null,
           };

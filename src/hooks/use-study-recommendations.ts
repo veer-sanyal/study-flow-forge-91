@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 import { FocusPreset } from './use-focus';
 
@@ -36,7 +36,7 @@ export function useWeakAreas(courseIds: string[]) {
       }
 
       const { data: topicData, error: topicError } = await topicQuery;
-      
+
       const weakTopics: WeakArea[] = [];
       if (!topicError && topicData) {
         topicData.forEach((tm: any) => {
@@ -180,7 +180,7 @@ export function useTodayPlanStats(dailyGoal: number, dailyPlanMode: 'single_cour
       }
 
       const remaining = Math.max(0, dailyGoal - completedQuestions);
-      
+
       return {
         totalQuestions: dailyGoal,
         completedQuestions,
@@ -211,9 +211,9 @@ export function useRecommendedPresets(courseIds: string[], enrolledCourseIds: st
   if (upcomingExams && upcomingExams.length > 0) {
     const nextExam = upcomingExams.find(e => e.daysUntil !== null && e.daysUntil >= 0);
     if (nextExam) {
-      const daysText = nextExam.daysUntil === 0 ? 'today' : 
-                       nextExam.daysUntil === 1 ? 'tomorrow' : 
-                       `in ${nextExam.daysUntil} days`;
+      const daysText = nextExam.daysUntil === 0 ? 'today' :
+        nextExam.daysUntil === 1 ? 'tomorrow' :
+          `in ${nextExam.daysUntil} days`;
       presets.push({
         id: 'upcoming-exam',
         label: nextExam.title,

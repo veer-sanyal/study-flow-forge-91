@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import type { Tables } from "@/integrations/supabase/types";
 import { formatExamType } from "@/lib/examUtils";
 
@@ -40,15 +40,15 @@ export function useIngestionJobs(coursePackId?: string, kind?: IngestionKind) {
         .from("ingestion_jobs")
         .select("*, course_packs(title)")
         .order("created_at", { ascending: false });
-      
+
       if (coursePackId) {
         query = query.eq("course_pack_id", coursePackId);
       }
-      
+
       if (kind) {
         query = query.eq("kind", kind);
       }
-      
+
       const { data, error } = await query;
       if (error) throw error;
       return data as (IngestionJob & { course_packs: { title: string } | null })[];
@@ -70,7 +70,7 @@ export function useIngestionProgress() {
         .select("*, course_packs(title)")
         .eq("status", "processing")
         .order("created_at", { ascending: false });
-      
+
       if (error) throw error;
       return data as (IngestionJob & { course_packs: { title: string } | null })[];
     },
@@ -91,7 +91,7 @@ export function useIngestionProgress() {
         (payload) => {
           queryClient.invalidateQueries({ queryKey: ["ingestion-jobs-processing"] });
           queryClient.invalidateQueries({ queryKey: ["ingestion-jobs"] });
-          
+
           if (payload.new && (payload.new as any).status === "processing") {
             setActiveJob(payload.new as IngestionJob);
           } else if (payload.new && ["completed", "failed"].includes((payload.new as any).status)) {
@@ -139,7 +139,7 @@ export function useCreateIngestionJob() {
     }) => {
       // Determine storage bucket based on kind
       const bucket = kind === "calendar" ? "calendar-images" : "exam-pdfs";
-      
+
       // Generate unique file path
       const timestamp = Date.now();
       const sanitizedName = file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
@@ -160,11 +160,11 @@ export function useCreateIngestionJob() {
       // Upload answer key if provided
       let answerKeyPath: string | null = null;
       let answerKeyFileName: string | null = null;
-      
+
       if (answerKeyFile) {
         const sanitizedAnswerKeyName = answerKeyFile.name.replace(/[^a-zA-Z0-9.-]/g, "_");
         answerKeyPath = `${coursePackId}/${timestamp}_answerkey_${sanitizedAnswerKeyName}`;
-        
+
         const { error: answerKeyUploadError } = await supabase.storage
           .from(bucket)
           .upload(answerKeyPath, answerKeyFile, {
@@ -177,7 +177,7 @@ export function useCreateIngestionJob() {
           await supabase.storage.from(bucket).remove([filePath]);
           throw new Error(`Failed to upload answer key: ${answerKeyUploadError.message}`);
         }
-        
+
         answerKeyFileName = answerKeyFile.name;
       }
 
@@ -224,7 +224,7 @@ export function useProcessJob() {
   return useMutation({
     mutationFn: async ({ jobId, kind = "pdf" }: { jobId: string; kind?: IngestionKind }) => {
       const functionName = kind === "calendar" ? "process-calendar-image" : "process-exam-pdf";
-      
+
       const { data, error } = await supabase.functions.invoke(functionName, {
         body: { jobId },
       });
@@ -251,7 +251,7 @@ export function useDeleteJob() {
       // Determine storage bucket based on kind
       const kind = (job as any).kind as IngestionKind;
       const bucket = kind === "calendar" ? "calendar-images" : "exam-pdfs";
-      
+
       // Delete file from storage
       await supabase.storage.from(bucket).remove([job.file_path]);
 
@@ -325,7 +325,7 @@ export function useUpdateExamDetails() {
     mutationFn: async ({ jobId, examYear, examSemester, examType, coursePackId }: UpdateExamDetailsParams) => {
       // Determine is_final from simple exam type (f = final)
       const isFinal = examType === "f";
-      
+
       // Update job details
       const { error: jobError } = await supabase
         .from("ingestion_jobs")
@@ -378,15 +378,15 @@ export function useUpdateExamDetails() {
 
         if (questions && questions.length > 0) {
           // Update source_exam and midterm_number for all questions in this course pack
-          const updateData: { source_exam: string; midterm_number?: number | null } = { 
-            source_exam: newSourceExam 
+          const updateData: { source_exam: string; midterm_number?: number | null } = {
+            source_exam: newSourceExam
           };
-          
+
           // For non-final exams, also update midterm_number
           if (!isFinal && midtermNumber !== null) {
             updateData.midterm_number = midtermNumber;
           }
-          
+
           await supabase
             .from("questions")
             .update(updateData)
@@ -431,11 +431,11 @@ export function useCalendarEvents(coursePackId?: string) {
         .select("*")
         .order("week_number", { ascending: true })
         .order("event_date", { ascending: true });
-      
+
       if (coursePackId) {
         query = query.eq("course_pack_id", coursePackId);
       }
-      
+
       const { data, error } = await query;
       if (error) throw error;
       return data;
@@ -466,11 +466,11 @@ export function useUpdateCalendarEvent() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ 
-      id, 
-      ...updates 
-    }: { 
-      id: string; 
+    mutationFn: async ({
+      id,
+      ...updates
+    }: {
+      id: string;
       needs_review?: boolean;
       title?: string;
       description?: string;
@@ -608,9 +608,9 @@ export function useGenerateTopicsFromEvents() {
 
       // Group events by section number OR base topic name to consolidate multi-day topics
       // This ensures topics like "Interest Rates and Bond Valuation - Part 1" and "- Part 2" become ONE topic
-      const consolidatedTopics = new Map<string, { 
-        title: string; 
-        description: string; 
+      const consolidatedTopics = new Map<string, {
+        title: string;
+        description: string;
         scheduled_week: number;
         event_date: string | null;
         partCount: number; // Track how many parts/days this topic spans
@@ -620,14 +620,14 @@ export function useGenerateTopicsFromEvents() {
         const normalizedTitle = event.title.trim();
         const section = extractSectionNumber(normalizedTitle);
         const baseTitle = extractBaseTopicName(normalizedTitle);
-        
+
         // Use section number as key if available, otherwise use base title (lowercase for consistency)
         const consolidationKey = section || baseTitle.toLowerCase();
-        
+
         // Skip if this section/base already exists in the database
         if (section && existingSections.has(section)) continue;
         if (!section && existingBaseTitles.has(baseTitle.toLowerCase())) continue;
-        
+
         // If we haven't seen this topic yet, add it
         if (!consolidatedTopics.has(consolidationKey)) {
           consolidatedTopics.set(consolidationKey, {

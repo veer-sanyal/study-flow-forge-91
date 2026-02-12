@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -85,7 +85,7 @@ function useTopicsWithCountsForCourse(coursePackId: string) {
 
       // Group by midterm
       const groupMap = new Map<number | null, TopicWithCount[]>();
-      
+
       topicsWithCounts.forEach((topic) => {
         const key = topic.midtermCoverage;
         if (!groupMap.has(key)) {
@@ -145,14 +145,14 @@ function useTypesWithCountsForCourse(coursePackId: string) {
 
       // Count per type and determine primary midterm
       const typeCountMap = new Map<string, Map<number | null, number>>();
-      
+
       questions?.forEach((q) => {
         if (!q.question_type_id) return;
-        
+
         if (!typeCountMap.has(q.question_type_id)) {
           typeCountMap.set(q.question_type_id, new Map());
         }
-        
+
         const midtermMap = typeCountMap.get(q.question_type_id)!;
         const midterm = q.midterm_number;
         midtermMap.set(midterm, (midtermMap.get(midterm) || 0) + 1);
@@ -163,7 +163,7 @@ function useTypesWithCountsForCourse(coursePackId: string) {
         const midtermCounts = typeCountMap.get(type.id);
         let primaryMidterm: number | null = null;
         let totalCount = 0;
-        
+
         if (midtermCounts) {
           let maxCount = 0;
           midtermCounts.forEach((count, midterm) => {
@@ -185,7 +185,7 @@ function useTypesWithCountsForCourse(coursePackId: string) {
 
       // Group by midterm
       const groupMap = new Map<number | null, TypeWithCount[]>();
-      
+
       typesWithCounts.forEach((type) => {
         const key = type.midtermNumber;
         if (!groupMap.has(key)) {

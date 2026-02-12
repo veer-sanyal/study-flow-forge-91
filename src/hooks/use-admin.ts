@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { useAuth } from "./use-auth";
 import type { Tables } from "@/integrations/supabase/types";
 
@@ -50,7 +50,7 @@ export function useCoursePacks() {
         .from("course_packs")
         .select("*")
         .order("title");
-      
+
       if (error) throw error;
       return data as CoursePack[];
     },
@@ -62,14 +62,14 @@ export function useTopicsForPack(coursePackId: string | null) {
     queryKey: ["topics", coursePackId],
     queryFn: async () => {
       if (!coursePackId) return [];
-      
+
       const { data, error } = await supabase
         .from("topics")
         .select("*")
         .eq("course_pack_id", coursePackId)
         .order("scheduled_week", { nullsFirst: false })
         .order("title");
-      
+
       if (error) throw error;
       return data as Topic[];
     },
@@ -87,7 +87,7 @@ export function useCoursePackMutations() {
         .insert(data)
         .select()
         .single();
-      
+
       if (error) throw error;
       return pack;
     },
@@ -104,7 +104,7 @@ export function useCoursePackMutations() {
         .eq("id", id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return pack;
     },
@@ -119,7 +119,7 @@ export function useCoursePackMutations() {
         .from("course_packs")
         .delete()
         .eq("id", id);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {
@@ -134,10 +134,10 @@ export function useTopicMutations() {
   const queryClient = useQueryClient();
 
   const createTopic = useMutation({
-    mutationFn: async (data: { 
-      course_pack_id: string; 
-      title: string; 
-      description?: string; 
+    mutationFn: async (data: {
+      course_pack_id: string;
+      title: string;
+      description?: string;
       scheduled_week?: number;
     }) => {
       const { data: topic, error } = await supabase
@@ -145,7 +145,7 @@ export function useTopicMutations() {
         .insert(data)
         .select()
         .single();
-      
+
       if (error) throw error;
       return topic;
     },
@@ -155,10 +155,10 @@ export function useTopicMutations() {
   });
 
   const updateTopic = useMutation({
-    mutationFn: async ({ id, ...data }: { 
-      id: string; 
-      title?: string; 
-      description?: string; 
+    mutationFn: async ({ id, ...data }: {
+      id: string;
+      title?: string;
+      description?: string;
       scheduled_week?: number | null;
       course_pack_id?: string;
     }) => {
@@ -168,7 +168,7 @@ export function useTopicMutations() {
         .eq("id", id)
         .select()
         .single();
-      
+
       if (error) throw error;
       return topic;
     },
@@ -183,7 +183,7 @@ export function useTopicMutations() {
         .from("topics")
         .delete()
         .eq("id", id);
-      
+
       if (error) throw error;
     },
     onSuccess: () => {

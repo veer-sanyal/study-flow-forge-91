@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 import { logger } from '@/lib/logger';
 import { useUserSettings } from '@/hooks/use-settings';
@@ -59,7 +59,7 @@ interface UseDailyPlanParams {
 export function useDailyPlan(params: UseDailyPlanParams = {}) {
   const { user } = useAuth();
   const { settings } = useUserSettings();
-  
+
   const limit = params.limit ?? settings.daily_goal ?? 10;
   const courseId = params.courseId ?? null;
   const paceOffset = settings.pace_offset ?? 1;
@@ -70,87 +70,87 @@ export function useDailyPlan(params: UseDailyPlanParams = {}) {
       if (!user) throw new Error('User not authenticated');
 
       return logger.time('build_daily_plan', async () => {
-      // Call the new build_daily_plan RPC
-      const { data: planData, error: planError } = await supabase
-        .rpc('build_daily_plan', {
-          p_user_id: user.id,
-          p_course_id: courseId || undefined,
-          p_limit: limit,
-          p_pace_offset: paceOffset,
+        // Call the new build_daily_plan RPC
+        const { data: planData, error: planError } = await supabase
+          .rpc('build_daily_plan', {
+            p_user_id: user.id,
+            p_course_id: courseId || undefined,
+            p_limit: limit,
+            p_pace_offset: paceOffset,
+          });
+
+        if (planError) {
+          console.error('Daily plan error:', planError);
+          throw planError;
+        }
+
+        // Fetch topics for name lookup
+        const { data: topics } = await supabase
+          .from('topics')
+          .select('*');
+
+        const topicMap = new Map<string, DbTopic>();
+        topics?.forEach(topic => topicMap.set(topic.id, topic));
+
+        // Get full question data (for guide_me_steps and image_url)
+        const questionIds = (planData || []).map((q: any) => q.question_id);
+        const { data: fullQuestions } = await supabase
+          .from('questions')
+          .select('id, guide_me_steps, image_url')
+          .in('id', questionIds);
+
+        const questionExtras = new Map<string, { guide_me_steps: any; image_url: string | null }>();
+        fullQuestions?.forEach(q => questionExtras.set(q.id, {
+          guide_me_steps: q.guide_me_steps,
+          image_url: q.image_url
+        }));
+
+        // Map plan questions to DailyPlanQuestion format
+        const questions: DailyPlanQuestion[] = (planData || []).map((q: any) => {
+          const extras = questionExtras.get(q.question_id);
+          const choices = q.choices as any[] | null;
+          const correctChoice = choices?.find(c => c.isCorrect);
+
+          return {
+            id: q.question_id,
+            prompt: q.prompt,
+            choices,
+            correctChoiceId: correctChoice?.id || null,
+            hint: q.hint,
+            difficulty: q.difficulty || 3,
+            topicIds: q.topic_ids || [],
+            topicNames: (q.topic_ids || []).map((id: string) => topicMap.get(id)?.title || 'Unknown Topic'),
+            sourceExam: q.source_exam,
+            solutionSteps: q.solution_steps as string[] | null,
+            questionType: 'multiple_choice',
+            imageUrl: extras?.image_url || null,
+            guideMeSteps: extras?.guide_me_steps || null,
+            category: q.category as QuestionCategory,
+            whySelected: q.why_selected,
+            priorityScore: q.priority_score,
+          };
         });
 
-      if (planError) {
-        console.error('Daily plan error:', planError);
-        throw planError;
-      }
-
-      // Fetch topics for name lookup
-      const { data: topics } = await supabase
-        .from('topics')
-        .select('*');
-
-      const topicMap = new Map<string, DbTopic>();
-      topics?.forEach(topic => topicMap.set(topic.id, topic));
-
-      // Get full question data (for guide_me_steps and image_url)
-      const questionIds = (planData || []).map((q: any) => q.question_id);
-      const { data: fullQuestions } = await supabase
-        .from('questions')
-        .select('id, guide_me_steps, image_url')
-        .in('id', questionIds);
-      
-      const questionExtras = new Map<string, { guide_me_steps: any; image_url: string | null }>();
-      fullQuestions?.forEach(q => questionExtras.set(q.id, { 
-        guide_me_steps: q.guide_me_steps, 
-        image_url: q.image_url 
-      }));
-
-      // Map plan questions to DailyPlanQuestion format
-      const questions: DailyPlanQuestion[] = (planData || []).map((q: any) => {
-        const extras = questionExtras.get(q.question_id);
-        const choices = q.choices as any[] | null;
-        const correctChoice = choices?.find(c => c.isCorrect);
-        
-        return {
-          id: q.question_id,
-          prompt: q.prompt,
-          choices,
-          correctChoiceId: correctChoice?.id || null,
-          hint: q.hint,
-          difficulty: q.difficulty || 3,
-          topicIds: q.topic_ids || [],
-          topicNames: (q.topic_ids || []).map((id: string) => topicMap.get(id)?.title || 'Unknown Topic'),
-          sourceExam: q.source_exam,
-          solutionSteps: q.solution_steps as string[] | null,
-          questionType: 'multiple_choice',
-          imageUrl: extras?.image_url || null,
-          guideMeSteps: extras?.guide_me_steps || null,
-          category: q.category as QuestionCategory,
-          whySelected: q.why_selected,
-          priorityScore: q.priority_score,
+        // Calculate mix counts
+        const mix: DailyPlanMix = {
+          review: questions.filter(q => q.category === 'review').length,
+          current: questions.filter(q => q.category === 'current').length,
+          bridge: questions.filter(q => q.category === 'bridge').length,
+          stretch: questions.filter(q => q.category === 'stretch').length,
         };
-      });
 
-      // Calculate mix counts
-      const mix: DailyPlanMix = {
-        review: questions.filter(q => q.category === 'review').length,
-        current: questions.filter(q => q.category === 'current').length,
-        bridge: questions.filter(q => q.category === 'bridge').length,
-        stretch: questions.filter(q => q.category === 'stretch').length,
-      };
+        // Detect if user is in catch-up mode (bridge > 0 means behind)
+        const isBehind = mix.bridge > 0;
 
-      // Detect if user is in catch-up mode (bridge > 0 means behind)
-      const isBehind = mix.bridge > 0;
+        // Estimate time (1.5 min per question)
+        const estimatedMinutes = Math.round(questions.length * 1.5);
 
-      // Estimate time (1.5 min per question)
-      const estimatedMinutes = Math.round(questions.length * 1.5);
-
-      return {
-        questions,
-        mix,
-        isBehind,
-        estimatedMinutes,
-      };
+        return {
+          questions,
+          mix,
+          isBehind,
+          estimatedMinutes,
+        };
       }); // end logger.time
     },
     enabled: (params.enabled ?? true) && !!user,

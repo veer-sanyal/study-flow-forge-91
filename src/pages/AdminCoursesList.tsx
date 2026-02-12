@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -50,8 +50,8 @@ function useCoursesWithStats() {
         // Filter to only count published/approved questions (matching standard behavior)
         const courseQuestions = questions.filter(
           (q) => q.course_pack_id === course.id &&
-                 (q.is_published !== false) && // is_published is true or null (defaults to true)
-                 (q.status === 'approved' || !q.status) // status is 'approved' or null (defaults to 'approved')
+            (q.is_published !== false) && // is_published is true or null (defaults to true)
+            (q.status === 'approved' || !q.status) // status is 'approved' or null (defaults to 'approved')
         );
         const uniqueExams = new Set(
           courseQuestions.map((q) => q.source_exam).filter(Boolean)
@@ -73,13 +73,13 @@ function useCoursesWithStats() {
   });
 }
 
-function CourseCard({ 
-  course, 
+function CourseCard({
+  course,
   index,
   onPublish,
-  isPublishing 
-}: { 
-  course: CourseWithStats; 
+  isPublishing
+}: {
+  course: CourseWithStats;
   index: number;
   onPublish: (courseId: string, isPublished: boolean) => void;
   isPublishing: boolean;
@@ -106,15 +106,14 @@ function CourseCard({
           {/* Decorative circles */}
           <div className={`absolute -right-6 -top-6 w-28 h-28 rounded-full ${accentColor} opacity-20`} />
           <div className={`absolute -right-2 top-12 w-16 h-16 rounded-full ${accentColor} opacity-15`} />
-          
+
           {/* Status badge */}
           <div className="absolute top-3 right-3">
-            <Badge 
-              className={`gap-1.5 text-xs font-medium shadow-sm ${
-                course.isPublished 
-                  ? "bg-white/95 text-green-700 hover:bg-white" 
+            <Badge
+              className={`gap-1.5 text-xs font-medium shadow-sm ${course.isPublished
+                  ? "bg-white/95 text-green-700 hover:bg-white"
                   : "bg-white/90 text-muted-foreground hover:bg-white"
-              }`}
+                }`}
             >
               {course.isPublished ? (
                 <>
@@ -129,7 +128,7 @@ function CourseCard({
               )}
             </Badge>
           </div>
-          
+
           {/* Course title */}
           <div className="absolute bottom-3 left-4 right-4">
             <h3 className="text-lg font-bold text-white drop-shadow-sm truncate">
@@ -278,9 +277,9 @@ export default function AdminCoursesList() {
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
             {courses?.map((course, index) => (
-              <CourseCard 
-                key={course.id} 
-                course={course} 
+              <CourseCard
+                key={course.id}
+                course={course}
                 index={index}
                 onPublish={handlePublish}
                 isPublishing={publishingCourseId === course.id}

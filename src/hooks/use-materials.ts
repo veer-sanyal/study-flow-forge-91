@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import type { CourseMaterial, CourseEdition, MaterialChunk, Objective, MaterialType } from "@/types/materials";
 
 // =====================================================
@@ -11,13 +11,13 @@ export function useCourseEditions(coursePackId: string | null) {
     queryKey: ["course-editions", coursePackId],
     queryFn: async () => {
       if (!coursePackId) return [];
-      
+
       const { data, error } = await supabase
         .from("course_editions")
         .select("*")
         .eq("course_pack_id", coursePackId)
         .order("created_at", { ascending: false });
-      
+
       if (error) throw error;
       return data as CourseEdition[];
     },
@@ -27,7 +27,7 @@ export function useCourseEditions(coursePackId: string | null) {
 
 export function useCreateCourseEdition() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (data: {
       course_pack_id: string;
@@ -40,7 +40,7 @@ export function useCreateCourseEdition() {
         .insert(data)
         .select()
         .single();
-      
+
       if (error) throw error;
       return edition as CourseEdition;
     },
@@ -81,7 +81,7 @@ export function useAllCourseMaterials() {
         .from("course_materials")
         .select("*, course_packs(title)")
         .order("created_at", { ascending: false });
-      
+
       if (error) throw error;
       return (data || []) as unknown as (CourseMaterial & { course_packs: { title: string } | null })[];
     },
@@ -93,13 +93,13 @@ export function useMaterialById(materialId: string | null) {
     queryKey: ["course-material", materialId],
     queryFn: async () => {
       if (!materialId) return null;
-      
+
       const { data, error } = await supabase
         .from("course_materials")
         .select("*, course_packs(title)")
         .eq("id", materialId)
         .single();
-      
+
       if (error) throw error;
       return data as unknown as CourseMaterial & { course_packs: { title: string } | null };
     },
@@ -117,7 +117,7 @@ export function useCheckDuplicate() {
         .eq("course_pack_id", coursePackId)
         .eq("sha256", sha256)
         .maybeSingle();
-      
+
       if (error) throw error;
       return data as { id: string; title: string; status: string } | null;
     },
@@ -127,7 +127,7 @@ export function useCheckDuplicate() {
 // Upload material
 export function useUploadMaterial() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({
       file,
@@ -147,13 +147,13 @@ export function useUploadMaterial() {
       // Upload file to storage
       const fileExt = file.name.split('.').pop();
       const storagePath = `${coursePackId}/${editionId || 'default'}/${crypto.randomUUID()}.${fileExt}`;
-      
+
       const { error: uploadError } = await supabase.storage
         .from('course-materials')
         .upload(storagePath, file);
-      
+
       if (uploadError) throw uploadError;
-      
+
       // Create material record
       const { data: material, error: insertError } = await supabase
         .from("course_materials")
@@ -169,7 +169,7 @@ export function useUploadMaterial() {
         })
         .select()
         .single();
-      
+
       if (insertError) throw insertError;
       return material as unknown as CourseMaterial;
     },
@@ -183,7 +183,7 @@ export function useUploadMaterial() {
 // Update material status
 export function useUpdateMaterialStatus() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({
       materialId,
@@ -205,14 +205,14 @@ export function useUpdateMaterialStatus() {
       if (errorMessage !== undefined) updates.error_message = errorMessage;
       if (topicsExtractedCount !== undefined) updates.topics_extracted_count = topicsExtractedCount;
       if (questionsGeneratedCount !== undefined) updates.questions_generated_count = questionsGeneratedCount;
-      
+
       const { data, error } = await supabase
         .from("course_materials")
         .update(updates)
         .eq("id", materialId)
         .select()
         .single();
-      
+
       if (error) throw error;
       return data as unknown as CourseMaterial;
     },
@@ -359,13 +359,13 @@ export function useMaterialChunks(materialId: string | null) {
     queryKey: ["material-chunks", materialId],
     queryFn: async () => {
       if (!materialId) return [];
-      
+
       const { data, error } = await supabase
         .from("material_chunks")
         .select("*")
         .eq("material_id", materialId)
         .order("chunk_index");
-      
+
       if (error) throw error;
       return data as MaterialChunk[];
     },
@@ -382,12 +382,12 @@ export function useObjectivesForTopic(topicId: string | null) {
     queryKey: ["objectives", topicId],
     queryFn: async () => {
       if (!topicId) return [];
-      
+
       const { data, error } = await supabase
         .from("objectives")
         .select("*")
         .eq("topic_id", topicId);
-      
+
       if (error) throw error;
       return data as Objective[];
     },
@@ -400,12 +400,12 @@ export function useObjectivesForMaterial(materialId: string | null) {
     queryKey: ["objectives", "material", materialId],
     queryFn: async () => {
       if (!materialId) return [];
-      
+
       const { data, error } = await supabase
         .from("objectives")
         .select("*, topics(title)")
         .eq("source_material_id", materialId);
-      
+
       if (error) throw error;
       return data as (Objective & { topics: { title: string } })[];
     },
@@ -433,7 +433,7 @@ export async function computeSha256(file: File): Promise<string> {
  */
 export function useAnalyzeMaterial() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (materialId: string) => {
       const { error } = await supabase.functions.invoke('process-exam-pdf', {

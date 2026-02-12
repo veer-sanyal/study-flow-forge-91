@@ -1,24 +1,24 @@
 import { useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 
 export interface MaterialJob {
   id: string;
   material_id: string;
   job_type: "analysis" | "generation";
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  
+
   // Analysis-specific
   analysis_phase: "chunk_summarization" | "outline" | "topic_extraction" | null;
   total_chunks: number;
   completed_chunks: number;
-  
+
   // Generation-specific
   total_topics: number;
   completed_topics: number;
   total_questions: number;
   completed_questions: number;
-  
+
   // Current progress
   current_item: string | null;
   progress_message: string | null;
@@ -28,7 +28,7 @@ export interface MaterialJob {
   completed_at: string | null;
   created_at: string;
   updated_at: string;
-  
+
   // Joined data
   course_materials?: { title: string; course_pack_id: string } | null;
 }

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import type { Tables } from "@/integrations/supabase/types";
 
 type QuestionType = Tables<"question_types">;
@@ -90,14 +90,14 @@ export function useQuestionTypesGroupedByMidterm(coursePackId: string) {
 
       // Build type -> midterm -> count map
       const typeMap = new Map<string, Map<number | null, number>>();
-      
+
       questions?.forEach((q) => {
         if (!q.question_type_id) return;
-        
+
         if (!typeMap.has(q.question_type_id)) {
           typeMap.set(q.question_type_id, new Map());
         }
-        
+
         const midtermMap = typeMap.get(q.question_type_id)!;
         const midterm = q.midterm_number;
         midtermMap.set(midterm, (midtermMap.get(midterm) || 0) + 1);
@@ -107,7 +107,7 @@ export function useQuestionTypesGroupedByMidterm(coursePackId: string) {
       const result: QuestionTypeWithMidtermCounts[] = types.map((type) => {
         const midtermMap = typeMap.get(type.id) || new Map();
         const midtermGroups: { midtermNumber: number | null; label: string; questionCount: number }[] = [];
-        
+
         // Sort and format midterm groups
         const sortedMidterms = [...midtermMap.entries()].sort((a, b) => {
           if (a[0] === null) return 1;
@@ -119,7 +119,7 @@ export function useQuestionTypesGroupedByMidterm(coursePackId: string) {
           let label = "Unassigned";
           if (midterm === 0) label = "Final";
           else if (midterm !== null) label = `Midterm ${midterm}`;
-          
+
           midtermGroups.push({
             midtermNumber: midterm,
             label,
@@ -300,7 +300,7 @@ export function useTopicsWithCounts(coursePackId: string) {
 
       // Group by midterm
       const groupMap = new Map<number | null, TopicWithCount[]>();
-      
+
       topicsWithCounts.forEach((topic) => {
         const key = topic.midterm_coverage;
         if (!groupMap.has(key)) {

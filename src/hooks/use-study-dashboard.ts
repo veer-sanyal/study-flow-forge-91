@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 import { useUserSettings } from '@/hooks/use-settings';
 import { useEnrollments } from '@/hooks/use-enrollments';
@@ -116,26 +116,26 @@ export function useStudyDashboard() {
           .select('id, is_correct, question_id')
           .eq('user_id', user.id)
           .gte('created_at', today.toISOString()),
-        
+
         // Published courses (filter to enrolled only)
         supabase
           .from('course_packs')
           .select('id, title')
           .eq('is_published', true)
           .in('id', enrolledCourseIdsArray.length > 0 ? enrolledCourseIdsArray : ['00000000-0000-0000-0000-000000000000']),
-        
+
         // Upcoming exams (filter to enrolled courses)
-        enrolledCourseIdsArray.length > 0 
+        enrolledCourseIdsArray.length > 0
           ? supabase
-              .from('calendar_events')
-              .select('id, title, event_date, course_pack_id')
-              .eq('event_type', 'exam')
-              .in('course_pack_id', enrolledCourseIdsArray)
-              .gte('event_date', today.toISOString())
-              .order('event_date', { ascending: true })
-              .limit(5)
+            .from('calendar_events')
+            .select('id, title, event_date, course_pack_id')
+            .eq('event_type', 'exam')
+            .in('course_pack_id', enrolledCourseIdsArray)
+            .gte('event_date', today.toISOString())
+            .order('event_date', { ascending: true })
+            .limit(5)
           : Promise.resolve({ data: [], error: null }),
-        
+
         // Overdue SRS reviews (filter to enrolled courses via question)
         supabase
           .from('srs_state')
@@ -146,22 +146,22 @@ export function useStudyDashboard() {
           .eq('user_id', user.id)
           .lt('due_at', new Date().toISOString())
           .in('questions.course_pack_id', enrolledCourseIdsArray.length > 0 ? enrolledCourseIdsArray : ['00000000-0000-0000-0000-000000000000']),
-        
+
         // Weak topics (low mastery, filter to enrolled courses)
         enrolledCourseIdsArray.length > 0
           ? supabase
-              .from('topic_mastery')
-              .select(`
+            .from('topic_mastery')
+            .select(`
                 topic_id,
                 mastery_0_1,
                 topics!inner(id, title, course_pack_id)
               `)
-              .eq('user_id', user.id)
-              .in('topics.course_pack_id', enrolledCourseIdsArray)
-              .order('mastery_0_1', { ascending: true })
-              .limit(5)
+            .eq('user_id', user.id)
+            .in('topics.course_pack_id', enrolledCourseIdsArray)
+            .order('mastery_0_1', { ascending: true })
+            .limit(5)
           : Promise.resolve({ data: [], error: null }),
-        
+
         // Last session (most recent attempt)
         supabase
           .from('attempts')
@@ -175,7 +175,7 @@ export function useStudyDashboard() {
           .eq('user_id', user.id)
           .order('created_at', { ascending: false })
           .limit(10),
-        
+
         // Weekly attempts (for 7-day accuracy)
         supabase
           .from('attempts')
@@ -188,7 +188,7 @@ export function useStudyDashboard() {
       const todayAttempts = attemptsResult.data || [];
       const completedQuestions = todayAttempts.length;
       const correctCount = todayAttempts.filter(a => a.is_correct).length;
-      const progressPercent = dailyGoal > 0 
+      const progressPercent = dailyGoal > 0
         ? Math.round((completedQuestions / dailyGoal) * 100)
         : 0;
 
@@ -267,9 +267,9 @@ export function useStudyDashboard() {
           daysUntil = Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
         }
 
-        const daysText = daysUntil === 0 ? 'today' : 
-                         daysUntil === 1 ? 'tomorrow' : 
-                         daysUntil !== null ? `in ${daysUntil} days` : '';
+        const daysText = daysUntil === 0 ? 'today' :
+          daysUntil === 1 ? 'tomorrow' :
+            daysUntil !== null ? `in ${daysUntil} days` : '';
 
         let midtermNumber: number | null = null;
         const midtermMatch = nextExam.title.match(/midterm\s*(\d)/i);
@@ -293,7 +293,7 @@ export function useStudyDashboard() {
       // Build last session data
       let lastSession: LastSession | null = null;
       const lastAttempts = lastSessionResult.data || [];
-      
+
       if (lastAttempts.length > 0) {
         // Find the most recent session (consecutive attempts within a short time)
         const recentAttempt = lastAttempts[0] as any;
@@ -344,7 +344,7 @@ export function useStudyDashboard() {
       // Calculate stats
       const weeklyAttempts = weeklyAttemptsResult.data || [];
       const weeklyCorrect = weeklyAttempts.filter(a => a.is_correct).length;
-      const weeklyAccuracy = weeklyAttempts.length > 0 
+      const weeklyAccuracy = weeklyAttempts.length > 0
         ? Math.round((weeklyCorrect / weeklyAttempts.length) * 100)
         : 0;
 

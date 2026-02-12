@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 
 export interface Enrollment {
@@ -29,17 +29,17 @@ export function useEnrollments() {
       const { data, error } = await supabase
         .from('user_enrollments')
         .select(`
-          id,
-          user_id,
-          course_pack_id,
-          enrolled_at,
-          course_packs (
-            id,
-            title,
-            description,
-            is_published
-          )
-        `)
+id,
+  user_id,
+  course_pack_id,
+  enrolled_at,
+  course_packs(
+    id,
+    title,
+    description,
+    is_published
+  )
+    `)
         .eq('user_id', user.id)
         .order('enrolled_at', { ascending: false });
 

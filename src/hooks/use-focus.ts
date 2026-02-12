@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 
 // Filter configuration for the focus system
@@ -110,34 +110,34 @@ export function useFocus() {
   // Generate summary text for the Focus Pill
   const filterSummary = useMemo(() => {
     if (!hasActiveFilters) return 'All courses';
-    
+
     const parts: string[] = [];
-    
+
     if (filters.courseIds.length === 1) {
       // Will be resolved by the component with course name
       parts.push('{{course}}');
     } else if (filters.courseIds.length > 1) {
       parts.push(`${filters.courseIds.length} courses`);
     }
-    
+
     if (filters.midtermNumber) {
       parts.push(`Midterm ${filters.midtermNumber}`);
     }
-    
+
     if (filters.examNames.length === 1) {
       parts.push(filters.examNames[0]);
     } else if (filters.examNames.length > 1) {
       parts.push(`${filters.examNames.length} exams`);
     }
-    
+
     if (filters.topicIds.length > 0) {
       parts.push(`${filters.topicIds.length} topic${filters.topicIds.length > 1 ? 's' : ''}`);
     }
-    
+
     if (filters.questionTypeId) {
       parts.push('1 type');
     }
-    
+
     return parts.join(' • ') || 'All courses';
   }, [filters, hasActiveFilters]);
 
@@ -294,11 +294,11 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
 
       // Group by midterm_coverage
       const groups: Map<number | null, TopicGroup> = new Map();
-      
+
       (topicsData || []).forEach(topic => {
         const coverage = topic.midterm_coverage;
         const questionCount = topicCountMap.get(topic.id) || 0;
-        
+
         if (!groups.has(coverage)) {
           groups.set(coverage, {
             midtermNumber: coverage,
@@ -307,7 +307,7 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
             totalQuestions: 0,
           });
         }
-        
+
         const group = groups.get(coverage)!;
         group.topics.push({ id: topic.id, title: topic.title, questionCount });
         group.totalQuestions += questionCount;
@@ -414,14 +414,14 @@ export function useQuestionTypesGroupedByMidterm(courseIds: string[]) {
 
       // Build type -> midterm -> count map
       const typeMap = new Map<string, Map<number | null, number>>();
-      
+
       questions?.forEach((q) => {
         if (!q.question_type_id) return;
-        
+
         if (!typeMap.has(q.question_type_id)) {
           typeMap.set(q.question_type_id, new Map());
         }
-        
+
         const midtermMap = typeMap.get(q.question_type_id)!;
         const midterm = q.midterm_number;
         midtermMap.set(midterm, (midtermMap.get(midterm) || 0) + 1);
@@ -429,12 +429,12 @@ export function useQuestionTypesGroupedByMidterm(courseIds: string[]) {
 
       // Group types by their primary midterm (highest question count)
       const midtermGroups = new Map<number | null, QuestionTypeGroup>();
-      
+
       types?.forEach(type => {
         const midtermCounts = typeMap.get(type.id);
         let primaryMidterm: number | null = null;
         let totalCount = 0;
-        
+
         if (midtermCounts) {
           let maxCount = 0;
           midtermCounts.forEach((count, midterm) => {
@@ -450,7 +450,7 @@ export function useQuestionTypesGroupedByMidterm(courseIds: string[]) {
           let label = 'Uncategorized';
           if (primaryMidterm === 0 || primaryMidterm === null) label = 'Final / General';
           else label = `Midterm ${primaryMidterm}`;
-          
+
           midtermGroups.set(primaryMidterm, {
             midtermNumber: primaryMidterm,
             label,
@@ -458,7 +458,7 @@ export function useQuestionTypesGroupedByMidterm(courseIds: string[]) {
             totalQuestions: 0,
           });
         }
-        
+
         const group = midtermGroups.get(primaryMidterm)!;
         group.types.push({ id: type.id, name: type.name, questionCount: totalCount });
         group.totalQuestions += totalCount;
@@ -528,7 +528,7 @@ export function usePastExamsHierarchy(courseIds: string[]) {
 
       // Get unique exam names and parse them
       const uniqueExams = [...new Set(data?.map(q => q.source_exam).filter(Boolean))] as string[];
-      
+
       // Filter to only show published exams, with fallback
       let publishedExams: string[];
 
@@ -552,21 +552,21 @@ export function usePastExamsHierarchy(courseIds: string[]) {
         // Fallback: no published patterns exist, show ALL distinct source_exam values
         publishedExams = uniqueExams;
       }
-      
+
       // Group by exam type (Midterm 1, 2, 3, Final)
       const examTypeMap: Map<string, ExamTypeGroup> = new Map();
-      
+
       publishedExams.forEach(examName => {
         // Parse exam name like "Spring 2024 - Midterm 1" or "Fall 2023 Final"
         const yearMatch = examName.match(/20\d{2}/);
         const year = yearMatch ? yearMatch[0] : 'Unknown';
-        
+
         let semester = '';
         if (/spring/i.test(examName)) semester = 'Spring';
         else if (/fall/i.test(examName)) semester = 'Fall';
         else if (/summer/i.test(examName)) semester = 'Summer';
         else if (/winter/i.test(examName)) semester = 'Winter';
-        
+
         // Determine exam type
         let examType = 'Final';
         let sortOrder = 4;
@@ -579,7 +579,7 @@ export function usePastExamsHierarchy(courseIds: string[]) {
           examType = 'Final';
           sortOrder = 4;
         }
-        
+
         if (!examTypeMap.has(examType)) {
           examTypeMap.set(examType, {
             examType,
@@ -587,7 +587,7 @@ export function usePastExamsHierarchy(courseIds: string[]) {
             exams: [],
           });
         }
-        
+
         examTypeMap.get(examType)!.exams.push({
           name: examName,
           label: semester && year ? `${semester} ${year}` : examName,
@@ -599,7 +599,7 @@ export function usePastExamsHierarchy(courseIds: string[]) {
       // Sort groups by sort order (Midterm 1, 2, 3, then Final)
       const result = Array.from(examTypeMap.values())
         .sort((a, b) => a.sortOrder - b.sortOrder);
-      
+
       // Sort exams within each group by year (descending) then semester
       result.forEach(group => {
         group.exams.sort((a, b) => {

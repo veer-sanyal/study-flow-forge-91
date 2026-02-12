@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import { StudyQuestion, mapDbQuestionToStudy, mapConfidenceToDb, deriveFsrsRating } from '@/types/study';
@@ -29,10 +29,10 @@ interface RecommendationParams {
 
 export function useStudyQuestions(params: RecommendationParams = {}) {
   const { user } = useAuth();
-  const { 
-    limit = 10, 
-    currentWeek = 1, 
-    paceOffset = 1, 
+  const {
+    limit = 10,
+    currentWeek = 1,
+    paceOffset = 1,
     targetDifficulty = 3,
     courseId = null,
     examName = null,
@@ -148,7 +148,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
       const studyQuestions = (recommended || []).map((q: any) => {
         const extras = questionExtras.get(q.question_id);
         const hasSubparts = extras?.subparts && Array.isArray(extras.subparts) && extras.subparts.length > 0;
-        
+
         // Log questions with subparts for debugging
         if (hasSubparts) {
           console.log('[useStudyQuestions] Multi-part question found:', {
@@ -157,7 +157,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
             format: extras.question_format,
           });
         }
-        
+
         const cpId = extras?.course_pack_id || null;
         return {
           id: q.question_id,
@@ -183,12 +183,12 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
           _knowledgeGap: q.knowledge_gap,
         };
       });
-      
+
       console.log('[useStudyQuestions] Returned questions:', {
         total: studyQuestions.length,
         withSubparts: studyQuestions.filter(q => q.subparts && q.subparts.length > 0).length,
       });
-      
+
       return studyQuestions;
     },
     enabled: !!user,
@@ -239,17 +239,17 @@ export function useSubmitAttempt() {
       const now = new Date();
       const card = existing
         ? dbRowToCard({
-            due_at: existing.due_at,
-            last_reviewed_at: existing.last_reviewed_at,
-            reps: existing.reps,
-            stability: (existing as any).stability ?? existing.interval_days ?? 1,
-            difficulty: (existing as any).difficulty ?? 5,
-            elapsed_days: (existing as any).elapsed_days ?? 0,
-            scheduled_days: (existing as any).scheduled_days ?? existing.interval_days ?? 0,
-            lapses: (existing as any).lapses ?? 0,
-            learning_steps: (existing as any).learning_steps ?? 0,
-            state: (existing as any).state ?? (existing.reps > 0 ? 2 : 0),
-          })
+          due_at: existing.due_at,
+          last_reviewed_at: existing.last_reviewed_at,
+          reps: existing.reps,
+          stability: (existing as any).stability ?? existing.interval_days ?? 1,
+          difficulty: (existing as any).difficulty ?? 5,
+          elapsed_days: (existing as any).elapsed_days ?? 0,
+          scheduled_days: (existing as any).scheduled_days ?? existing.interval_days ?? 0,
+          lapses: (existing as any).lapses ?? 0,
+          learning_steps: (existing as any).learning_steps ?? 0,
+          state: (existing as any).state ?? (existing.reps > 0 ? 2 : 0),
+        })
         : createEmptyCard(now);
 
       // 4. Run FSRS scheduling client-side
@@ -338,7 +338,7 @@ export function useTopicMastery(enrolledCourseIds?: string[]) {
         .from('topic_mastery')
         .select(`
           *,
-          topics!inner (
+          topics!inner(
             id,
             title,
             description,

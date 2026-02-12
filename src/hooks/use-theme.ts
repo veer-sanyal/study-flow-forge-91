@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 
 type Theme = "light" | "dark";
 
@@ -15,13 +15,13 @@ function getTheme(): Theme {
 
 function subscribe(callback: () => void) {
   listeners.add(callback);
-  
+
   // Listen for storage changes from other tabs/components
   const handleStorage = (e: StorageEvent) => {
     if (e.key === "theme") callback();
   };
   window.addEventListener("storage", handleStorage);
-  
+
   return () => {
     listeners.delete(callback);
     window.removeEventListener("storage", handleStorage);

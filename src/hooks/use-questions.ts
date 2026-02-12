@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import type { Tables, Json } from "@/integrations/supabase/types";
 
 type Question = Tables<"questions">;
@@ -33,8 +33,8 @@ export function useQuestionsForReview() {
   });
 }
 
-export function useAllQuestions(filters?: { 
-  needsReview?: boolean; 
+export function useAllQuestions(filters?: {
+  needsReview?: boolean;
   sourceExam?: string;
   topicId?: string;
   coursePackId?: string;
@@ -73,7 +73,7 @@ export function useQuestionsByCoursePack(coursePackId: string | null) {
     queryKey: ["questions", "by-course-pack", coursePackId],
     queryFn: async () => {
       if (!coursePackId) return [];
-      
+
       // Get questions that have question_types belonging to this course pack
       const { data, error } = await supabase
         .from("questions")
@@ -196,7 +196,7 @@ export function useQuestionStats() {
       const total = all?.length || 0;
       const needsReview = all?.filter(q => q.needs_review).length || 0;
       const approved = total - needsReview;
-      
+
       // Get unique source exams with midterm info
       const examMap = new Map<string, Set<number>>();
       all?.forEach(q => {
@@ -209,7 +209,7 @@ export function useQuestionStats() {
           }
         }
       });
-      
+
       const sourceExams = [...new Set(all?.map(q => q.source_exam).filter(Boolean) as string[])];
 
       return { total, needsReview, approved, sourceExams, examMap: Object.fromEntries(examMap) };

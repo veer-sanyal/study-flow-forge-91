@@ -1,6 +1,6 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -35,10 +35,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  ChevronLeft, 
-  FileText, 
-  Trash2, 
+import {
+  ChevronLeft,
+  FileText,
+  Trash2,
   AlertCircle,
   ChevronRight,
   Calendar,
@@ -56,16 +56,16 @@ import {
   Tag
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
-import { 
-  parseExamName, 
-  groupExamsByYearAndSemester, 
+import {
+  parseExamName,
+  groupExamsByYearAndSemester,
   getShortExamLabel,
   buildExamTitle,
   formatExamType,
   SEMESTERS,
   EXAM_TYPES,
   ExamInfo,
-  YearGroup 
+  YearGroup
 } from "@/lib/examUtils";
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
@@ -119,14 +119,14 @@ function useExamsForCourse(courseId: string) {
       if (jError) throw jError;
 
       // Build a map of source_exam -> job info
-      const jobMap = new Map<string, { 
-        jobId: string; 
-        examYear: number | null; 
-        examSemester: string | null; 
-        examType: string | null; 
-        isFinal: boolean; 
+      const jobMap = new Map<string, {
+        jobId: string;
+        examYear: number | null;
+        examSemester: string | null;
+        examType: string | null;
+        isFinal: boolean;
       }>();
-      
+
       // For now, associate jobs with questions based on matching patterns
       // This is simplified - ideally questions would have a job_id reference
       jobs?.forEach((job: any) => {
@@ -149,23 +149,23 @@ function useExamsForCourse(courseId: string) {
       });
 
       // Group by source_exam
-      const examMap = new Map<string, { 
-        count: number; 
-        needsReview: number; 
+      const examMap = new Map<string, {
+        count: number;
+        needsReview: number;
         midtermNumber: number | null;
         jobId: string | null;
         examYear: number | null;
         examSemester: string | null;
         examType: string | null;
       }>();
-      
+
       questions.forEach((q) => {
         if (!q.source_exam) return;
-        
+
         const jobInfo = jobMap.get(q.source_exam);
-        const existing = examMap.get(q.source_exam) || { 
-          count: 0, 
-          needsReview: 0, 
+        const existing = examMap.get(q.source_exam) || {
+          count: 0,
+          needsReview: 0,
           midtermNumber: null,
           jobId: jobInfo?.jobId || null,
           examYear: jobInfo?.examYear || null,
@@ -179,7 +179,7 @@ function useExamsForCourse(courseId: string) {
       });
 
       // Convert to array and parse exam names
-      const exams: (ExamInfo & { 
+      const exams: (ExamInfo & {
         jobId: string | null;
         examYear: number | null;
         examSemester: string | null;
@@ -270,13 +270,13 @@ function useUpdateExamDetails() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ 
-      courseId, 
-      oldSourceExam, 
-      examYear, 
-      examSemester, 
-      examType 
-    }: { 
+    mutationFn: async ({
+      courseId,
+      oldSourceExam,
+      examYear,
+      examSemester,
+      examType
+    }: {
       courseId: string;
       oldSourceExam: string;
       examYear: number | null;
@@ -303,8 +303,8 @@ function useUpdateExamDetails() {
       }
 
       // Update all questions with this source_exam
-      const updateData: { source_exam: string; midterm_number?: number | null } = { 
-        source_exam: newSourceExam 
+      const updateData: { source_exam: string; midterm_number?: number | null } = {
+        source_exam: newSourceExam
       };
       if (!isFinal && midtermNumber !== null) {
         updateData.midterm_number = midtermNumber;
@@ -381,18 +381,18 @@ function EditCourseDialog({
         <DialogHeader>
           <DialogTitle>Edit Course Name</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>Course Name</Label>
-            <Input 
+            <Input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="e.g., Calculus 2"
             />
           </div>
         </div>
-        
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={() => onSave(title)} disabled={isSaving || !title.trim()}>
@@ -415,11 +415,11 @@ function EditExamDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  exam: { 
-    sourceExam: string; 
-    examYear: number | null; 
-    examSemester: string | null; 
-    examType: string | null; 
+  exam: {
+    sourceExam: string;
+    examYear: number | null;
+    examSemester: string | null;
+    examType: string | null;
   } | null;
   onSave: (data: { examYear: number | null; examSemester: string | null; examType: string | null }) => void;
   isSaving: boolean;
@@ -444,19 +444,19 @@ function EditExamDialog({
         <DialogHeader>
           <DialogTitle>Edit Exam Details</DialogTitle>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           {/* Year */}
           <div className="space-y-2">
             <Label>Year</Label>
-            <Input 
-              type="number" 
+            <Input
+              type="number"
               placeholder="e.g., 2024"
               value={examYear || ""}
               onChange={(e) => setExamYear(e.target.value ? parseInt(e.target.value) : null)}
             />
           </div>
-          
+
           {/* Semester */}
           <div className="space-y-2">
             <Label>Semester</Label>
@@ -471,7 +471,7 @@ function EditExamDialog({
               </SelectContent>
             </Select>
           </div>
-          
+
           {/* Exam Type */}
           <div className="space-y-2">
             <Label>Exam Type</Label>
@@ -486,14 +486,14 @@ function EditExamDialog({
               </SelectContent>
             </Select>
           </div>
-          
+
           {/* Preview */}
           <div className="space-y-2 pt-2 border-t">
             <Label className="text-muted-foreground">Preview</Label>
             <div className="text-lg font-semibold">{previewTitle || "—"}</div>
           </div>
         </div>
-        
+
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
           <Button onClick={() => onSave({ examYear, examSemester, examType })} disabled={isSaving}>
@@ -506,21 +506,21 @@ function EditExamDialog({
   );
 }
 
-function ExamCard({ 
-  exam, 
-  courseId, 
+function ExamCard({
+  exam,
+  courseId,
   onDelete,
   onEdit,
   isSelectionMode,
   isSelected,
   onToggleSelect,
-}: { 
-  exam: ExamInfo & { 
+}: {
+  exam: ExamInfo & {
     jobId?: string | null;
     examYear?: number | null;
     examSemester?: string | null;
     examType?: string | null;
-  }; 
+  };
   courseId: string;
   onDelete: (sourceExam: string) => void;
   onEdit: (exam: { sourceExam: string; examYear: number | null; examSemester: string | null; examType: string | null }) => void;
@@ -529,7 +529,7 @@ function ExamCard({
   onToggleSelect?: (sourceExam: string) => void;
 }) {
   const navigate = useNavigate();
-  
+
   // Get short label (just "Midterm 1", "Final", etc.)
   const displayLabel = getShortExamLabel(exam.parsed);
 
@@ -547,7 +547,7 @@ function ExamCard({
   const showActions = !isSelectionMode && (!canHover || isHovered);
 
   return (
-    <Card 
+    <Card
       className={cn(
         "transition-colors cursor-pointer",
         isHovered && !isSelectionMode && "border-primary/50",
@@ -560,15 +560,15 @@ function ExamCard({
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
           {isSelectionMode ? (
-            <div 
+            <div
               className="flex items-center justify-center w-10 h-10"
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleSelect?.(exam.sourceExam);
               }}
             >
-              <Checkbox 
-                checked={isSelected} 
+              <Checkbox
+                checked={isSelected}
                 onCheckedChange={() => onToggleSelect?.(exam.sourceExam)}
               />
             </div>
@@ -577,7 +577,7 @@ function ExamCard({
               <FileText className="h-5 w-5 text-muted-foreground" />
             </div>
           )}
-          
+
           <div className="flex-1 min-w-0">
             <h3 className="font-medium truncate">{displayLabel}</h3>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
@@ -900,33 +900,33 @@ function AddExamDialog({
 
     try {
       // Stage 1: Upload files
-      setUploadProgress({ 
-        stage: "uploading", 
-        message: answerKeyFile ? "Uploading exam and answer key..." : "Uploading PDF...", 
-        percent: 30 
+      setUploadProgress({
+        stage: "uploading",
+        message: answerKeyFile ? "Uploading exam and answer key..." : "Uploading PDF...",
+        percent: 30
       });
-      const job = await createJob.mutateAsync({ 
-        coursePackId: courseId, 
+      const job = await createJob.mutateAsync({
+        coursePackId: courseId,
         file: examFile,
         answerKeyFile: answerKeyFile || undefined,
       });
-      
+
       // Stage 2: Start async processing (returns immediately)
-      setUploadProgress({ 
-        stage: "processing", 
-        message: "Starting background extraction...", 
-        percent: 60 
+      setUploadProgress({
+        stage: "processing",
+        message: "Starting background extraction...",
+        percent: 60
       });
-      
+
       await supabase.functions.invoke("process-exam-pdf", {
         body: { jobId: job.id, async: true }
       });
-      
+
       // Stage 3: Complete - close dialog immediately
-      setUploadProgress({ 
-        stage: "complete", 
-        message: "Exam added to processing queue!", 
-        percent: 100 
+      setUploadProgress({
+        stage: "complete",
+        message: "Exam added to processing queue!",
+        percent: 100
       });
 
       toast.success("Exam added to processing queue!", {
@@ -942,10 +942,10 @@ function AddExamDialog({
       }, 500);
 
     } catch (error) {
-      setUploadProgress({ 
-        stage: "error", 
-        message: error instanceof Error ? error.message : "Upload failed", 
-        percent: 0 
+      setUploadProgress({
+        stage: "error",
+        message: error instanceof Error ? error.message : "Upload failed",
+        percent: 0
       });
     }
   };
@@ -984,7 +984,7 @@ function AddExamDialog({
             Upload a past exam PDF to extract questions. Optionally include an answer key to verify AI-generated answers.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="py-4 space-y-4">
           {uploadProgress.stage === "idle" || uploadProgress.stage === "error" ? (
             <>
@@ -1008,8 +1008,8 @@ function AddExamDialog({
                   onClick={() => examFileInputRef.current?.click()}
                   className={cn(
                     "flex flex-col items-center justify-center gap-2 p-6 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                    isDraggingExam 
-                      ? "border-primary bg-primary/5" 
+                    isDraggingExam
+                      ? "border-primary bg-primary/5"
                       : examFile
                         ? "border-primary/50 bg-primary/5"
                         : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
@@ -1064,8 +1064,8 @@ function AddExamDialog({
                   onClick={() => answerKeyFileInputRef.current?.click()}
                   className={cn(
                     "flex flex-col items-center justify-center gap-2 p-4 border-2 border-dashed rounded-lg cursor-pointer transition-colors",
-                    isDraggingAnswerKey 
-                      ? "border-primary bg-primary/5" 
+                    isDraggingAnswerKey
+                      ? "border-primary bg-primary/5"
                       : answerKeyFile
                         ? "border-green-500/50 bg-green-500/5"
                         : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
@@ -1123,17 +1123,17 @@ function AddExamDialog({
             </div>
           )}
         </div>
-        
+
         <DialogFooter>
           {uploadProgress.stage === "idle" || uploadProgress.stage === "error" ? (
             <>
-              <Button 
-                variant="outline" 
+              <Button
+                variant="outline"
                 onClick={() => onOpenChange(false)}
               >
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={handleUpload}
                 disabled={!examFile}
               >
@@ -1142,8 +1142,8 @@ function AddExamDialog({
               </Button>
             </>
           ) : (
-            <Button 
-              variant="outline" 
+            <Button
+              variant="outline"
               onClick={() => onOpenChange(false)}
               disabled={isProcessing}
             >
@@ -1192,7 +1192,7 @@ export default function AdminExamsList() {
   const [selectedExams, setSelectedExams] = useState<Set<string>>(new Set());
 
   // Get all exams flat for easy lookup
-  const allExams = yearGroups?.flatMap(yg => 
+  const allExams = yearGroups?.flatMap(yg =>
     yg.semesters?.flatMap(sg => sg.exams || []) || []
   ) || [];
 
@@ -1226,7 +1226,7 @@ export default function AdminExamsList() {
 
     // Get question IDs for each selected exam
     const examsToQueue: QueuedExam[] = [];
-    
+
     for (const sourceExam of selectedExams) {
       const { data: questions } = await supabase
         .from("questions")
@@ -1249,7 +1249,7 @@ export default function AdminExamsList() {
     }
 
     const results = await queueExamsForAnalysis.mutateAsync(examsToQueue);
-    
+
     const successCount = results.filter(r => r.jobId).length;
     const failCount = results.filter(r => r.error).length;
 
@@ -1328,8 +1328,8 @@ export default function AdminExamsList() {
       <div className="container max-w-4xl py-6 space-y-6">
         {/* Breadcrumb */}
         <div className="flex items-center gap-2 text-sm">
-          <Link 
-            to="/admin/questions" 
+          <Link
+            to="/admin/questions"
             className="text-muted-foreground hover:text-foreground transition-colors"
           >
             Courses
@@ -1340,8 +1340,8 @@ export default function AdminExamsList() {
 
         {/* Header */}
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="icon"
             onClick={() => isSelectionMode ? handleExitSelectionMode() : navigate("/admin/questions")}
           >
@@ -1361,9 +1361,9 @@ export default function AdminExamsList() {
               <>
                 <div className="flex items-center gap-2">
                   <h1 className="text-2xl font-bold">{course?.title || "Loading..."}</h1>
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     className="h-8 w-8"
                     onClick={() => setEditCourseOpen(true)}
                   >
@@ -1391,7 +1391,7 @@ export default function AdminExamsList() {
                   </>
                 )}
               </Button>
-              <Button 
+              <Button
                 onClick={handleQueueAnalysis}
                 disabled={selectedExams.size === 0 || queueExamsForAnalysis.isPending}
               >
@@ -1431,7 +1431,7 @@ export default function AdminExamsList() {
               <div className="flex-1">
                 <p className="font-medium">Analysis in progress</p>
                 <p className="text-sm text-muted-foreground">
-                  {runningJob ? `Processing: ${runningJob.source_exam}` : "Starting..."} 
+                  {runningJob ? `Processing: ${runningJob.source_exam}` : "Starting..."}
                   {totalQueued > 1 && ` (${totalQueued} in queue)`}
                 </p>
               </div>

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { logger } from '@/lib/logger';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 import {
   type TopicProgressRow,
@@ -52,24 +52,24 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
           p_days_back: daysBack,
         });
         if (error) throw error;
-      return (data ?? []) as Array<{
-        topic_id: string;
-        topic_title: string;
-        course_pack_id: string | null;
-        total_cards: number;
-        new_cards: number;
-        learning_cards: number;
-        review_cards: number;
-        due_today: number;
-        median_stability: number | null;
-        p10_stability: number | null;
-        median_difficulty: number | null;
-        median_elapsed_days: number | null;
-        attempts_count: number;
-        correct_count: number;
-        total_reps: number;
-        total_lapses: number;
-      }>;
+        return (data ?? []) as Array<{
+          topic_id: string;
+          topic_title: string;
+          course_pack_id: string | null;
+          total_cards: number;
+          new_cards: number;
+          learning_cards: number;
+          review_cards: number;
+          due_today: number;
+          median_stability: number | null;
+          p10_stability: number | null;
+          median_difficulty: number | null;
+          median_elapsed_days: number | null;
+          attempts_count: number;
+          correct_count: number;
+          total_reps: number;
+          total_lapses: number;
+        }>;
       });
     },
     enabled: !!user && courseIds.length > 0,
@@ -87,7 +87,7 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
           p_course_ids: courseIds.length > 0 ? courseIds : undefined,
           p_days_ahead: 14,
         });
-      if (error) throw error;
+        if (error) throw error;
         return (data ?? []) as Array<{
           due_date: string;
           course_pack_id: string | null;

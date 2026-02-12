@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
 
 export interface ExamReadiness {
@@ -73,21 +73,21 @@ export function useExamReadiness() {
       // Build readiness for each exam
       const readinessData: ExamReadiness[] = exams.map(exam => {
         const examDate = exam.event_date ? new Date(exam.event_date) : null;
-        const daysUntil = examDate 
+        const daysUntil = examDate
           ? Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
           : null;
 
         // Get topics in scope for this exam's course
         // (topics from the same course that are scheduled before the exam)
         const examWeek = examDate ? Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24 * 7)) + getCurrentWeek() : 52;
-        const topicsInScope = topics?.filter(t => 
+        const topicsInScope = topics?.filter(t =>
           t.course_pack_id === exam.course_pack_id &&
           (t.scheduled_week === null || t.scheduled_week <= examWeek)
         ) || [];
 
         // Calculate metrics
         const practicedTopics = topicsInScope.filter(t => masteryMap.has(t.id));
-        const coveragePercent = topicsInScope.length > 0 
+        const coveragePercent = topicsInScope.length > 0
           ? Math.round((practicedTopics.length / topicsInScope.length) * 100)
           : 0;
 

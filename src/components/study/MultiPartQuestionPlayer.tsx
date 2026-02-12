@@ -15,7 +15,7 @@ import { GuideMePlayer } from "./GuideMePlayer";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { StudyQuestion, StudySubpart, SubpartResult } from "@/types/study";
 import { generateGuideStepsFromSolution, GuideMe } from "@/types/guide";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/lib/supabase";
 import { ChevronRight, SkipForward, Lightbulb, Loader2, Compass, ChevronDown, ChevronUp } from "lucide-react";
 
 interface MultiPartQuestionPlayerProps {
@@ -34,7 +34,7 @@ export function MultiPartQuestionPlayer({
   onSimilar,
 }: MultiPartQuestionPlayerProps) {
   const prefersReducedMotion = useReducedMotion();
-  
+
   // Normalize subparts - ensure they have required fields
   const subparts = (question.subparts || []).map((sp, idx) => ({
     id: sp.id || String.fromCharCode(97 + idx), // 'a', 'b', 'c'...
@@ -46,13 +46,13 @@ export function MultiPartQuestionPlayer({
     modelAnswer: sp.modelAnswer,
     gradingRubric: sp.gradingRubric,
   }));
-  
+
   // Debug log
   console.log('[MultiPartQuestionPlayer] Subparts:', {
     count: subparts.length,
     subparts: subparts.map(s => ({ id: s.id, promptLength: s.prompt?.length })),
   });
-  
+
   // State for current subpart
   const [currentPartIndex, setCurrentPartIndex] = useState(0);
   const [partResults, setPartResults] = useState<SubpartResult[]>([]);
@@ -95,10 +95,10 @@ export function MultiPartQuestionPlayer({
     const sp = currentSubpart as StudySubpart;
     // Priority 1: Per-subpart AI-generated guide steps
     if (sp.guideMeSteps &&
-        typeof sp.guideMeSteps === 'object' &&
-        'steps' in sp.guideMeSteps &&
-        Array.isArray(sp.guideMeSteps.steps) &&
-        sp.guideMeSteps.steps.length > 0) {
+      typeof sp.guideMeSteps === 'object' &&
+      'steps' in sp.guideMeSteps &&
+      Array.isArray(sp.guideMeSteps.steps) &&
+      sp.guideMeSteps.steps.length > 0) {
       return sp.guideMeSteps;
     }
     // Priority 2: Generate from subpart solution steps
@@ -228,7 +228,7 @@ export function MultiPartQuestionPlayer({
       }
     }
   }, [isMCQ, checkMCQAnswer, currentSubpart, question, confidence, hintUsed, answerText, selectedChoice, currentPartIndex]);
-  
+
   const handleSkip = useCallback(() => {
     const result: SubpartResult = {
       subpartId: currentSubpart.id,
@@ -239,14 +239,14 @@ export function MultiPartQuestionPlayer({
       skipped: true,
       maxPoints: currentSubpart.points,
     };
-    
+
     setPartResults(prev => [...prev, result]);
     setCompletedParts(prev => {
       const updated = [...prev];
       updated[currentPartIndex] = true;
       return updated;
     });
-    
+
     // Move to next part or complete
     if (isLastPart) {
       onComplete([...partResults, result]);
@@ -254,7 +254,7 @@ export function MultiPartQuestionPlayer({
       advanceToNextPart();
     }
   }, [currentSubpart, hintUsed, isLastPart, partResults, onComplete, currentPartIndex]);
-  
+
   const advanceToNextPart = useCallback(() => {
     const nextIndex = currentPartIndex + 1;
     setCurrentPartIndex(nextIndex);
@@ -324,7 +324,7 @@ export function MultiPartQuestionPlayer({
       advanceToNextPart();
     }
   }, [isReviewing, isLastPart, partResults, onComplete, advanceToNextPart, goToPart, frontierIndex]);
-  
+
   const handleHintToggle = useCallback(() => {
     if (!hintUsed) setHintUsed(true);
     setShowHint(prev => !prev);
@@ -342,7 +342,7 @@ export function MultiPartQuestionPlayer({
   const handleBackToQuestion = useCallback(() => {
     setGuideMode(false);
   }, []);
-  
+
   // Animation variants — opacity is intentionally omitted here because
   // PageTransition already animates opacity 0→1. Nesting two opacity
   // animations causes multiplicative dimming (outer × inner), making
@@ -350,22 +350,22 @@ export function MultiPartQuestionPlayer({
   const containerVariants = prefersReducedMotion
     ? {}
     : {
-        initial: { y: 12 },
-        animate: { y: 0 },
-        exit: { y: -12 },
-        transition: { duration: 0.22, ease: "easeOut" },
-      };
+      initial: { y: 12 },
+      animate: { y: 0 },
+      exit: { y: -12 },
+      transition: { duration: 0.22, ease: "easeOut" },
+    };
 
   // Only use x-axis slide for subpart transitions (same reasoning —
   // no opacity here to avoid multiplicative dimming).
   const subpartVariants = prefersReducedMotion
     ? {}
     : {
-        initial: { x: 20 },
-        animate: { x: 0 },
-        exit: { x: -20 },
-        transition: { duration: 0.2, ease: "easeOut" },
-      };
+      initial: { x: 20 },
+      animate: { x: 0 },
+      exit: { x: -20 },
+      transition: { duration: 0.2, ease: "easeOut" },
+    };
 
   return (
     <motion.div
@@ -399,7 +399,7 @@ export function MultiPartQuestionPlayer({
           {totalQuestions ? `Q${questionNumber} / ${totalQuestions}` : `#${questionNumber}`}
         </span>
       </div>
-      
+
       {/* Subpart progress indicator — clickable */}
       <SubpartProgress
         totalParts={subparts.length}
@@ -408,214 +408,214 @@ export function MultiPartQuestionPlayer({
         frontierIndex={frontierIndex}
         onPartSelect={goToPart}
       />
-      
+
       {/* Parent context - always visible */}
-      <ParentContextCard 
-        prompt={question.prompt} 
+      <ParentContextCard
+        prompt={question.prompt}
         imageUrl={question.imageUrl}
       />
-      
+
       {/* Current subpart */}
       <AnimatePresence mode="wait">
-      {currentSubpart ? (
-        <motion.div
-          key={currentPartIndex}
-          className="space-y-4"
-          {...subpartVariants}
-        >
-          {/* Subpart prompt */}
-          <div className="p-4 rounded-lg border-2 border-primary/20 bg-card shadow-sm">
-            <div className="flex items-start gap-3">
-              <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
-                {partLabel}
+        {currentSubpart ? (
+          <motion.div
+            key={currentPartIndex}
+            className="space-y-4"
+            {...subpartVariants}
+          >
+            {/* Subpart prompt */}
+            <div className="p-4 rounded-lg border-2 border-primary/20 bg-card shadow-sm">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-sm font-semibold text-primary">
+                  {partLabel}
+                </div>
+                <div className="flex-1 space-y-3">
+                  <div className="text-base leading-relaxed">
+                    <MathRenderer content={currentSubpart.prompt} />
+                  </div>
+
+                  {/* Points indicator */}
+                  <div className="text-xs text-muted-foreground">
+                    {currentSubpart.points} point{currentSubpart.points !== 1 ? 's' : ''}
+                  </div>
+
+                  {/* Subpart image */}
+                  {currentSubpart.imageUrl && (
+                    <QuestionImage src={currentSubpart.imageUrl} alt={`Part ${partLabel} diagram`} />
+                  )}
+                </div>
               </div>
-              <div className="flex-1 space-y-3">
-                <div className="text-base leading-relaxed">
-                  <MathRenderer content={currentSubpart.prompt} />
-                </div>
-                
-                {/* Points indicator */}
-                <div className="text-xs text-muted-foreground">
-                  {currentSubpart.points} point{currentSubpart.points !== 1 ? 's' : ''}
-                </div>
-                
-                {/* Subpart image */}
-                {currentSubpart.imageUrl && (
-                  <QuestionImage src={currentSubpart.imageUrl} alt={`Part ${partLabel} diagram`} />
+            </div>
+
+            {/* Hint panel */}
+            {showHint && question.hint && (
+              <HintPanel hint={question.hint} />
+            )}
+
+            {/* Guide Me mode - per-subpart */}
+            {guideMode && subpartGuideSteps ? (
+              <GuideMePlayer
+                guide={subpartGuideSteps}
+                originalPrompt={currentSubpart.prompt || question.prompt}
+                topicName={question.topicNames[0] || 'General'}
+                onComplete={handleGuideComplete}
+                onBackToQuestion={handleBackToQuestion}
+              />
+            ) : isGrading ? (
+              /* Grading in progress */
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Grading your answer...</p>
+              </div>
+            ) : !isSubmitted ? (
+              <div className="space-y-4">
+                {/* For MCQ subparts - show choices */}
+                {isMCQ && question.choices ? (
+                  <ChoiceList
+                    choices={question.choices}
+                    selectedChoice={selectedChoice}
+                    correctAnswer={question.correctChoiceId || ""}
+                    isSubmitted={false}
+                    onSelect={setSelectedChoice}
+                  />
+                ) : (
+                  /* For free response - show text area */
+                  <Textarea
+                    placeholder="Type your answer here..."
+                    value={answerText}
+                    onChange={(e) => setAnswerText(e.target.value)}
+                    className="min-h-[100px] text-base"
+                  />
                 )}
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3">
+                  <Button
+                    onClick={handleSubmit}
+                    disabled={isMCQ ? !selectedChoice : !answerText.trim()}
+                    className="flex-1"
+                  >
+                    Submit Part {partLabel.toUpperCase()}
+                    <ChevronRight className="ml-2 h-4 w-4" />
+                  </Button>
+
+                  {/* Guide Me button */}
+                  {subpartGuideSteps && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleGuideMe}
+                      title="Guide Me"
+                    >
+                      <Compass className="h-4 w-4" />
+                    </Button>
+                  )}
+
+                  {question.hint && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={handleHintToggle}
+                      className={hintUsed ? "text-amber-500" : ""}
+                    >
+                      <Lightbulb className="h-4 w-4" />
+                    </Button>
+                  )}
+
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleSkip}
+                  >
+                    <SkipForward className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-            </div>
-          </div>
-        
-        {/* Hint panel */}
-        {showHint && question.hint && (
-          <HintPanel hint={question.hint} />
-        )}
-        
-        {/* Guide Me mode - per-subpart */}
-        {guideMode && subpartGuideSteps ? (
-          <GuideMePlayer
-            guide={subpartGuideSteps}
-            originalPrompt={currentSubpart.prompt || question.prompt}
-            topicName={question.topicNames[0] || 'General'}
-            onComplete={handleGuideComplete}
-            onBackToQuestion={handleBackToQuestion}
-          />
-        ) : isGrading ? (
-          /* Grading in progress */
-          <div className="flex flex-col items-center gap-3 py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-            <p className="text-sm text-muted-foreground">Grading your answer...</p>
-          </div>
-        ) : !isSubmitted ? (
-          <div className="space-y-4">
-            {/* For MCQ subparts - show choices */}
-            {isMCQ && question.choices ? (
-              <ChoiceList
-                choices={question.choices}
-                selectedChoice={selectedChoice}
-                correctAnswer={question.correctChoiceId || ""}
-                isSubmitted={false}
-                onSelect={setSelectedChoice}
-              />
             ) : (
-              /* For free response - show text area */
-              <Textarea
-                placeholder="Type your answer here..."
-                value={answerText}
-                onChange={(e) => setAnswerText(e.target.value)}
-                className="min-h-[100px] text-base"
-              />
-            )}
+              /* After submission - show feedback */
+              <div className="space-y-4">
+                <AnswerFeedback
+                  isCorrect={partResults[currentPartIndex]?.isCorrect ?? false}
+                  correctAnswer={currentSubpart.correctAnswer || currentSubpart.modelAnswer || "See solution"}
+                  selectedAnswer={answerText || selectedChoice || ""}
+                  solutionRevealed={true}
+                  solution={currentSubpart.solutionSteps || question.solutionSteps}
+                />
 
-            {/* Action buttons */}
-            <div className="flex items-center gap-3">
-              <Button
-                onClick={handleSubmit}
-                disabled={isMCQ ? !selectedChoice : !answerText.trim()}
-                className="flex-1"
-              >
-                Submit Part {partLabel.toUpperCase()}
-                <ChevronRight className="ml-2 h-4 w-4" />
-              </Button>
-
-              {/* Guide Me button */}
-              {subpartGuideSteps && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleGuideMe}
-                  title="Guide Me"
-                >
-                  <Compass className="h-4 w-4" />
-                </Button>
-              )}
-
-              {question.hint && (
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={handleHintToggle}
-                  className={hintUsed ? "text-amber-500" : ""}
-                >
-                  <Lightbulb className="h-4 w-4" />
-                </Button>
-              )}
-
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={handleSkip}
-              >
-                <SkipForward className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          /* After submission - show feedback */
-          <div className="space-y-4">
-            <AnswerFeedback
-              isCorrect={partResults[currentPartIndex]?.isCorrect ?? false}
-              correctAnswer={currentSubpart.correctAnswer || currentSubpart.modelAnswer || "See solution"}
-              selectedAnswer={answerText || selectedChoice || ""}
-              solutionRevealed={true}
-              solution={currentSubpart.solutionSteps || question.solutionSteps}
-            />
-
-            {/* AI grading feedback */}
-            {gradingFeedback && (
-              <div className="p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
-                {gradingFeedback}
-              </div>
-            )}
-
-            {/* Per-subpart Explanation (collapsible) */}
-            {(currentSubpart as StudySubpart).explanation && (
-              <div className="rounded-lg border bg-card">
-                <button
-                  type="button"
-                  className="w-full flex items-center justify-between p-3 text-sm font-medium text-left"
-                  onClick={() => setShowExplanation(prev => !prev)}
-                >
-                  <span>Explanation</span>
-                  {showExplanation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-                {showExplanation && (
-                  <div className="px-3 pb-3 text-sm text-muted-foreground">
-                    <MathRenderer content={(currentSubpart as StudySubpart).explanation!} />
+                {/* AI grading feedback */}
+                {gradingFeedback && (
+                  <div className="p-3 rounded-lg bg-muted/50 border text-sm text-muted-foreground">
+                    {gradingFeedback}
                   </div>
                 )}
+
+                {/* Per-subpart Explanation (collapsible) */}
+                {(currentSubpart as StudySubpart).explanation && (
+                  <div className="rounded-lg border bg-card">
+                    <button
+                      type="button"
+                      className="w-full flex items-center justify-between p-3 text-sm font-medium text-left"
+                      onClick={() => setShowExplanation(prev => !prev)}
+                    >
+                      <span>Explanation</span>
+                      {showExplanation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                    </button>
+                    {showExplanation && (
+                      <div className="px-3 pb-3 text-sm text-muted-foreground">
+                        <MathRenderer content={(currentSubpart as StudySubpart).explanation!} />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Per-subpart Key Takeaway */}
+                {(currentSubpart as StudySubpart).keyTakeaway && (
+                  <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm">
+                    <p className="font-medium text-blue-700 dark:text-blue-400 mb-1">Key Takeaway</p>
+                    <MathRenderer content={(currentSubpart as StudySubpart).keyTakeaway!} />
+                  </div>
+                )}
+
+                {/* Guide Me button (post-submission) */}
+                {subpartGuideSteps && !guideUsed && (
+                  <Button
+                    variant="outline"
+                    className="w-full gap-2"
+                    onClick={handleGuideMe}
+                  >
+                    <Compass className="h-4 w-4" />
+                    Guide Me Through This
+                  </Button>
+                )}
+
+                {/* Confidence taps */}
+                <ConfidenceTaps
+                  selectedConfidence={confidence}
+                  onSelect={setConfidence}
+                />
+
+                {/* Next button */}
+                <Button
+                  onClick={handleNext}
+                  className="w-full"
+                >
+                  {isReviewing
+                    ? `Back to Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][frontierIndex] || frontierIndex + 1}`
+                    : isLastPart
+                      ? "Complete Question"
+                      : `Next: Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex + 1] || currentPartIndex + 2}`
+                  }
+                  <ChevronRight className="ml-2 h-4 w-4" />
+                </Button>
               </div>
             )}
-
-            {/* Per-subpart Key Takeaway */}
-            {(currentSubpart as StudySubpart).keyTakeaway && (
-              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-sm">
-                <p className="font-medium text-blue-700 dark:text-blue-400 mb-1">Key Takeaway</p>
-                <MathRenderer content={(currentSubpart as StudySubpart).keyTakeaway!} />
-              </div>
-            )}
-
-            {/* Guide Me button (post-submission) */}
-            {subpartGuideSteps && !guideUsed && (
-              <Button
-                variant="outline"
-                className="w-full gap-2"
-                onClick={handleGuideMe}
-              >
-                <Compass className="h-4 w-4" />
-                Guide Me Through This
-              </Button>
-            )}
-
-            {/* Confidence taps */}
-            <ConfidenceTaps
-              selectedConfidence={confidence}
-              onSelect={setConfidence}
-            />
-
-            {/* Next button */}
-            <Button
-              onClick={handleNext}
-              className="w-full"
-            >
-              {isReviewing
-                ? `Back to Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][frontierIndex] || frontierIndex + 1}`
-                : isLastPart
-                  ? "Complete Question"
-                  : `Next: Part ${['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'][currentPartIndex + 1] || currentPartIndex + 2}`
-              }
-              <ChevronRight className="ml-2 h-4 w-4" />
-            </Button>
-          </div>
-          )}
-        </motion.div>
-      ) : (
-        <motion.div key="no-subpart" className="p-4 text-center text-muted-foreground">
-          <p>Error: No subpart data found for this question.</p>
-          <p className="text-sm mt-2">Question ID: {question.id}</p>
-        </motion.div>
-      )}
+          </motion.div>
+        ) : (
+          <motion.div key="no-subpart" className="p-4 text-center text-muted-foreground">
+            <p>Error: No subpart data found for this question.</p>
+            <p className="text-sm mt-2">Question ID: {question.id}</p>
+          </motion.div>
+        )}
       </AnimatePresence>
     </motion.div>
   );
