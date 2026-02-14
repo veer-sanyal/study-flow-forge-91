@@ -3,17 +3,18 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EXTERNAL_SUPABASE_URL, getExternalServiceRoleKey } from "../_shared/external-db.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://study-flow-forge-91.lovable.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
 };
 
 serve(async (req) => {
+  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
-    const supabaseUrl = EXTERNAL_SUPABASE_URL;
     const supabaseServiceKey = getExternalServiceRoleKey();
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
@@ -29,12 +30,13 @@ serve(async (req) => {
       });
     }
 
+    const supabaseUrl = EXTERNAL_SUPABASE_URL;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Verify user is admin
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
+
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
@@ -56,7 +58,16 @@ serve(async (req) => {
       });
     }
 
-    const { jobId } = await req.json();
+    // Safely parse body
+    let jobId: string | null = null;
+    let body;
+    try {
+      body = await req.json();
+      jobId = body.jobId;
+    } catch (e) {
+      throw new Error("Invalid request body");
+    }
+
     console.log("Processing calendar image for job:", jobId);
 
     if (!jobId) {
@@ -79,10 +90,10 @@ serve(async (req) => {
     // Update job status to processing
     await supabase
       .from("ingestion_jobs")
-      .update({ 
-        status: "processing", 
+      .update({
+        status: "processing",
         current_step: "A1_downloading",
-        progress_pct: 10 
+        progress_pct: 10
       })
       .eq("id", jobId);
 
@@ -100,9 +111,9 @@ serve(async (req) => {
     // Update progress
     await supabase
       .from("ingestion_jobs")
-      .update({ 
+      .update({
         current_step: "A2_converting",
-        progress_pct: 20 
+        progress_pct: 20
       })
       .eq("id", jobId);
 
@@ -114,17 +125,17 @@ serve(async (req) => {
 
     // Determine mime type from file extension
     const ext = job.file_name.split(".").pop()?.toLowerCase() || "png";
-    const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" : 
-                     ext === "webp" ? "image/webp" : "image/png";
+    const mimeType = ext === "jpg" || ext === "jpeg" ? "image/jpeg" :
+      ext === "webp" ? "image/webp" : "image/png";
 
     console.log("Converted to base64, mime type:", mimeType);
 
     // Update progress
     await supabase
       .from("ingestion_jobs")
-      .update({ 
+      .update({
         current_step: "B1_analyzing",
-        progress_pct: 30 
+        progress_pct: 30
       })
       .eq("id", jobId);
 
@@ -204,14 +215,14 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
                       week_number: { type: "integer", description: "Week number (1, 2, 3, etc.)" },
                       day_of_week: { type: "string", enum: ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"] },
                       event_date: { type: "string", description: "EXACT date in YYYY-MM-DD format. This is REQUIRED for topics." },
-                      event_type: { 
-                        type: "string", 
+                      event_type: {
+                        type: "string",
                         enum: ["topic", "exam", "quiz"],
                         description: "Use 'topic' for academic content, 'exam' for midterms/finals, 'quiz' for quizzes. Do NOT use 'lesson', 'recitation', 'review', etc."
                       },
-                      title: { 
-                        type: "string", 
-                        description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')." 
+                      title: {
+                        type: "string",
+                        description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')."
                       },
                       description: { type: "string", description: "Additional details or context" },
                     },
@@ -251,9 +262,9 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
     // Update progress
     await supabase
       .from("ingestion_jobs")
-      .update({ 
+      .update({
         current_step: "B2_parsing",
-        progress_pct: 60 
+        progress_pct: 60
       })
       .eq("id", jobId);
 
@@ -270,9 +281,9 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
     // Update progress
     await supabase
       .from("ingestion_jobs")
-      .update({ 
+      .update({
         current_step: "B3_inserting",
-        progress_pct: 80 
+        progress_pct: 80
       })
       .eq("id", jobId);
 
@@ -325,7 +336,7 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
         const baseTopic = extractBaseTopic(event.title);
         // Use section number if available, otherwise base topic name
         const groupKey = section || baseTopic;
-        
+
         if (!topicGroups.has(groupKey)) {
           topicGroups.set(groupKey, []);
         }
@@ -426,24 +437,25 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
   } catch (error) {
     console.error("Error processing calendar image:", error);
 
-    // Try to update job status to failed
-    try {
-      const { jobId } = await req.clone().json().catch(() => ({}));
-      if (jobId) {
+    // Try to update job status to failed using the jobId captured earlier
+    // For this error handler, we need to construct a new client since the main one might have failed or not initialized
+    if (typeof jobId !== 'undefined' && jobId) {
+      try {
         const supabaseUrl = EXTERNAL_SUPABASE_URL;
-        const supabaseServiceKey = getExternalServiceRoleKey();
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        
-        await supabase
-          .from("ingestion_jobs")
-          .update({
-            status: "failed",
-            error_message: error instanceof Error ? error.message : "Unknown error",
-          })
-          .eq("id", jobId);
+        const supabaseServiceKey = Deno.env.get("EXTERNAL_SUPABASE_SERVICE_ROLE_KEY");
+        if (supabaseServiceKey) {
+          const supabase = createClient(supabaseUrl, supabaseServiceKey);
+          await supabase
+            .from("ingestion_jobs")
+            .update({
+              status: "failed",
+              error_message: error instanceof Error ? error.message : "Unknown error",
+            })
+            .eq("id", jobId);
+        }
+      } catch (e) {
+        console.error("Failed to update job status:", e);
       }
-    } catch (e) {
-      console.error("Failed to update job status:", e);
     }
 
     return new Response(
