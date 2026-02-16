@@ -148,45 +148,38 @@ serve(async (req) => {
     const topicList = existingTopics?.map(t => `- ${t.title} (ID: ${t.id})`).join("\n") || "No topics yet";
 
     // Call Gemini Vision API
-    const systemPrompt = `You are an expert at extracting DISTINCT TOPICS from course calendar images.
+    const systemPrompt = `You are an expert at extracting TOPICS and EVENTS from university course schedule images.
 
-Your PRIMARY goal is to extract every unique TOPIC that will be covered in the course, along with the EXACT DATE it is covered.
+Your PRIMARY goal is to extract every TOPIC or CONTENT UNIT that will be covered in the course, along with the EXACT DATE it is covered. This works for ANY subject — math, finance, business, engineering, humanities, etc.
 
 IMPORTANT RULES:
-1. ONLY extract actual academic TOPICS (math concepts, course content sections)
+1. Extract every academic TOPIC, CHAPTER, MODULE, or CONTENT UNIT mentioned in the schedule.
+   - Examples: "Time Value of Money", "Bond Valuation", "13.1: Vectors", "Supply and Demand", "Chapter 5: Risk and Return"
 2. DO NOT extract:
-   - Recitations (skip these entirely)
-   - Lectures as events (only extract the TOPICS covered in lectures)
-   - Reviews (skip these)
-   - "No class" days
-   - Generic activities
-3. If a lecture covers MULTIPLE topics on the same line, create a SEPARATE entry for EACH topic
-   Example: "Lecture 05 - Dot products (13.3) and Cross products (13.4)" becomes TWO separate topic entries:
-     - "13.3: Dot Products" on that date
-     - "13.4: Cross Products" on that date
-4. Format topic names as "SECTION#: Topic Name" (e.g., "13.1: Vectors in the Plane", "6.3: Volumes by Slicing")
-5. Extract the EXACT DATE (YYYY-MM-DD format) for when each topic is covered
-6. Still track the week number for organization purposes
-7. IMPORTANT: If the SAME topic appears on MULTIPLE consecutive days (multi-day coverage), create a separate entry for EACH day. The downstream system will handle consolidation.
+   - Recitations or discussion sections (skip these)
+   - "No class" / holidays / breaks
+   - Generic labels like "Lecture 1" with no topic content
+3. If a row mentions MULTIPLE topics, create a SEPARATE entry for EACH topic.
+4. Keep the topic name as it appears in the image. If there's a chapter/section number, include it (e.g., "Ch 5: Risk and Return" or "13.1: Vectors"). If there's no number, just use the topic name.
+5. Extract the EXACT DATE in YYYY-MM-DD format for when each topic is covered.
+6. Track the week number for organization.
+7. If the SAME topic appears on MULTIPLE days, create a separate entry for EACH day.
 
-For EXAMS and QUIZZES, DO extract them with:
-- event_type: "exam" or "quiz"
-- The exact date
-- Week number
+For EXAMS, MIDTERMS, FINALS, and QUIZZES:
+- Extract with event_type: "exam" or "quiz"
+- Include the exact date and week number
 
 Here are the existing topics in this course pack for reference:
 ${topicList}
 
-Be thorough - extract every DISTINCT topic from the calendar, splitting multi-topic entries into individual topics.`;
+Be thorough — extract EVERY topic/content unit from the schedule. Even if you're unsure about exact dates, still extract the topic with your best estimate.`;
 
-    const userPrompt = systemPrompt + "\n\nExtract all DISTINCT TOPICS from this course schedule image. For each topic, identify the EXACT date it is covered. If a single row contains multiple topics, create separate entries for each. If the same topic is covered over multiple days, still create an entry for each day. Skip recitations, reviews, lectures (extract only the topics from them). Format each topic as 'SECTION#: Topic Name'. Return the structured data using the extract_calendar_events tool.";
+    const userPrompt = systemPrompt + "\n\nLook at this course schedule image carefully. Extract ALL topics/content units and exams. For each, identify the exact date. Create separate entries for distinct topics even if they're on the same row. Use the extract_calendar_events tool to return the structured data. Do NOT return an empty array — there should be topics visible in this image.";
 
-    const response = await fetch("https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + GEMINI_API_KEY, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
+    // Helper: call Gemini with a given model and return parsed events
+    const callGemini = async (model: string): Promise<unknown[]> => {
+      console.log(`Calling Gemini model: ${model}`);
+      const geminiBody = {
         contents: [{
           role: "user",
           parts: [
@@ -241,23 +234,69 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
           }
         },
         generationConfig: {
-          temperature: 0.2
+          temperature: 0.2,
+          // Disable thinking for flash (causes empty results); pro requires thinking
+          ...(model.includes("flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
         }
-      }),
-    });
+      };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("Gemini API error:", response.status, errorText);
+      const resp = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(geminiBody),
+        }
+      );
 
-      if (response.status === 429) {
-        throw new Error("Rate limit exceeded. Please try again later.");
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        console.error(`Gemini API error (${model}):`, resp.status, errorText);
+        if (resp.status === 429) {
+          throw new Error("Rate limit exceeded. Please try again later.");
+        }
+        throw new Error(`Gemini API error: ${resp.status}`);
       }
-      throw new Error(`Gemini API error: ${response.status}`);
+
+      const result = await resp.json();
+      console.log(`AI response received from ${model}`);
+
+      const fc = result.candidates?.[0]?.content?.parts?.find(
+        (p: Record<string, unknown>) => p.functionCall
+      )?.functionCall;
+      if (!fc || fc.name !== "extract_calendar_events") {
+        console.error(`${model} did not return expected function call. Response:`, JSON.stringify(result).slice(0, 2000));
+        throw new Error("AI did not return expected function call");
+      }
+
+      return fc.args?.events || [];
+    };
+
+    // Try gemini-2.5-flash first, fall back to gemini-2.5-pro if 0 events
+    let events = await callGemini("gemini-2.5-flash");
+    console.log(`Extracted ${events.length} events from gemini-2.5-flash`);
+
+    if (events.length === 0) {
+      console.warn("Flash returned 0 events, retrying with gemini-2.5-pro...");
+
+      await supabase
+        .from("ingestion_jobs")
+        .update({ current_step: "B1_retry_pro", progress_pct: 45 })
+        .eq("id", jobId);
+
+      try {
+        events = await callGemini("gemini-2.5-pro");
+        console.log(`Extracted ${events.length} events from gemini-2.5-pro`);
+      } catch (retryErr) {
+        console.error("Pro fallback also failed:", retryErr instanceof Error ? retryErr.message : retryErr);
+      }
     }
 
-    const aiResult = await response.json();
-    console.log("AI response received");
+    if (events.length > 0) {
+      console.log("First event sample:", JSON.stringify(events[0]));
+    } else {
+      console.warn("WARNING: Both models returned 0 events");
+    }
 
     // Update progress
     await supabase
@@ -267,16 +306,6 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
         progress_pct: 60
       })
       .eq("id", jobId);
-
-    // Parse Gemini native API response format
-    const functionCall = aiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
-    if (!functionCall || functionCall.name !== "extract_calendar_events") {
-      throw new Error("AI did not return expected function call");
-    }
-
-    const extractedData = functionCall.args;
-    const events = extractedData?.events || [];
-    console.log(`Extracted ${events.length} calendar events`);
 
     // Update progress
     await supabase
@@ -385,22 +414,26 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
       const needsReview = event.event_type === "exam" || !parsedDate;
       if (needsReview) needsReviewCount++;
 
+      const insertPayload = {
+        course_pack_id: job.course_pack_id,
+        ingestion_job_id: jobId,
+        week_number: event.week_number || 0,
+        day_of_week: event.day_of_week || null,
+        event_date: parsedDate,
+        event_type: event.event_type,
+        title: event.title,
+        description: event.description || null,
+        needs_review: needsReview,
+      };
+
+      console.log(`Inserting event: ${JSON.stringify(insertPayload)}`);
+
       const { error: insertError } = await supabase
         .from("calendar_events")
-        .insert({
-          course_pack_id: job.course_pack_id,
-          ingestion_job_id: jobId,
-          week_number: event.week_number || 0,
-          day_of_week: event.day_of_week || null,
-          event_date: parsedDate,
-          event_type: event.event_type,
-          title: event.title,
-          description: event.description || null,
-          needs_review: needsReview,
-        });
+        .insert(insertPayload);
 
       if (insertError) {
-        console.error("Error inserting event:", insertError);
+        console.error("Error inserting event:", JSON.stringify(insertError));
       } else {
         insertedCount++;
       }
