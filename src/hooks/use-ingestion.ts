@@ -580,6 +580,27 @@ export function useGenerateTopicsFromEvents() {
 
       if (topicsError) throw topicsError;
 
+      // DEBUG LOGGING
+      console.log('--- GENERATE TOPICS DEBUG ---');
+      console.log('Course Pack ID:', coursePackId);
+      console.log('Total Topic Events Found (DB Filtered):', events?.length);
+      if (events?.length === 0) {
+        console.warn('CRITICAL: No events found with event_type="topic". Checking all events...');
+        // Fetch ALL events to see what types exist
+        const { data: allEvents } = await supabase
+          .from("calendar_events")
+          .select("event_type, title")
+          .eq("course_pack_id", coursePackId);
+
+        console.log('All Events Sample:', allEvents?.slice(0, 5));
+        const distinctTypes = [...new Set(allEvents?.map(e => e.event_type))];
+        console.log('Distinct Event Types in DB:', distinctTypes);
+      } else {
+        console.log('Events Sample:', events?.slice(0, 3));
+      }
+      console.log('Existing Topics Count:', existingTopics?.length);
+      // END DEBUG LOGGING
+
       // Build set of existing base topic names and section numbers for dedup
       const existingBaseTitles = new Set<string>();
       const existingSections = new Set<string>();
