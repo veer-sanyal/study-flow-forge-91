@@ -242,6 +242,18 @@ export default function AdminCalendar() {
       // Auto-process the job
       await processJob.mutateAsync({ jobId: job.id, kind: "calendar" });
       toast({ title: "Calendar processed successfully!" });
+
+      // Auto-generate topics from extracted events
+      try {
+        const result = await generateTopics.mutateAsync(selectedPackId);
+        toast({ title: "Topics generated!", description: `Created ${result.created} topics from calendar events` });
+      } catch (topicError) {
+        toast({
+          title: "Events extracted, but topic generation failed",
+          description: topicError instanceof Error ? topicError.message : "Unknown error",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       toast({ 
         title: "Error processing calendar", 

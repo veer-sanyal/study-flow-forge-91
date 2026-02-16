@@ -2,15 +2,32 @@ import { Badge } from '@/components/ui/badge';
 import type { CalendarDayReviewData } from '@/types/progress';
 import { cn } from '@/lib/utils';
 
+interface CalendarEventForCell {
+  id: string;
+  title: string;
+  event_type: string;
+}
+
 interface CalendarDayCellProps {
   date: Date;
   isToday: boolean;
   isSelected: boolean;
   isPadding: boolean;
   reviewData: CalendarDayReviewData | undefined;
-  eventCount: number;
+  events: CalendarEventForCell[];
   onSelect: (dateStr: string) => void;
 }
+
+const EVENT_TYPE_COLORS: Record<string, string> = {
+  topic: 'text-blue-600 dark:text-blue-400',
+  lesson: 'text-blue-600 dark:text-blue-400',
+  recitation: 'text-purple-600 dark:text-purple-400',
+  exam: 'text-red-600 dark:text-red-400',
+  quiz: 'text-orange-600 dark:text-orange-400',
+  homework: 'text-green-600 dark:text-green-400',
+  review: 'text-yellow-600 dark:text-yellow-400',
+  activity: 'text-cyan-600 dark:text-cyan-400',
+};
 
 export function CalendarDayCell({
   date,
@@ -18,7 +35,7 @@ export function CalendarDayCell({
   isSelected,
   isPadding,
   reviewData,
-  eventCount,
+  events,
   onSelect,
 }: CalendarDayCellProps): React.ReactElement {
   const dateStr = formatDateKey(date);
@@ -75,26 +92,27 @@ export function CalendarDayCell({
         )}
       </div>
 
-      {/* Top topic chips */}
+      {/* Calendar event titles */}
       <div className="flex flex-col gap-0.5 w-full overflow-hidden">
-        {reviewData?.topTopics.slice(0, 3).map((topic, i) => (
+        {events.slice(0, 3).map((event, i) => (
           <span
-            key={topic.topicId}
+            key={event.id}
             className={cn(
-              'text-[9px] sm:text-[10px] leading-tight truncate text-muted-foreground w-full block',
+              'text-[9px] sm:text-[10px] leading-tight truncate w-full block font-medium',
+              EVENT_TYPE_COLORS[event.event_type] || 'text-muted-foreground',
               i >= 2 && 'hidden sm:block',
             )}
-            title={`${topic.topicTitle} (Reviews: ${topic.dueCount}, New: ${topic.newCount})`}
+            title={`${event.title} (${event.event_type})`}
           >
-            {topic.topicTitle}
+            {event.title}
           </span>
         ))}
+        {events.length > 3 && (
+          <span className="text-[9px] text-muted-foreground">
+            +{events.length - 3} more
+          </span>
+        )}
       </div>
-
-      {/* Event dot (only if not covered by badges) */}
-      {eventCount > 0 && (!reviewData || (reviewData.totalDue === 0 && reviewData.totalNew === 0)) && (
-        <span className="absolute top-1.5 right-1.5 h-1.5 w-1.5 rounded-full bg-blue-500" />
-      )}
     </button>
   );
 }

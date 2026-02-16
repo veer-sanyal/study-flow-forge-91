@@ -15,6 +15,8 @@ const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
 interface CalendarEvent {
   id: string;
+  title: string;
+  event_type: string;
   event_date: string | null;
 }
 
@@ -42,12 +44,14 @@ export function CalendarGrid({
     ? buildWeekDays(currentDate)
     : buildMonthDays(currentDate);
 
-  // Build event count map keyed by date string
-  const eventCountMap = new Map<string, number>();
+  // Build events-by-date map keyed by date string
+  const eventsByDate = new Map<string, CalendarEvent[]>();
   for (const ev of calendarEvents) {
     if (ev.event_date) {
       const key = ev.event_date.slice(0, 10); // YYYY-MM-DD
-      eventCountMap.set(key, (eventCountMap.get(key) || 0) + 1);
+      const existing = eventsByDate.get(key) || [];
+      existing.push(ev);
+      eventsByDate.set(key, existing);
     }
   }
 
@@ -77,7 +81,7 @@ export function CalendarGrid({
               isSelected={selectedDate === dateKey}
               isPadding={viewMode === 'month' && !isSameMonth(day, currentDate)}
               reviewData={reviewData.get(dateKey)}
-              eventCount={eventCountMap.get(dateKey) || 0}
+              events={eventsByDate.get(dateKey) || []}
               onSelect={onSelectDate}
             />
           );
