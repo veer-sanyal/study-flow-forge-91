@@ -19,7 +19,7 @@ interface TopicWithCount {
 }
 
 interface TopicGroup {
-  midtermNumber: number | null;
+  midtermNumber: number;
   label: string;
   topics: TopicWithCount[];
   totalQuestions: number;
@@ -49,7 +49,7 @@ function useTopicsWithCountsForCourse(coursePackId: string) {
         .from("topics")
         .select("id, title, midterm_coverage")
         .eq("course_pack_id", coursePackId)
-        .order("scheduled_week", { ascending: true, nullsFirst: true })
+        .order("scheduled_date", { ascending: true, nullsFirst: true })
         .order("title");
 
       if (topicsError) throw topicsError;
@@ -83,29 +83,27 @@ function useTopicsWithCountsForCourse(coursePackId: string) {
         questionIds: topicCountMap.get(t.id)?.questionIds || [],
       }));
 
-      // Group by midterm
-      const groupMap = new Map<number | null, TopicWithCount[]>();
+      // Group by midterm (0 = finals, 1/2/3 = midterms)
+      const groupMap = new Map<number, TopicWithCount[]>();
 
       topicsWithCounts.forEach((topic) => {
-        const key = topic.midtermCoverage;
+        const key = topic.midtermCoverage ?? 0;
         if (!groupMap.has(key)) {
           groupMap.set(key, []);
         }
         groupMap.get(key)!.push(topic);
       });
 
-      // Sort and format groups
+      // Sort and format groups (0 = finals last)
       const sortedKeys = [...groupMap.keys()].sort((a, b) => {
-        if (a === null) return 1;
-        if (b === null) return -1;
-        return (a ?? 0) - (b ?? 0);
+        if (a === 0) return 1;
+        if (b === 0) return -1;
+        return a - b;
       });
 
       const groups: TopicGroup[] = sortedKeys.map((key) => {
         const topics = groupMap.get(key)!;
-        let label = "Uncategorized";
-        if (key === 0) label = "Final Topics";
-        else if (key !== null) label = `Midterm ${key} Topics`;
+        const label = key === 0 ? "Finals Topics" : `Midterm ${key} Topics`;
 
         return {
           midtermNumber: key,

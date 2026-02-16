@@ -517,38 +517,23 @@ function parseMidtermNumber(title: string): number | null {
   return null;
 }
 
-// Calculate which midterm a topic belongs to based on its week or date relative to exam dates
+// Calculate which midterm a topic belongs to based on its date relative to exam dates
+// Returns 0 for finals-only topics (after all midterms), or 1/2/3 for midterm numbers
 function calculateMidtermCoverage(
   topicDate: string | null,
-  examDates: { midtermNumber: number; date: string; weekNumber?: number }[],
-  topicWeek?: number | null
-): number | null {
-  if (examDates.length === 0) return null;
+  examDates: { midtermNumber: number; date: string }[],
+): number {
+  if (examDates.length === 0) return 0;
 
-  // Prefer week-based comparison when both topic week and exam weeks are available
-  if (topicWeek != null) {
-    const examsWithWeek = examDates.filter(e => e.weekNumber != null);
-    if (examsWithWeek.length > 0) {
-      for (const exam of examsWithWeek) {
-        if (topicWeek <= exam.weekNumber!) {
-          return exam.midtermNumber;
-        }
-      }
-      // Topic is after all midterms = Finals topic (null)
-      return null;
-    }
-  }
-
-  // Fall back to date-based comparison
-  if (!topicDate) return null;
+  if (!topicDate) return 0;
   for (const exam of examDates) {
     if (topicDate <= exam.date) {
       return exam.midtermNumber;
     }
   }
 
-  // Topic is after all midterms = Finals topic (null)
-  return null;
+  // Topic is after all midterms = Finals topic (0)
+  return 0;
 }
 
 // Generate topics from calendar events
@@ -568,13 +553,12 @@ export function useGenerateTopicsFromEvents() {
 
       if (eventsError) throw eventsError;
 
-      // Fetch exam events to determine midterm coverage (include week_number)
+      // Fetch exam events to determine midterm coverage
       const { data: examEvents, error: examError } = await supabase
         .from("calendar_events")
-        .select("title, event_date, week_number")
+        .select("title, event_date")
         .eq("course_pack_id", coursePackId)
         .eq("event_type", "exam")
-        .order("week_number", { ascending: true })
         .order("event_date", { ascending: true });
 
       if (examError) throw examError;
@@ -584,10 +568,9 @@ export function useGenerateTopicsFromEvents() {
         .map(e => ({
           midtermNumber: parseMidtermNumber(e.title),
           date: e.event_date as string,
-          weekNumber: e.week_number as number | undefined,
         }))
-        .filter(e => e.midtermNumber !== null) as { midtermNumber: number; date: string; weekNumber?: number }[];
-      examDates.sort((a, b) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0) || a.date.localeCompare(b.date));
+        .filter((e): e is { midtermNumber: number; date: string } => e.midtermNumber !== null);
+      examDates.sort((a, b) => a.date.localeCompare(b.date));
 
       // Fetch existing topics to avoid duplicates
       const { data: existingTopics, error: topicsError } = await supabase
@@ -611,8 +594,7 @@ export function useGenerateTopicsFromEvents() {
       const consolidatedTopics = new Map<string, {
         title: string;
         description: string;
-        scheduled_week: number;
-        event_date: string | null;
+        scheduled_date: string | null; // latest event_date (last day covered)
         partCount: number; // Track how many parts/days this topic spans
       }>();
 
@@ -633,15 +615,21 @@ export function useGenerateTopicsFromEvents() {
           consolidatedTopics.set(consolidationKey, {
             title: section ? normalizedTitle.replace(/\s*-\s*Part\s*\d+\s*$/i, '') : baseTitle, // Keep section prefix if present
             description: event.description || "",
-            scheduled_week: event.week_number,
-            event_date: event.event_date,
+            scheduled_date: event.event_date,
             partCount: 1,
           });
         } else {
           // We've seen this topic before - it's a multi-day topic
-          // Just increment the part count, keep the first occurrence's data
           const existing = consolidatedTopics.get(consolidationKey)!;
           existing.partCount += 1;
+          // Use the LATEST event_date (last day covered) as scheduled_date
+          if (event.event_date && (!existing.scheduled_date || event.event_date > existing.scheduled_date)) {
+            existing.scheduled_date = event.event_date;
+          }
+          // Prefer a non-empty description
+          if (!existing.description && event.description) {
+            existing.description = event.description;
+          }
         }
       }
 
@@ -651,15 +639,15 @@ export function useGenerateTopicsFromEvents() {
         return { created: 0, message: "No new topics to create" };
       }
 
-      // Insert topics with calculated midterm_coverage (prefer week-based)
+      // Insert topics with calculated midterm_coverage
       const { error: insertError } = await supabase
         .from("topics")
         .insert(topicsToCreate.map(t => ({
           course_pack_id: coursePackId,
           title: t.title,
           description: t.description || null,
-          scheduled_week: t.scheduled_week,
-          midterm_coverage: calculateMidtermCoverage(t.event_date, examDates, t.scheduled_week),
+          scheduled_date: t.scheduled_date,
+          midterm_coverage: calculateMidtermCoverage(t.scheduled_date, examDates),
         })));
 
       if (insertError) throw insertError;
@@ -678,13 +666,13 @@ export function useRecalculateTopicMidterms() {
 
   return useMutation({
     mutationFn: async (coursePackId: string) => {
-      // Fetch exam events with week numbers
+      // Fetch exam events
       const { data: examEvents, error: examError } = await supabase
         .from("calendar_events")
-        .select("title, event_date, week_number")
+        .select("title, event_date")
         .eq("course_pack_id", coursePackId)
         .eq("event_type", "exam")
-        .order("week_number", { ascending: true });
+        .order("event_date", { ascending: true });
 
       if (examError) throw examError;
 
@@ -692,10 +680,9 @@ export function useRecalculateTopicMidterms() {
         .map(e => ({
           midtermNumber: parseMidtermNumber(e.title),
           date: e.event_date as string,
-          weekNumber: e.week_number as number | undefined,
         }))
-        .filter(e => e.midtermNumber !== null) as { midtermNumber: number; date: string; weekNumber?: number }[];
-      examDates.sort((a, b) => (a.weekNumber ?? 0) - (b.weekNumber ?? 0) || a.date.localeCompare(b.date));
+        .filter((e): e is { midtermNumber: number; date: string } => e.midtermNumber !== null);
+      examDates.sort((a, b) => a.date.localeCompare(b.date));
 
       if (examDates.length === 0) {
         return { updated: 0, message: "No exam events found" };
@@ -704,14 +691,14 @@ export function useRecalculateTopicMidterms() {
       // Fetch all topics for this course
       const { data: topics, error: topicsError } = await supabase
         .from("topics")
-        .select("id, scheduled_week, midterm_coverage")
+        .select("id, scheduled_date, midterm_coverage")
         .eq("course_pack_id", coursePackId);
 
       if (topicsError) throw topicsError;
 
       let updated = 0;
       for (const topic of topics || []) {
-        const newCoverage = calculateMidtermCoverage(null, examDates, topic.scheduled_week);
+        const newCoverage = calculateMidtermCoverage((topic as Record<string, unknown>).scheduled_date as string | null, examDates);
         if (newCoverage !== topic.midterm_coverage) {
           const { error } = await supabase
             .from("topics")

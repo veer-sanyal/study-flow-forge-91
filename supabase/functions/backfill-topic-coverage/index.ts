@@ -112,10 +112,10 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Fetch topics for this course pack
+      // Fetch topics for this course pack (use scheduled_date directly)
       const { data: topics, error: topicsError } = await supabase
         .from("topics")
-        .select("id, title, scheduled_week")
+        .select("id, title, scheduled_date")
         .eq("course_pack_id", packId);
 
       if (topicsError) {
@@ -123,37 +123,13 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      // Fetch calendar events to get original dates for topics
-      const { data: calendarEvents, error: calError } = await supabase
-        .from("calendar_events")
-        .select("title, event_date, week_number")
-        .eq("course_pack_id", packId)
-        .eq("event_type", "topic")
-        .order("event_date", { ascending: true });
-
-      if (calError) {
-        console.error(`Error fetching calendar events for ${packId}:`, calError);
-        continue;
-      }
-
-      // Create a map of week_number to earliest event_date
-      const weekToDate = new Map<number, string>();
-      for (const event of calendarEvents || []) {
-        if (event.week_number !== null && event.event_date) {
-          if (!weekToDate.has(event.week_number) || event.event_date < weekToDate.get(event.week_number)!) {
-            weekToDate.set(event.week_number, event.event_date);
-          }
-        }
-      }
-
-      console.log(`Week to date mapping:`, Object.fromEntries(weekToDate));
-
       // Calculate and update midterm_coverage for each topic
+      // 0 = finals-only, 1/2/3 = midterm numbers
       for (const topic of topics || []) {
-        const topicDate = topic.scheduled_week !== null ? weekToDate.get(topic.scheduled_week) : null;
-        
-        let midtermCoverage: number | null = null;
-        
+        const topicDate = topic.scheduled_date as string | null;
+
+        let midtermCoverage = 0; // Default to finals
+
         if (topicDate) {
           // Find the first exam whose date is AFTER or on the topic date
           for (const exam of examDates) {
@@ -164,7 +140,7 @@ Deno.serve(async (req) => {
           }
         }
 
-        console.log(`Topic "${topic.title}" (week ${topic.scheduled_week}, date ${topicDate}) -> midterm_coverage: ${midtermCoverage}`);
+        console.log(`Topic "${topic.title}" (date ${topicDate}) -> midterm_coverage: ${midtermCoverage}`);
 
         // Update the topic
         const { error: updateError } = await supabase

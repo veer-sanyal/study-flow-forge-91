@@ -1,5 +1,5 @@
 import { format, parseISO } from 'date-fns';
-import { Clock, MapPin, PlayCircle } from 'lucide-react';
+import { PlayCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,8 +12,6 @@ interface CalendarEvent {
   title: string;
   event_type: string;
   event_date: string | null;
-  time_slot: string | null;
-  location: string | null;
   course_title?: string;
 }
 
@@ -82,20 +80,6 @@ export function DayDetailPanel({
                     {ev.course_title && (
                       <p className="text-xs text-muted-foreground">{ev.course_title}</p>
                     )}
-                    <div className="flex items-center gap-3 mt-0.5 text-xs text-muted-foreground">
-                      {ev.time_slot && (
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {ev.time_slot}
-                        </span>
-                      )}
-                      {ev.location && (
-                        <span className="flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          {ev.location}
-                        </span>
-                      )}
-                    </div>
                   </div>
                 </div>
               ))}

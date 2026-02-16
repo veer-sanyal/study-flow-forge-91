@@ -20,10 +20,7 @@ interface CalendarEvent {
   event_date: string | null;
   week_number: number;
   day_of_week: string | null;
-  time_slot: string | null;
-  location: string | null;
   description: string | null;
-  topics_covered: string[] | null;
   course_pack_id: string;
   course_title?: string;
 }
@@ -54,10 +51,7 @@ export function useStudentCalendarEvents(filters: CalendarFilters) {
           event_date,
           week_number,
           day_of_week,
-          time_slot,
-          location,
           description,
-          topics_covered,
           course_pack_id,
           course_packs(title)
         `)

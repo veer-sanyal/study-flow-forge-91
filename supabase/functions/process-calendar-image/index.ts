@@ -224,7 +224,7 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
                         type: "string",
                         description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')."
                       },
-                      description: { type: "string", description: "Additional details or context" },
+                      description: { type: "string", description: "A single sentence explaining what this topic covers academically. Required for topic events." },
                     },
                     required: ["week_number", "event_type", "title", "event_date"],
                   },
@@ -396,11 +396,6 @@ Be thorough - extract every DISTINCT topic from the calendar, splitting multi-to
           event_type: event.event_type,
           title: event.title,
           description: event.description || null,
-          // For topics, store the title as the topic covered
-          topics_covered: event.event_type === "topic" ? [event.title] : [],
-          homework_assignments: [],
-          location: null,
-          time_slot: null,
           needs_review: needsReview,
         });
 

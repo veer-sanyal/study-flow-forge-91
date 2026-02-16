@@ -67,7 +67,7 @@ export function useTopicsForPack(coursePackId: string | null) {
         .from("topics")
         .select("*")
         .eq("course_pack_id", coursePackId)
-        .order("scheduled_week", { nullsFirst: false })
+        .order("scheduled_date", { nullsFirst: false })
         .order("title");
 
       if (error) throw error;
@@ -138,7 +138,7 @@ export function useTopicMutations() {
       course_pack_id: string;
       title: string;
       description?: string;
-      scheduled_week?: number;
+      scheduled_date?: string;
     }) => {
       const { data: topic, error } = await supabase
         .from("topics")
@@ -159,7 +159,7 @@ export function useTopicMutations() {
       id: string;
       title?: string;
       description?: string;
-      scheduled_week?: number | null;
+      scheduled_date?: string | null;
       course_pack_id?: string;
     }) => {
       const { data: topic, error } = await supabase

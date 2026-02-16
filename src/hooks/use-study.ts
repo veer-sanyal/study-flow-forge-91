@@ -367,7 +367,7 @@ export function useTopics(enrolledCourseIds?: string[]) {
       let query = supabase
         .from('topics')
         .select('*')
-        .order('scheduled_week', { ascending: true });
+        .order('scheduled_date', { ascending: true });
 
       // Filter by enrolled courses if provided
       if (enrolledCourseIds && enrolledCourseIds.length > 0) {

@@ -78,7 +78,7 @@ interface EditingTopic {
   id: string;
   title: string;
   description: string;
-  scheduled_week: number | null;
+  scheduled_date: string | null;
 }
 
 export default function AdminCalendar() {
@@ -117,15 +117,9 @@ export default function AdminCalendar() {
   const [activeTab, setActiveTab] = useState<"topics" | "calendar">("topics");
   const [isDragging, setIsDragging] = useState(false);
 
-  // Group topics by week
-  const topicsByWeek = topics?.reduce((acc, topic) => {
-    const week = topic.scheduled_week ?? 0;
-    if (!acc[week]) acc[week] = [];
-    acc[week].push(topic);
-    return acc;
-  }, {} as Record<number, typeof topics>) ?? {};
-
-  const maxWeek = Math.max(...Object.keys(topicsByWeek).map(Number).filter(w => w > 0), 0);
+  // Group topics: scheduled vs unscheduled (since scheduled_week is gone, use scheduled_date)
+  const scheduledTopics = topics?.filter(t => (t as Record<string, unknown>).scheduled_date) ?? [];
+  const unscheduledTopics = topics?.filter(t => !(t as Record<string, unknown>).scheduled_date) ?? [];
 
   // Group calendar events by week
   const eventsByWeek = calendarEvents?.reduce((acc, event) => {
@@ -184,7 +178,7 @@ export default function AdminCalendar() {
           id: editingTopic.id,
           title: editingTopic.title,
           description: editingTopic.description || undefined,
-          scheduled_week: editingTopic.scheduled_week,
+          scheduled_date: editingTopic.scheduled_date,
         });
         toast({ title: "Topic updated" });
       } else {
@@ -192,7 +186,7 @@ export default function AdminCalendar() {
           course_pack_id: activePackForTopic,
           title: editingTopic.title,
           description: editingTopic.description || undefined,
-          scheduled_week: editingTopic.scheduled_week ?? undefined,
+          scheduled_date: editingTopic.scheduled_date ?? undefined,
         });
         toast({ title: "Topic created" });
       }
@@ -329,7 +323,7 @@ export default function AdminCalendar() {
 
   const openNewTopic = (packId: string) => {
     setActivePackForTopic(packId);
-    setEditingTopic({ id: "", title: "", description: "", scheduled_week: null });
+    setEditingTopic({ id: "", title: "", description: "", scheduled_date: null });
     setTopicDialogOpen(true);
   };
 
@@ -526,11 +520,11 @@ export default function AdminCalendar() {
                                   </div>
                                 ) : (
                                   <div className="space-y-3">
-                                    {/* Unscheduled topics */}
-                                    {topicsByWeek[0]?.length > 0 && (
+                                    {/* Scheduled topics (by date) */}
+                                    {scheduledTopics.length > 0 && (
                                       <div className="space-y-2">
-                                        <Badge variant="secondary" className="text-xs">Unscheduled</Badge>
-                                        {topicsByWeek[0].map((topic) => (
+                                        <Badge className="text-xs">Scheduled</Badge>
+                                        {scheduledTopics.map((topic) => (
                                           <TopicRow
                                             key={topic.id}
                                             topic={topic}
@@ -542,23 +536,21 @@ export default function AdminCalendar() {
                                       </div>
                                     )}
 
-                                    {/* Scheduled weeks */}
-                                    {Array.from({ length: maxWeek }, (_, i) => i + 1).map((week) => (
-                                      topicsByWeek[week]?.length > 0 && (
-                                        <div key={week} className="space-y-2">
-                                          <Badge className="text-xs">Week {week}</Badge>
-                                          {topicsByWeek[week].map((topic) => (
-                                            <TopicRow
-                                              key={topic.id}
-                                              topic={topic}
-                                              packId={pack.id}
-                                              onEdit={openEditTopic}
-                                              onDelete={openDeleteConfirm}
-                                            />
-                                          ))}
-                                        </div>
-                                      )
-                                    ))}
+                                    {/* Unscheduled topics */}
+                                    {unscheduledTopics.length > 0 && (
+                                      <div className="space-y-2">
+                                        <Badge variant="secondary" className="text-xs">Unscheduled</Badge>
+                                        {unscheduledTopics.map((topic) => (
+                                          <TopicRow
+                                            key={topic.id}
+                                            topic={topic}
+                                            packId={pack.id}
+                                            onEdit={openEditTopic}
+                                            onDelete={openDeleteConfirm}
+                                          />
+                                        ))}
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -856,17 +848,15 @@ export default function AdminCalendar() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="topic-week">Scheduled Week</Label>
+                <Label htmlFor="topic-date">Scheduled Date</Label>
                 <Input
-                  id="topic-week"
-                  type="number"
-                  min={1}
-                  value={editingTopic?.scheduled_week ?? ""}
-                  onChange={(e) => setEditingTopic(prev => prev ? { 
-                    ...prev, 
-                    scheduled_week: e.target.value ? parseInt(e.target.value) : null 
+                  id="topic-date"
+                  type="date"
+                  value={editingTopic?.scheduled_date ?? ""}
+                  onChange={(e) => setEditingTopic(prev => prev ? {
+                    ...prev,
+                    scheduled_date: e.target.value || null
                   } : null)}
-                  placeholder="Leave empty for unscheduled"
                 />
               </div>
             </div>
@@ -925,18 +915,7 @@ export default function AdminCalendar() {
                               <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
                                 {event.day_of_week && <span>{event.day_of_week}</span>}
                                 {event.event_date && <span>{event.event_date}</span>}
-                                {event.location && <span>@ {event.location}</span>}
-                                {event.time_slot && <span>{event.time_slot}</span>}
                               </div>
-                              {event.topics_covered && event.topics_covered.length > 0 && (
-                                <div className="flex flex-wrap gap-1 mt-1">
-                                  {event.topics_covered.map((topic, i) => (
-                                    <Badge key={i} variant="secondary" className="text-xs">
-                                      {topic}
-                                    </Badge>
-                                  ))}
-                                </div>
-                              )}
                             </div>
                             <div className="flex gap-1 ml-2">
                               {event.needs_review && (
@@ -1000,23 +979,27 @@ export default function AdminCalendar() {
 }
 
 // Topic row component
-function TopicRow({ 
-  topic, 
-  packId, 
-  onEdit, 
-  onDelete 
-}: { 
-  topic: { id: string; title: string; description: string | null; scheduled_week: number | null };
+function TopicRow({
+  topic,
+  packId,
+  onEdit,
+  onDelete
+}: {
+  topic: { id: string; title: string; description: string | null; scheduled_date?: string | null };
   packId: string;
   onEdit: (topic: EditingTopic, packId: string) => void;
   onDelete: (type: "pack" | "topic", id: string, name: string) => void;
 }) {
+  const scheduledDate = (topic as Record<string, unknown>).scheduled_date as string | null;
   return (
     <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg group">
       <div>
         <p className="font-medium text-sm">{topic.title}</p>
         {topic.description && (
           <p className="text-xs text-muted-foreground mt-0.5">{topic.description}</p>
+        )}
+        {scheduledDate && (
+          <p className="text-xs text-muted-foreground mt-0.5">{scheduledDate}</p>
         )}
       </div>
       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -1028,7 +1011,7 @@ function TopicRow({
             id: topic.id,
             title: topic.title,
             description: topic.description || "",
-            scheduled_week: topic.scheduled_week,
+            scheduled_date: scheduledDate,
           }, packId)}
         >
           <Pencil className="h-3 w-3" />

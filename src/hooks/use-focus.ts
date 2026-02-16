@@ -251,7 +251,7 @@ function processExams(data: any[]): UpcomingExam[] {
 
 // Fetch topics grouped by midterm coverage with question counts
 export interface TopicGroup {
-  midtermNumber: number | null;
+  midtermNumber: number;
   label: string;
   topics: { id: string; title: string; questionCount: number }[];
   totalQuestions: number;
@@ -269,7 +269,7 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
         .from('topics')
         .select('id, title, midterm_coverage')
         .in('course_pack_id', courseIds)
-        .order('scheduled_week', { ascending: true });
+        .order('scheduled_date', { ascending: true });
 
       if (topicsError) throw topicsError;
 
@@ -292,17 +292,17 @@ export function useTopicsGroupedByMidterm(courseIds: string[]) {
         }
       });
 
-      // Group by midterm_coverage
-      const groups: Map<number | null, TopicGroup> = new Map();
+      // Group by midterm_coverage (0 = finals, 1/2/3 = midterms)
+      const groups: Map<number, TopicGroup> = new Map();
 
       (topicsData || []).forEach(topic => {
-        const coverage = topic.midterm_coverage;
+        const coverage = topic.midterm_coverage ?? 0;
         const questionCount = topicCountMap.get(topic.id) || 0;
 
         if (!groups.has(coverage)) {
           groups.set(coverage, {
             midtermNumber: coverage,
-            label: coverage ? `Midterm ${coverage} Topics` : 'Final Topics',
+            label: coverage === 0 ? 'Finals Topics' : `Midterm ${coverage} Topics`,
             topics: [],
             totalQuestions: 0,
           });

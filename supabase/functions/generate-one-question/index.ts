@@ -289,14 +289,31 @@ serve(async (req) => {
     }
     const pdfBase64 = btoa(binary);
 
-    console.log(`PDF loaded: ${Math.round(arrayBuffer.byteLength / 1024)}KB, generating question...`);
+    const pdfSizeKB = Math.round(arrayBuffer.byteLength / 1024);
+    console.log(`PDF loaded: ${pdfSizeKB}KB, generating question...`);
+
+    // Guard against excessively large PDFs (>20MB base64 ~ 15MB raw)
+    if (arrayBuffer.byteLength > 15 * 1024 * 1024) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: `PDF too large (${pdfSizeKB}KB). Maximum supported size is ~15MB.`,
+          retryable: false,
+        }),
+        {
+          status: 400,
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+        }
+      );
+    }
 
     // Build the prompt
     const prompt = buildPrompt(existingQuestions);
 
     // Call Gemini API with PDF directly for visual understanding
+    // Using gemini-3-pro-preview for higher quality question generation
     const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=" + GEMINI_API_KEY,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=" + GEMINI_API_KEY,
       {
         method: "POST",
         headers: {
@@ -389,6 +406,7 @@ serve(async (req) => {
     if (!geminiResponse.ok) {
       const errorText = await geminiResponse.text();
       console.error("Gemini API error:", geminiResponse.status, errorText);
+      console.error("Request details - materialId:", materialId, "pdfSize:", pdfSizeKB + "KB");
 
       if (geminiResponse.status === 429) {
         return new Response(
@@ -404,11 +422,13 @@ serve(async (req) => {
         );
       }
 
+      // Truncate error text for response (but full text is in logs)
+      const truncatedError = errorText.length > 500 ? errorText.slice(0, 500) + "..." : errorText;
       return new Response(
         JSON.stringify({
           success: false,
-          error: `AI generation failed: ${geminiResponse.status} - ${errorText}`,
-          retryable: true,
+          error: `AI generation failed: ${geminiResponse.status} - ${truncatedError}`,
+          retryable: geminiResponse.status >= 500,
         }),
         {
           status: 500,
@@ -483,6 +503,7 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error("Generation error:", error);
+    console.error("Stack:", error instanceof Error ? error.stack : "N/A");
     return new Response(
       JSON.stringify({
         success: false,

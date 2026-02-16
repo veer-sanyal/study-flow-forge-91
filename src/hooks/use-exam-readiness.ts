@@ -59,7 +59,7 @@ export function useExamReadiness() {
       // Get all topics with mastery data
       const { data: topics } = await supabase
         .from('topics')
-        .select('id, title, course_pack_id, midterm_coverage, scheduled_week');
+        .select('id, title, course_pack_id, midterm_coverage, scheduled_date');
 
       const { data: masteryData } = await supabase
         .from('topic_mastery')
@@ -78,11 +78,11 @@ export function useExamReadiness() {
           : null;
 
         // Get topics in scope for this exam's course
-        // (topics from the same course that are scheduled before the exam)
-        const examWeek = examDate ? Math.ceil((examDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24 * 7)) + getCurrentWeek() : 52;
+        // (topics from the same course that are scheduled before/on the exam date)
+        const examDateStr = exam.event_date || '9999-12-31';
         const topicsInScope = topics?.filter(t =>
           t.course_pack_id === exam.course_pack_id &&
-          (t.scheduled_week === null || t.scheduled_week <= examWeek)
+          (!(t as Record<string, unknown>).scheduled_date || (t as Record<string, unknown>).scheduled_date as string <= examDateStr)
         ) || [];
 
         // Calculate metrics

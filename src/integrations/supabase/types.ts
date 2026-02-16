@@ -159,14 +159,10 @@ export type Database = {
           description: string | null
           event_date: string | null
           event_type: string
-          homework_assignments: string[] | null
           id: string
           ingestion_job_id: string | null
-          location: string | null
           needs_review: boolean
-          time_slot: string | null
           title: string
-          topics_covered: string[] | null
           updated_at: string
           week_number: number
         }
@@ -177,14 +173,10 @@ export type Database = {
           description?: string | null
           event_date?: string | null
           event_type: string
-          homework_assignments?: string[] | null
           id?: string
           ingestion_job_id?: string | null
-          location?: string | null
           needs_review?: boolean
-          time_slot?: string | null
           title: string
-          topics_covered?: string[] | null
           updated_at?: string
           week_number: number
         }
@@ -195,14 +187,10 @@ export type Database = {
           description?: string | null
           event_date?: string | null
           event_type?: string
-          homework_assignments?: string[] | null
           id?: string
           ingestion_job_id?: string | null
-          location?: string | null
           needs_review?: boolean
-          time_slot?: string | null
           title?: string
-          topics_covered?: string[] | null
           updated_at?: string
           week_number?: number
         }
@@ -953,42 +941,30 @@ export type Database = {
           course_pack_id: string | null
           created_at: string
           description: string | null
-          edition_id: string | null
           id: string
-          midterm_coverage: number | null
-          prerequisite_topic_ids: string[] | null
-          scheduled_week: number | null
-          source: string | null
+          midterm_coverage: number
+          scheduled_date: string | null
           title: string
-          topic_code: string | null
           updated_at: string
         }
         Insert: {
           course_pack_id?: string | null
           created_at?: string
           description?: string | null
-          edition_id?: string | null
           id?: string
-          midterm_coverage?: number | null
-          prerequisite_topic_ids?: string[] | null
-          scheduled_week?: number | null
-          source?: string | null
+          midterm_coverage?: number
+          scheduled_date?: string | null
           title: string
-          topic_code?: string | null
           updated_at?: string
         }
         Update: {
           course_pack_id?: string | null
           created_at?: string
           description?: string | null
-          edition_id?: string | null
           id?: string
-          midterm_coverage?: number | null
-          prerequisite_topic_ids?: string[] | null
-          scheduled_week?: number | null
-          source?: string | null
+          midterm_coverage?: number
+          scheduled_date?: string | null
           title?: string
-          topic_code?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -997,13 +973,6 @@ export type Database = {
             columns: ["course_pack_id"]
             isOneToOne: false
             referencedRelation: "course_packs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "topics_edition_id_fkey"
-            columns: ["edition_id"]
-            isOneToOne: false
-            referencedRelation: "course_editions"
             referencedColumns: ["id"]
           },
         ]

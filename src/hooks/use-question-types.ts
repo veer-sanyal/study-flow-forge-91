@@ -248,14 +248,13 @@ export interface TopicWithCount {
   id: string;
   title: string;
   description: string | null;
-  midterm_coverage: number | null;
-  scheduled_week: number | null;
+  midterm_coverage: number;
   course_pack_id: string | null;
   questionCount: number;
 }
 
 export interface TopicGroup {
-  midtermNumber: number | null;
+  midtermNumber: number;
   label: string;
   topics: TopicWithCount[];
   totalQuestions: number;
@@ -268,9 +267,9 @@ export function useTopicsWithCounts(coursePackId: string) {
       // Get topics
       const { data: topics, error: topicsError } = await supabase
         .from("topics")
-        .select("id, title, description, midterm_coverage, scheduled_week, course_pack_id")
+        .select("id, title, description, midterm_coverage, course_pack_id")
         .eq("course_pack_id", coursePackId)
-        .order("scheduled_week", { ascending: true, nullsFirst: true })
+        .order("scheduled_date", { ascending: true, nullsFirst: true })
         .order("title");
 
       if (topicsError) throw topicsError;
@@ -299,7 +298,7 @@ export function useTopicsWithCounts(coursePackId: string) {
       }));
 
       // Group by midterm
-      const groupMap = new Map<number | null, TopicWithCount[]>();
+      const groupMap = new Map<number, TopicWithCount[]>();
 
       topicsWithCounts.forEach((topic) => {
         const key = topic.midterm_coverage;
@@ -309,18 +308,16 @@ export function useTopicsWithCounts(coursePackId: string) {
         groupMap.get(key)!.push(topic);
       });
 
-      // Sort and format groups
+      // Sort and format groups (0 = finals last)
       const sortedKeys = [...groupMap.keys()].sort((a, b) => {
-        if (a === null) return 1;
-        if (b === null) return -1;
-        return (a ?? 0) - (b ?? 0);
+        if (a === 0) return 1;
+        if (b === 0) return -1;
+        return a - b;
       });
 
       const groups: TopicGroup[] = sortedKeys.map((key) => {
         const topics = groupMap.get(key)!;
-        let label = "Uncategorized";
-        if (key === 0) label = "Final Topics";
-        else if (key !== null) label = `Midterm ${key} Topics`;
+        const label = key === 0 ? "Finals Topics" : `Midterm ${key} Topics`;
 
         return {
           midtermNumber: key,
