@@ -23,6 +23,7 @@ export function useEnrollments() {
   // Fetch user's enrollments with course pack details
   const enrollmentsQuery = useQuery({
     queryKey: ['enrollments', user?.id],
+    staleTime: 60 * 1000, // 1 minute — prevents refetch-on-mount spam
     queryFn: async () => {
       if (!user) return [];
 
@@ -52,6 +53,7 @@ id,
   // Fetch all available course packs
   const coursePacksQuery = useQuery({
     queryKey: ['course-packs-available'],
+    staleTime: 5 * 60 * 1000, // 5 minutes — course packs rarely change
     queryFn: async () => {
       const { data, error } = await supabase
         .from('course_packs')
