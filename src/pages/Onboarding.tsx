@@ -227,7 +227,7 @@ export default function Onboarding() {
                     )}
 
                     {step < 3 ? (
-                        <Button onClick={() => setStep(s => s + 1)} disabled={step === 1 && selectedCourses.length === 0}>
+                        <Button onClick={() => setStep(s => s + 1)} disabled={step === 1 && selectedCourses.length === 0 && coursePacks.length > 0}>
                             Next
                         </Button>
                     ) : (
