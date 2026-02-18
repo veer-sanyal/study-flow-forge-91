@@ -168,6 +168,7 @@ IMPORTANT RULES:
 2. DO NOT extract:
    - Recitations or discussion sections (skip these)
    - "No class" / holidays / breaks
+   - "Final Review", "Exam Review", or "Course Recap" (these are NOT topics)
    - Generic labels like "Lecture 1" with no topic content
 3. If a row mentions MULTIPLE topics, create a SEPARATE entry for EACH topic.
 4. TITLE FORMAT — CRITICAL:
@@ -177,9 +178,13 @@ IMPORTANT RULES:
    - DO NOT prefix topics with lecture numbers, ordinal numbers, or any numbering that is not a textbook section
    - WRONG: "09 - Physical applications of integrals I (8.7)"
    - RIGHT: "Physical applications of integrals I (8.7)" or "8.7: Physical Applications of Integrals"
-5. Extract the EXACT DATE in YYYY-MM-DD format for when each topic is covered.
-6. Track the week number for organization.
-7. If the SAME topic appears on MULTIPLE days, create a separate entry for EACH day.
+5. DESCRIPTION FORMAT — CRITICAL:
+   - Start directly with the action or subject: "Interprets financial statements..." or "Explains the concept of..."
+   - DO NOT start with "This topic covers", "This module discusses", "In this lecture", etc.
+   - Keep it concise (1 sentence).
+6. Extract the EXACT DATE in YYYY-MM-DD format for when each topic is covered.
+7. Track the week number for organization.
+8. If the SAME topic appears on MULTIPLE days, create a separate entry for EACH day.
 
 For EXAMS, MIDTERMS, FINALS, and QUIZZES:
 - Extract with event_type: "exam" or "quiz"
