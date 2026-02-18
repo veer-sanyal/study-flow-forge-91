@@ -2,11 +2,18 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { EXTERNAL_SUPABASE_URL, getExternalServiceRoleKey } from "../_shared/external-db.ts";
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "https://study-flow-forge-91.lovable.app",
+const allowedOrigins = [
+  "https://study-flow-forge-91.lovable.app",
+  "https://study-flow-forge-91.vercel.app",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+
+const getCorsHeaders = (origin: string) => ({
+  "Access-Control-Allow-Origin": allowedOrigins.includes(origin) ? origin : allowedOrigins[0],
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
-};
+});
 
 // Configuration for rate limiting and retries
 const CONFIG = {
@@ -330,7 +337,7 @@ async function saveAnalysisResult(
 function buildAnalysisPrompt(prompt: string, choicesText: string, topicsList: string, questionTypesList: string, answerKeyHint?: string): string {
   const correctionNote = answerKeyHint ? `
 IMPORTANT CORRECTION:
-The official answer key indicates the correct answer is "${answerKeyHint.toUpperCase()}". 
+The official answer key indicates the correct answer is "${answerKeyHint.toUpperCase()}".
 Your previous analysis may have been incorrect. Please re-verify your work carefully.
 Explain step-by-step why "${answerKeyHint.toUpperCase()}" is the correct answer.
 ` : '';
@@ -527,7 +534,7 @@ async function processBatchInBackground(
       .from("questions")
       .select("id, correct_answer, answer_key_answer")
       .in("id", questionIds)
-      .not("answer_key_answer", "is", null);
+      .not("answer_key_key", "is", null);
 
     if (questionsWithKey && questionsWithKey.length > 0) {
       for (const q of questionsWithKey as any[]) {
@@ -640,6 +647,9 @@ async function processBatchInBackground(
 }
 
 serve(async (req) => {
+  const origin = req.headers.get("Origin") || "";
+  const corsHeaders = getCorsHeaders(origin);
+
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
   }
