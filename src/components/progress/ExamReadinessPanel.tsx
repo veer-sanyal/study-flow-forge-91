@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { Calendar, AlertTriangle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { useUpcomingExams } from '@/hooks/use-calendar';
 import { type TopicProgressRow, type ExamProjection, type TopicExamProjection } from '@/types/progress';
@@ -97,6 +98,7 @@ export function ExamReadinessPanel({
   }
 
   return (
+    <TooltipProvider>
     <div className="space-y-4">
       {projections.map((exam) => {
         const overallRisk = classifyRisk(exam.overallProjectedR);
@@ -122,12 +124,19 @@ export function ExamReadinessPanel({
                   </p>
                 </div>
                 <div className="text-right">
-                  <Badge
-                    variant="outline"
-                    className={cn('text-sm font-mono', riskColorClass(overallRisk))}
-                  >
-                    R: {Math.round(exam.overallProjectedR * 100)}%
-                  </Badge>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className={cn('text-sm font-mono cursor-default', riskColorClass(overallRisk))}
+                      >
+                        R: {Math.round(exam.overallProjectedR * 100)}%
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">Projected retrievability — your estimated average recall across all topics on exam day.</p>
+                    </TooltipContent>
+                  </Tooltip>
                   <p className="text-xs text-muted-foreground mt-1">projected at exam</p>
                 </div>
               </div>
@@ -181,5 +190,6 @@ export function ExamReadinessPanel({
         );
       })}
     </div>
+    </TooltipProvider>
   );
 }

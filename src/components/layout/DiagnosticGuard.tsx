@@ -18,6 +18,14 @@ export function DiagnosticGuard(): JSX.Element {
   const { enrollments, isLoadingEnrollments, isFetchingEnrollments } = useEnrollments();
   const { completedCourseIds, isLoading: isLoadingCompletions } = useDiagnosticCompletions();
 
+  // Dev bypass: ?skip_onboarding=true in dev mode skips diagnostic check
+  const searchParams = new URLSearchParams(window.location.search);
+  const devSkip = import.meta.env.DEV && searchParams.get('skip_onboarding') === 'true';
+
+  if (devSkip) {
+    return <Outlet />;
+  }
+
   // Wait for all data to load
   const isLoading = authLoading || !user || isLoadingEnrollments || isLoadingCompletions;
 

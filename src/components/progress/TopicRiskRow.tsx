@@ -2,6 +2,7 @@ import { ChevronDown } from 'lucide-react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 import { type TopicProgressRow } from '@/types/progress';
 import { riskColorClass, formatStability, formatDifficulty } from '@/lib/fsrs-stats';
@@ -23,6 +24,7 @@ export function TopicRiskRow({
   const lowData = topic.total_reps < 5;
 
   return (
+    <TooltipProvider>
     <div className="border rounded-lg bg-card">
       {/* Collapsed row */}
       <button
@@ -36,26 +38,47 @@ export function TopicRiskRow({
 
             {/* R chip */}
             {topic.r_now != null && (
-              <Badge
-                variant="outline"
-                className={cn('text-xs font-mono', riskColorClass(topic.risk))}
-              >
-                R: {Math.round(topic.r_now * 100)}%
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge
+                    variant="outline"
+                    className={cn('text-xs font-mono cursor-default', riskColorClass(topic.risk))}
+                  >
+                    R: {Math.round(topic.r_now * 100)}%
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">Retrievability — estimated probability you can recall this topic right now.</p>
+                </TooltipContent>
+              </Tooltip>
             )}
 
             {/* S50 chip */}
             {topic.median_stability != null && topic.median_stability > 0 && (
-              <Badge variant="outline" className="text-xs font-mono">
-                S: {formatStability(topic.median_stability)}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs font-mono cursor-default">
+                    S: {formatStability(topic.median_stability)}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">Stability — how many days until recall drops to 90%. Higher is better.</p>
+                </TooltipContent>
+              </Tooltip>
             )}
 
             {/* D50 chip */}
             {topic.median_difficulty != null && (
-              <Badge variant="outline" className="text-xs font-mono">
-                D: {formatDifficulty(topic.median_difficulty)}
-              </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Badge variant="outline" className="text-xs font-mono cursor-default">
+                    D: {formatDifficulty(topic.median_difficulty)}
+                  </Badge>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p className="max-w-xs">Difficulty — how challenging this topic is (0–10 scale).</p>
+                </TooltipContent>
+              </Tooltip>
             )}
 
             {/* Due badge */}
@@ -106,7 +129,14 @@ export function TopicRiskRow({
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm">
                 {/* Weak-tail stability */}
                 <div>
-                  <p className="text-muted-foreground">S10 (weak tail)</p>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-muted-foreground cursor-default">S10 (weak tail)</p>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">10th percentile stability — your weakest cards in this topic. Low values flag weak spots.</p>
+                    </TooltipContent>
+                  </Tooltip>
                   <p className="font-medium font-mono">
                     {formatStability(topic.p10_stability)}
                   </p>
@@ -122,7 +152,14 @@ export function TopicRiskRow({
 
                 {/* Lapses */}
                 <div>
-                  <p className="text-muted-foreground">Total lapses</p>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <p className="text-muted-foreground cursor-default">Total lapses</p>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p className="max-w-xs">Times you forgot a card after previously knowing it. High lapses suggest interference or insufficient review.</p>
+                    </TooltipContent>
+                  </Tooltip>
                   <p className="font-medium font-mono">{topic.total_lapses}</p>
                 </div>
 
@@ -157,5 +194,6 @@ export function TopicRiskRow({
         )}
       </AnimatePresence>
     </div>
+    </TooltipProvider>
   );
 }

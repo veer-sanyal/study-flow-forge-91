@@ -7,6 +7,14 @@ export function EnrollmentGuard() {
     const { loading: authLoading, user } = useAuth();
     const { enrollments, isLoadingEnrollments, isFetchingEnrollments } = useEnrollments();
 
+    // Dev bypass: ?skip_onboarding=true in dev mode skips enrollment check
+    const searchParams = new URLSearchParams(window.location.search);
+    const devSkip = import.meta.env.DEV && searchParams.get('skip_onboarding') === 'true';
+
+    if (devSkip) {
+        return <Outlet />;
+    }
+
     // Wait for auth + enrollments to resolve before gating.
     // Important: if enrollments are being refetched and the current cached value is empty,
     // don't redirect yet—show a spinner until the fetch resolves.
