@@ -313,8 +313,15 @@ ${topicsList}
 EXISTING QUESTION TYPES (MUST SELECT ONE BY ID):
 ${questionTypesList}
 
-CRITICAL: You MUST select a question type ID from the list above. Use the "ID" value exactly.
-If no existing type is a good match, you may suggest a new type name, but always try to match an existing type first.
+QUESTION TYPE RULES (CRITICAL):
+- questionType is the VARIANT or METHOD category of the question, NOT the format (never use "Multiple Choice", "Short Answer", "True/False", etc.)
+- Think of it as: "What technique or concept variant does this question test?"
+- Examples of GOOD question types: "Integration by Parts", "L'Hôpital's Rule", "Ratio Test for Convergence", "Related Rates", "Taylor Series Expansion", "Bond Pricing", "NPV Calculation"
+- Examples of BAD question types: "Multiple Choice", "Numeric Answer", "Short Response", "Fill in the Blank", "Select All That Apply"
+- Similar questions that use the same technique should share the same question type
+- This is a more granular categorization than topic — a topic like "Series" might have question types like "Ratio Test", "Comparison Test", "Integral Test"
+- You MUST select a question type ID from the list above if any match. Use the "ID" value exactly.
+- If no existing type is a good match, you may suggest a new descriptive type name, but always try to match an existing type first.
 
 ========================
 GROUNDING + GUARDRAILS

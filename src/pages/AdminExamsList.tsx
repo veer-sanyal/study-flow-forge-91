@@ -1587,6 +1587,7 @@ export default function AdminExamsList() {
           open={addMaterialOpen}
           onOpenChange={setAddMaterialOpen}
           coursePacks={course ? [{ id: course.id, title: course.title }] : []}
+          preselectedCoursePackId={courseId}
         />
 
         {/* Material Detail Drawer */}

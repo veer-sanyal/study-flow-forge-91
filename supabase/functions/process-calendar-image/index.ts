@@ -160,7 +160,13 @@ IMPORTANT RULES:
    - "No class" / holidays / breaks
    - Generic labels like "Lecture 1" with no topic content
 3. If a row mentions MULTIPLE topics, create a SEPARATE entry for EACH topic.
-4. Keep the topic name as it appears in the image. If there's a chapter/section number, include it (e.g., "Ch 5: Risk and Return" or "13.1: Vectors"). If there's no number, just use the topic name.
+4. TITLE FORMAT — CRITICAL:
+   - Use ONLY the topic name as it appears in the image
+   - If there is a textbook section number visible (e.g., "8.3", "13.1"), include it: "13.1: Vectors in the Plane"
+   - DO NOT add your own sequential numbering (no "01 -", "02 -", "09 -", "10 -", etc.)
+   - DO NOT prefix topics with lecture numbers, ordinal numbers, or any numbering that is not a textbook section
+   - WRONG: "09 - Physical applications of integrals I (8.7)"
+   - RIGHT: "Physical applications of integrals I (8.7)" or "8.7: Physical Applications of Integrals"
 5. Extract the EXACT DATE in YYYY-MM-DD format for when each topic is covered.
 6. Track the week number for organization.
 7. If the SAME topic appears on MULTIPLE days, create a separate entry for EACH day.

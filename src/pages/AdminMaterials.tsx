@@ -321,10 +321,11 @@ export default function AdminMaterials() {
       </Card>
       
       {/* Upload Dialog */}
-      <MaterialUploadDialog 
-        open={uploadDialogOpen} 
+      <MaterialUploadDialog
+        open={uploadDialogOpen}
         onOpenChange={setUploadDialogOpen}
         coursePacks={coursePacks || []}
+        preselectedCoursePackId={selectedCourseId || undefined}
       />
       
       {/* Detail Drawer */}

@@ -3,8 +3,9 @@ import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-
 import { EXTERNAL_SUPABASE_URL, getExternalServiceRoleKey } from "../_shared/external-db.ts";
 
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": "https://study-flow-forge-91.lovable.app",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, GET, OPTIONS, PUT, DELETE",
 };
 
 // Configuration for rate limiting and retries
@@ -84,11 +85,11 @@ async function analyzeQuestionWithRetry(
       const questionTypesList =
         existingQuestionTypes && (existingQuestionTypes as any[]).length > 0
           ? (existingQuestionTypes as any[])
-              .map((qt) => {
-                const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
-                return `- ID: "${qt.id}" - ${qt.name}${aliases}`;
-              })
-              .join("\n")
+            .map((qt) => {
+              const aliases = qt.aliases?.length ? ` (aliases: ${qt.aliases.join(", ")})` : "";
+              return `- ID: "${qt.id}" - ${qt.name}${aliases}`;
+            })
+            .join("\n")
           : "No question types defined yet";
 
       // Build maps for validation
@@ -134,7 +135,7 @@ async function analyzeQuestionWithRetry(
         mimeType: string;
       }
       const choiceImages: ChoiceImageData[] = [];
-      
+
       if (q.choices && Array.isArray(q.choices)) {
         for (const choice of q.choices) {
           if (choice.imageUrl) {
@@ -151,19 +152,19 @@ async function analyzeQuestionWithRetry(
 
       // Build content parts with all images
       const contentParts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }> = [];
-      
+
       // Add main question image first
       if (mainImage) {
         contentParts.push({ inlineData: { mimeType: mainImage.mimeType, data: mainImage.data } });
         contentParts.push({ text: "The above image is the diagram/figure for this question.\n\n" });
       }
-      
+
       // Add choice images with labels
       for (const choiceImg of choiceImages) {
         contentParts.push({ inlineData: { mimeType: choiceImg.mimeType, data: choiceImg.data } });
         contentParts.push({ text: `The above image is for CHOICE ${choiceImg.choiceId.toUpperCase()}.\n\n` });
       }
-      
+
       // Add the analysis prompt
       contentParts.push({ text: analysisPrompt });
 
@@ -194,7 +195,7 @@ async function analyzeQuestionWithRetry(
 
       const geminiResult = await geminiResponse.json();
       const functionCall = geminiResult.candidates?.[0]?.content?.parts?.[0]?.functionCall;
-      
+
       if (!functionCall?.args) {
         throw new Error("Failed to parse AI analysis");
       }
@@ -208,9 +209,9 @@ async function analyzeQuestionWithRetry(
 
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
-      
+
       // Expanded retry conditions - retry on more transient errors
-      const isRetryable = 
+      const isRetryable =
         errorMessage === "RATE_LIMIT" ||
         errorMessage.includes("AbortError") ||
         errorMessage.includes("timeout") ||
@@ -221,7 +222,7 @@ async function analyzeQuestionWithRetry(
         errorMessage.includes("502") ||
         errorMessage.includes("503") ||
         errorMessage.includes("504");
-      
+
       if (isRetryable && attempt < maxRetries) {
         const delay = retryDelayMs * Math.pow(2, attempt);
         console.log(`Question ${questionId} failed (attempt ${attempt + 1}/${maxRetries + 1}): ${errorMessage}, retrying in ${delay}ms...`);
@@ -347,6 +348,15 @@ ${topicsList}
 
 EXISTING QUESTION TYPES (select by ID):
 ${questionTypesList}
+
+QUESTION TYPE RULES (CRITICAL):
+- questionType is the VARIANT or METHOD category of the question, NOT the format (never use "Multiple Choice", "Short Answer", "True/False", etc.)
+- Think of it as: "What technique or concept variant does this question test?"
+- Examples of GOOD question types: "Integration by Parts", "L'Hôpital's Rule", "Ratio Test for Convergence", "Related Rates", "Taylor Series Expansion", "Bond Pricing", "NPV Calculation"
+- Examples of BAD question types: "Multiple Choice", "Numeric Answer", "Short Response", "Fill in the Blank", "Select All That Apply"
+- Similar questions that use the same technique should share the same question type
+- This is a more granular categorization than topic — a topic like "Series" might have question types like "Ratio Test", "Comparison Test", "Integral Test"
+- If an existing question type matches, use its ID. Otherwise propose a new descriptive name.
 
 Provide: correctAnswer (a/b/c/d/e), difficulty (1-5), detailedSolution, guideMeSteps (3-6 steps), methodSummary, topicIds, questionTypeId, questionTypeName.
 
@@ -507,10 +517,10 @@ async function processBatchInBackground(
 
   // POST-ANALYSIS PASS 1: Compare AI answers with answer key and identify mismatches
   console.log(`Running post-analysis answer key comparison for job ${jobId}...`);
-  
+
   let mismatchCount = 0;
   const mismatchedQuestions: { id: string; answer_key_answer: string }[] = [];
-  
+
   try {
     // Get all questions that were just analyzed and have an answer key
     const { data: questionsWithKey } = await supabase
@@ -549,10 +559,10 @@ async function processBatchInBackground(
   // POST-ANALYSIS PASS 2: Re-analyze mismatched questions with answer key hint
   let reanalyzedCount = 0;
   let reanalyzeSuccessCount = 0;
-  
+
   if (mismatchedQuestions.length > 0) {
     console.log(`Re-analyzing ${mismatchedQuestions.length} questions with answer key hints...`);
-    
+
     // Update job status to show we're re-analyzing
     await supabase
       .from("analysis_jobs")
@@ -560,11 +570,11 @@ async function processBatchInBackground(
         current_question_prompt: `Re-analyzing ${mismatchedQuestions.length} mismatched questions...`,
       } as any)
       .eq("id", jobId);
-    
+
     for (const mq of mismatchedQuestions) {
       reanalyzedCount++;
       console.log(`Re-analyzing question ${mq.id} with hint: ${mq.answer_key_answer}`);
-      
+
       const result = await analyzeQuestionWithRetry(
         supabase,
         mq.id,
@@ -573,20 +583,20 @@ async function processBatchInBackground(
         CONFIG.RETRY_DELAY_MS,
         mq.answer_key_answer // Pass the correct answer as a hint
       );
-      
+
       if (result.success) {
         reanalyzeSuccessCount++;
-        
+
         // Re-check if the answer now matches
         const { data: updatedQ } = await supabase
           .from("questions")
           .select("correct_answer")
           .eq("id", mq.id)
           .single();
-        
+
         const newAnswer = (updatedQ as any)?.correct_answer?.toUpperCase().trim();
         const nowMatches = newAnswer === mq.answer_key_answer;
-        
+
         // Update mismatch status after re-analysis
         await supabase
           .from("questions")
@@ -595,7 +605,7 @@ async function processBatchInBackground(
             needs_review: !nowMatches,
           } as any)
           .eq("id", mq.id);
-        
+
         if (nowMatches) {
           mismatchCount--;
           console.log(`Question ${mq.id} now matches answer key after re-analysis`);
@@ -603,11 +613,11 @@ async function processBatchInBackground(
       } else {
         console.error(`Re-analysis failed for question ${mq.id}: ${result.error}`);
       }
-      
+
       // Add a small delay between re-analyses to avoid rate limiting
       await sleep(1000);
     }
-    
+
     console.log(`Re-analysis complete: ${reanalyzeSuccessCount}/${reanalyzedCount} succeeded, ${mismatchCount} still mismatched`);
   }
 
@@ -620,8 +630,8 @@ async function processBatchInBackground(
       completed_at: new Date().toISOString(),
       current_question_id: null,
       current_question_prompt: null,
-      error_message: failedCount > 0 
-        ? `${failedCount} questions failed` 
+      error_message: failedCount > 0
+        ? `${failedCount} questions failed`
         : (mismatchCount > 0 ? `${mismatchCount} answer mismatches (after re-analysis)` : null),
     } as any)
     .eq("id", jobId);
@@ -631,7 +641,7 @@ async function processBatchInBackground(
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
+    return new Response("ok", { headers: corsHeaders });
   }
 
   try {
@@ -656,7 +666,7 @@ serve(async (req) => {
     // Verify user is admin
     const token = authHeader.replace("Bearer ", "");
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-    
+
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
         status: 401,
