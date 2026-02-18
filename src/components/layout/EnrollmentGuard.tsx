@@ -5,7 +5,7 @@ import { useEnrollments } from "@/hooks/use-enrollments";
 
 export function EnrollmentGuard() {
     const { loading: authLoading, user } = useAuth();
-    const { enrollments, isLoadingEnrollments, isFetchingEnrollments } = useEnrollments();
+    const { enrollments, isLoadingEnrollments, isFetchingEnrollments, coursePacks, isLoadingCoursePacks } = useEnrollments();
 
     // Dev bypass: ?skip_onboarding=true in dev mode skips enrollment check
     const searchParams = new URLSearchParams(window.location.search);
@@ -15,17 +15,22 @@ export function EnrollmentGuard() {
         return <Outlet />;
     }
 
-    // Wait for auth + enrollments to resolve before gating.
+    // Wait for auth + enrollments + course packs to resolve before gating.
     // Important: if enrollments are being refetched and the current cached value is empty,
     // don't redirect yet—show a spinner until the fetch resolves.
     const waitingOnEnrollments = isLoadingEnrollments || (isFetchingEnrollments && enrollments.length === 0);
 
-    if (authLoading || !user || waitingOnEnrollments) {
+    if (authLoading || !user || waitingOnEnrollments || isLoadingCoursePacks) {
         return (
             <div className="h-screen w-full flex items-center justify-center bg-background">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
         );
+    }
+
+    // If there are no published course packs, there's nothing to enroll in — let the user through.
+    if (coursePacks.length === 0) {
+        return <Outlet />;
     }
 
     // If user has NO enrollments, force them to /onboarding
