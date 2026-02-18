@@ -251,8 +251,12 @@ Be thorough — extract EVERY topic/content unit from the schedule. Even if you'
         },
         generationConfig: {
           temperature: 0.2,
-          // Disable thinking for flash (causes empty results); pro requires thinking
-          ...(model.includes("flash") ? { thinkingConfig: { thinkingBudget: 0 } } : {}),
+          // Disable thinking for flash (causes empty results); enable for pro-preview
+          ...(model.includes("flash")
+            ? { thinkingConfig: { thinkingBudget: 0 } }
+            : model.includes("pro-preview")
+              ? { thinkingConfig: { includeThoughts: true } }
+              : {}),
         }
       };
 
@@ -288,12 +292,12 @@ Be thorough — extract EVERY topic/content unit from the schedule. Even if you'
       return fc.args?.events || [];
     };
 
-    // Try gemini-2.5-flash first, fall back to gemini-2.5-pro if 0 events
-    let events = await callGemini("gemini-2.5-flash");
-    console.log(`Extracted ${events.length} events from gemini-2.5-flash`);
+    // Try gemini-3-pro-preview with thinking enabled
+    let events = await callGemini("gemini-3-pro-preview");
+    console.log(`Extracted ${events.length} events from gemini-3-pro-preview`);
 
     if (events.length === 0) {
-      console.warn("Flash returned 0 events, retrying with gemini-2.5-pro...");
+      console.warn("Pro preview returned 0 events, retrying with gemini-2.5-pro...");
 
       await supabase
         .from("ingestion_jobs")
