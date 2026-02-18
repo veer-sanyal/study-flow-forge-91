@@ -40,7 +40,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   useEffect(() => {
     if (material) {
       setEditTitle(material.title || "");
-      setEditWeek((material as unknown as { scheduled_week?: number }).scheduled_week?.toString() || "");
+      setEditWeek((material as unknown as { scheduled_date?: number }).scheduled_date?.toString() || "");
       const mt = (material as unknown as { corresponds_to_midterm?: number }).corresponds_to_midterm;
       setEditMidterm(mt != null ? String(mt) : "unassigned");
     }

@@ -52,7 +52,7 @@ WHERE topic_ids = '{}' OR topic_ids IS NULL;
 -- ============================================================
 -- CHECK 3: Topics expected by diagnostic have a date mapping
 -- ============================================================
--- A topic is "expected by diagnostic" if it has a scheduled_week.
+-- A topic is "expected by diagnostic" if it has a scheduled_date.
 -- It should appear in at least one calendar_event with an event_date
 -- so we can derive a real date for it.
 
@@ -60,9 +60,9 @@ SELECT
   t.id AS topic_id,
   t.title,
   t.course_pack_id,
-  t.scheduled_week
+  t.scheduled_date
 FROM topics t
-WHERE t.scheduled_week IS NOT NULL
+WHERE t.scheduled_date IS NOT NULL
   AND NOT EXISTS (
     SELECT 1
     FROM calendar_events ce

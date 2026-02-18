@@ -86,7 +86,7 @@ BEGIN
         WHERE ij.id = q.ingestion_job_id AND ij.is_published = true
       ))
       AND (q.course_pack_id IS NULL OR cp.is_published = true)
-      AND (t.scheduled_week IS NULL OR t.scheduled_week <= v_effective_week)
+      AND (t.scheduled_date IS NULL OR t.scheduled_date <= v_effective_week)
   )
   SELECT 
     eq.id as question_id,

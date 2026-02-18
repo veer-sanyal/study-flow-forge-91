@@ -1,11 +1,11 @@
 import { useState, useRef } from "react";
 import { motion } from "framer-motion";
-import { 
-  Calendar, 
-  Plus, 
-  Pencil, 
-  Trash2, 
-  BookOpen, 
+import {
+  Calendar,
+  Plus,
+  Pencil,
+  Trash2,
+  BookOpen,
   ChevronDown,
   Save,
   Upload,
@@ -54,11 +54,11 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  useCoursePacks, 
-  useTopicsForPack, 
-  useCoursePackMutations, 
-  useTopicMutations 
+import {
+  useCoursePacks,
+  useTopicsForPack,
+  useCoursePackMutations,
+  useTopicMutations
 } from "@/hooks/use-admin";
 import {
   useIngestionJobs,
@@ -85,14 +85,14 @@ export default function AdminCalendar() {
   const prefersReducedMotion = useReducedMotion();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   // Data fetching
   const { data: coursePacks, isLoading: packsLoading } = useCoursePacks();
   const [selectedPackId, setSelectedPackId] = useState<string | null>(null);
   const { data: topics, isLoading: topicsLoading } = useTopicsForPack(selectedPackId);
   const { data: calendarJobs } = useIngestionJobs(selectedPackId ?? undefined, "calendar");
   const { data: calendarEvents } = useCalendarEvents(selectedPackId ?? undefined);
-  
+
   // Mutations
   const { createPack, updatePack, deletePack } = useCoursePackMutations();
   const { createTopic, updateTopic, deleteTopic } = useTopicMutations();
@@ -102,7 +102,7 @@ export default function AdminCalendar() {
   const deleteCalendarEvent = useDeleteCalendarEvent();
   const updateCalendarEvent = useUpdateCalendarEvent();
   const generateTopics = useGenerateTopicsFromEvents();
-  
+
   // UI state
   const [openPackIds, setOpenPackIds] = useState<Set<string>>(new Set());
   const [packDialogOpen, setPackDialogOpen] = useState(false);
@@ -117,7 +117,7 @@ export default function AdminCalendar() {
   const [activeTab, setActiveTab] = useState<"topics" | "calendar">("topics");
   const [isDragging, setIsDragging] = useState(false);
 
-  // Group topics: scheduled vs unscheduled (since scheduled_week is gone, use scheduled_date)
+  // Group topics: scheduled vs unscheduled (since scheduled_date is gone, use scheduled_date)
   const scheduledTopics = topics?.filter(t => (t as Record<string, unknown>).scheduled_date) ?? [];
   const unscheduledTopics = topics?.filter(t => !(t as Record<string, unknown>).scheduled_date) ?? [];
 
@@ -146,7 +146,7 @@ export default function AdminCalendar() {
 
   const handleSavePack = async () => {
     if (!editingPack?.title.trim()) return;
-    
+
     try {
       if (editingPack.id) {
         await updatePack.mutateAsync({
@@ -171,7 +171,7 @@ export default function AdminCalendar() {
 
   const handleSaveTopic = async () => {
     if (!editingTopic?.title.trim() || !activePackForTopic) return;
-    
+
     try {
       if (editingTopic.id) {
         await updateTopic.mutateAsync({
@@ -199,7 +199,7 @@ export default function AdminCalendar() {
 
   const handleDelete = async () => {
     if (!deletingItem) return;
-    
+
     try {
       if (deletingItem.type === "pack") {
         await deletePack.mutateAsync(deletingItem.id);
@@ -226,7 +226,7 @@ export default function AdminCalendar() {
       toast({ title: "Please upload an image file", variant: "destructive" });
       return;
     }
-    
+
     toast({ title: "Uploading calendar image...", description: "Please wait while we process your file" });
 
     setUploadingImage(true);
@@ -255,10 +255,10 @@ export default function AdminCalendar() {
         });
       }
     } catch (error) {
-      toast({ 
-        title: "Error processing calendar", 
+      toast({
+        title: "Error processing calendar",
         description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive" 
+        variant: "destructive"
       });
     } finally {
       setUploadingImage(false);
@@ -276,7 +276,7 @@ export default function AdminCalendar() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    
+
     const file = e.dataTransfer.files?.[0];
     if (file) handleImageUpload(file);
   };
@@ -296,29 +296,29 @@ export default function AdminCalendar() {
       await processJob.mutateAsync({ jobId, kind: "calendar" });
       toast({ title: "Calendar processed successfully!" });
     } catch (error) {
-      toast({ 
-        title: "Processing failed", 
+      toast({
+        title: "Processing failed",
         description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive" 
+        variant: "destructive"
       });
     }
   };
 
   const handleGenerateTopics = async () => {
     if (!selectedPackId) return;
-    
+
     try {
       const result = await generateTopics.mutateAsync(selectedPackId);
-      toast({ 
-        title: "Topics generated!", 
-        description: `Created ${result.created} topics from calendar events` 
+      toast({
+        title: "Topics generated!",
+        description: `Created ${result.created} topics from calendar events`
       });
       setActiveTab("topics");
     } catch (error) {
-      toast({ 
-        title: "Failed to generate topics", 
+      toast({
+        title: "Failed to generate topics",
         description: error instanceof Error ? error.message : "Unknown error",
-        variant: "destructive" 
+        variant: "destructive"
       });
     }
   };
@@ -403,7 +403,7 @@ export default function AdminCalendar() {
         className="p-6 space-y-6 pb-24 md:pb-6"
       >
         {/* Header */}
-        <motion.div 
+        <motion.div
           variants={staggerItem}
           className="flex items-center justify-between"
         >
@@ -452,11 +452,11 @@ export default function AdminCalendar() {
                       <CardHeader className="cursor-pointer hover:bg-muted/50 transition-colors">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-3">
-                            <ChevronDown 
+                            <ChevronDown
                               className={cn(
                                 "h-5 w-5 text-muted-foreground transition-transform",
                                 openPackIds.has(pack.id) && "rotate-180"
-                              )} 
+                              )}
                             />
                             <div>
                               <CardTitle className="text-lg">{pack.title}</CardTitle>
@@ -486,7 +486,7 @@ export default function AdminCalendar() {
                         </div>
                       </CardHeader>
                     </CollapsibleTrigger>
-                    
+
                     <CollapsibleContent>
                       <CardContent className="pt-0">
                         {selectedPackId === pack.id && (
@@ -510,8 +510,8 @@ export default function AdminCalendar() {
                                   <h4 className="font-medium text-sm text-muted-foreground">
                                     Topics Schedule
                                   </h4>
-                                  <Button 
-                                    size="sm" 
+                                  <Button
+                                    size="sm"
                                     variant="outline"
                                     onClick={() => openNewTopic(pack.id)}
                                   >
@@ -577,8 +577,8 @@ export default function AdminCalendar() {
                                   </h4>
                                   <div className="flex gap-2">
                                     {calendarEvents && calendarEvents.length > 0 && (
-                                      <Button 
-                                        size="sm" 
+                                      <Button
+                                        size="sm"
                                         variant="outline"
                                         onClick={() => setEventsDialogOpen(true)}
                                       >
@@ -593,7 +593,7 @@ export default function AdminCalendar() {
                                       className="hidden"
                                       onChange={handleFileInputChange}
                                     />
-                                    <Button 
+                                    <Button
                                       size="sm"
                                       onClick={() => fileInputRef.current?.click()}
                                       disabled={uploadingImage}
@@ -609,11 +609,11 @@ export default function AdminCalendar() {
                                 </div>
 
                                 {/* Drop Zone */}
-                                <div 
+                                <div
                                   className={cn(
                                     "p-8 border-2 border-dashed rounded-lg transition-colors cursor-pointer",
-                                    isDragging 
-                                      ? "border-primary bg-primary/10" 
+                                    isDragging
+                                      ? "border-primary bg-primary/10"
                                       : "border-muted-foreground/30 bg-muted/30 hover:border-muted-foreground/50",
                                     uploadingImage && "opacity-50 pointer-events-none"
                                   )}
@@ -665,7 +665,7 @@ export default function AdminCalendar() {
                                   <div className="space-y-2">
                                     <h5 className="text-sm font-medium text-muted-foreground">Recent Imports</h5>
                                     {calendarJobs.slice(0, 3).map((job) => (
-                                      <div 
+                                      <div
                                         key={job.id}
                                         className="flex items-center justify-between p-3 bg-muted/30 rounded-lg"
                                       >
@@ -718,7 +718,7 @@ export default function AdminCalendar() {
                                           <div key={week} className="space-y-1">
                                             <Badge className="text-xs">Week {week}</Badge>
                                             {eventsByWeek[week].slice(0, 3).map((event) => (
-                                              <div 
+                                              <div
                                                 key={event.id}
                                                 className={cn(
                                                   "flex items-center justify-between p-2 rounded-md text-sm",
@@ -746,14 +746,14 @@ export default function AdminCalendar() {
                                       ))}
                                     </div>
                                     <div className="flex gap-2">
-                                      <Button 
-                                        variant="outline" 
+                                      <Button
+                                        variant="outline"
                                         size="sm"
                                         onClick={() => setEventsDialogOpen(true)}
                                       >
                                         View All Events
                                       </Button>
-                                      <Button 
+                                      <Button
                                         size="sm"
                                         onClick={handleGenerateTopics}
                                         disabled={generateTopics.isPending}
@@ -817,7 +817,7 @@ export default function AdminCalendar() {
               <Button variant="outline" onClick={() => setPackDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={handleSavePack}
                 disabled={!editingPack?.title.trim() || createPack.isPending || updatePack.isPending}
               >
@@ -876,7 +876,7 @@ export default function AdminCalendar() {
               <Button variant="outline" onClick={() => setTopicDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={handleSaveTopic}
                 disabled={!editingTopic?.title.trim() || createTopic.isPending || updateTopic.isPending}
               >
@@ -904,7 +904,7 @@ export default function AdminCalendar() {
                       <Badge className="text-sm">Week {week}</Badge>
                       <div className="space-y-2">
                         {eventsByWeek[week].map((event) => (
-                          <div 
+                          <div
                             key={event.id}
                             className={cn(
                               "flex items-start justify-between p-3 rounded-lg",
@@ -976,7 +976,7 @@ export default function AdminCalendar() {
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction 
+              <AlertDialogAction
                 onClick={handleDelete}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >

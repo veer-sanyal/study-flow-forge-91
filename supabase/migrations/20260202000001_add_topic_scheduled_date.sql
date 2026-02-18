@@ -22,14 +22,14 @@ DECLARE
 BEGIN
   -- For each topic, find the earliest calendar event that matches
   FOR r_topic IN
-    SELECT t.id, t.course_pack_id, t.title, t.scheduled_week
+    SELECT t.id, t.course_pack_id, t.title, t.scheduled_date
     FROM topics t
-    WHERE t.scheduled_week IS NOT NULL
+    WHERE t.scheduled_date IS NOT NULL
       AND (t.scheduled_date IS NULL OR t.scheduled_date != (
         SELECT MIN(ce.event_date)
         FROM calendar_events ce
         WHERE ce.course_pack_id = t.course_pack_id
-          AND ce.week_number = t.scheduled_week
+          AND ce.week_number = t.scheduled_date
           AND ce.event_date IS NOT NULL
           AND (ce.event_type = 'topic' OR ce.topics_covered IS NOT NULL)
       ))
@@ -39,7 +39,7 @@ BEGIN
     INTO v_topic_date
     FROM calendar_events ce
     WHERE ce.course_pack_id = r_topic.course_pack_id
-      AND ce.week_number = r_topic.scheduled_week
+      AND ce.week_number = r_topic.scheduled_date
       AND ce.event_date IS NOT NULL
       AND (ce.event_type = 'topic' OR ce.topics_covered IS NOT NULL);
     

@@ -284,7 +284,7 @@ Filter by scheduled week and upcoming exams:
 
 ```sql
 -- Only include topics scheduled for current week + pace offset
-WHERE (t.scheduled_week IS NULL OR t.scheduled_week <= p_current_week + p_pace_offset)
+WHERE (t.scheduled_date IS NULL OR t.scheduled_date <= p_current_week + p_pace_offset)
 
 -- Boost topics with upcoming exams
 JOIN calendar_events ce ON ce.topic_id = ANY(q.topic_ids)

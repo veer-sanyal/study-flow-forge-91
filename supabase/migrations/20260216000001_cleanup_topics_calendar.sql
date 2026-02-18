@@ -15,7 +15,7 @@ ALTER TABLE public.topics
   DROP COLUMN IF EXISTS edition_id,
   DROP COLUMN IF EXISTS topic_code,
   DROP COLUMN IF EXISTS source,
-  DROP COLUMN IF EXISTS scheduled_week;
+  DROP COLUMN IF EXISTS scheduled_date;
 
 -- ============================================================
 -- CALENDAR_EVENTS TABLE: Drop unused columns
@@ -52,7 +52,7 @@ ALTER TABLE public.topics
 
 -- ============================================================
 -- Drop stale update_topic_scheduled_dates() RPC
--- (references scheduled_week which is now dropped)
+-- (references scheduled_date which is now dropped)
 -- ============================================================
 
 DROP FUNCTION IF EXISTS public.update_topic_scheduled_dates();

@@ -266,7 +266,7 @@ export function useUpdateMaterial() {
     }) => {
       const updates: Record<string, unknown> = {};
       if (title !== undefined) updates.title = title;
-      if (scheduledWeek !== undefined) updates.scheduled_week = scheduledWeek;
+      if (scheduledWeek !== undefined) updates.scheduled_date = scheduledWeek;
       if (correspondsToMidterm !== undefined) updates.corresponds_to_midterm = correspondsToMidterm;
 
       const { data, error } = await supabase

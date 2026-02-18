@@ -127,7 +127,7 @@ BEGIN
     -- Calendar eligibility: only questions from topics scheduled for current week + pace
     LEFT JOIN topics t ON t.id = ANY(q.topic_ids)
     WHERE q.needs_review = FALSE
-      AND (t.scheduled_week IS NULL OR t.scheduled_week <= p_current_week + p_pace_offset)
+      AND (t.scheduled_date IS NULL OR t.scheduled_date <= p_current_week + p_pace_offset)
   )
   
   SELECT 

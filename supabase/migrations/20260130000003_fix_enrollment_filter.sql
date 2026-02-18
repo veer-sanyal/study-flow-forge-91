@@ -127,7 +127,7 @@ BEGIN
     -- Exclude questions already attempted today (for fresh recommendations)
     AND NOT EXISTS (SELECT 1 FROM today_attempts ta WHERE ta.question_id = q.id)
     -- Topic coverage constraint: skip when p_ignore_constraints = true
-    AND (p_ignore_constraints = TRUE OR t.scheduled_week IS NULL OR t.scheduled_week <= v_effective_week)
+    AND (p_ignore_constraints = TRUE OR t.scheduled_date IS NULL OR t.scheduled_date <= v_effective_week)
     -- Course filter: specific course > enrolled courses > all courses (admin fallback)
     AND (
       (p_course_id IS NOT NULL AND q.course_pack_id = p_course_id)

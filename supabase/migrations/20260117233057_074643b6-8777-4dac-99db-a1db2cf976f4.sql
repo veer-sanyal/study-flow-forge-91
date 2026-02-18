@@ -58,7 +58,7 @@ CREATE TABLE public.topics (
   course_pack_id UUID REFERENCES public.course_packs(id) ON DELETE CASCADE,
   title TEXT NOT NULL,
   description TEXT,
-  scheduled_week INT, -- Calendar-derived scheduling
+  scheduled_date INT, -- Calendar-derived scheduling
   prerequisite_topic_ids UUID[] DEFAULT '{}',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

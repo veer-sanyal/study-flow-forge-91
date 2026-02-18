@@ -96,14 +96,14 @@ BEGIN
   JOIN topics t ON tm.topic_id = t.id
   WHERE tm.user_id = p_user_id
     AND tm.mastery_0_1 < 0.5
-    AND t.scheduled_week <= v_current_week + p_pace_offset
+    AND t.scheduled_date <= v_current_week + p_pace_offset
     AND (p_course_id IS NULL OR t.course_pack_id = p_course_id);
   
   -- 3. Total eligible topics
   SELECT COUNT(*)
   INTO v_total_eligible_topics
   FROM topics t
-  WHERE t.scheduled_week <= v_current_week + p_pace_offset
+  WHERE t.scheduled_date <= v_current_week + p_pace_offset
     AND (p_course_id IS NULL OR t.course_pack_id = p_course_id);
   v_total_eligible_topics := GREATEST(v_total_eligible_topics, 1);
   
@@ -122,7 +122,7 @@ BEGIN
   SELECT COUNT(*)
   INTO v_unpracticed_count
   FROM topics t
-  WHERE t.scheduled_week <= v_current_week + p_pace_offset
+  WHERE t.scheduled_date <= v_current_week + p_pace_offset
     AND (p_course_id IS NULL OR t.course_pack_id = p_course_id)
     AND NOT EXISTS (
       SELECT 1 FROM topic_mastery tm 
@@ -181,7 +181,7 @@ BEGIN
     JOIN topics t ON t.id = ANY(q.topic_ids)
     WHERE q.needs_review = false
       AND srs.due_at <= now() + interval '1 day'
-      AND t.scheduled_week <= v_current_week + p_pace_offset
+      AND t.scheduled_date <= v_current_week + p_pace_offset
       AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
       AND ABS(COALESCE(q.difficulty, 3) - v_user_difficulty) <= 1
     ORDER BY priority_score DESC
@@ -209,17 +209,17 @@ BEGIN
         q.topic_ids,
         q.question_type_id,
         'current'::text as category,
-        'Topic from week ' || t.scheduled_week || ' - ' || t.title as why_selected,
+        'Topic from week ' || t.scheduled_date || ' - ' || t.title as why_selected,
         -- Priority: prefer unpracticed topics, then lower mastery
         (CASE WHEN tm.id IS NULL THEN 100.0 ELSE 0.0 END) +
         (1.0 - COALESCE(tm.mastery_0_1, 0.5)) * 50.0 +
-        (v_current_week - COALESCE(t.scheduled_week, 1))::numeric as priority_score
+        (v_current_week - COALESCE(t.scheduled_date, 1))::numeric as priority_score
       FROM questions q
       JOIN topics t ON t.id = ANY(q.topic_ids)
       LEFT JOIN topic_mastery tm ON tm.topic_id = t.id AND tm.user_id = p_user_id
       LEFT JOIN srs_state srs ON srs.question_id = q.id AND srs.user_id = p_user_id
       WHERE q.needs_review = false
-        AND t.scheduled_week BETWEEN (v_current_week - 2) AND (v_current_week + p_pace_offset)
+        AND t.scheduled_date BETWEEN (v_current_week - 2) AND (v_current_week + p_pace_offset)
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND ABS(COALESCE(q.difficulty, 3) - v_user_difficulty) <= 1
         AND srs.id IS NULL -- Not already in SRS (not reviewed before)
@@ -251,14 +251,14 @@ BEGIN
         'Catch-up: ' || t.title || ' (foundation topic)' as why_selected,
         -- Priority: prefer lower difficulty, earlier weeks, lower mastery
         (5 - COALESCE(q.difficulty, 3))::numeric * 20.0 +
-        (v_current_week - COALESCE(t.scheduled_week, 1))::numeric * 5.0 +
+        (v_current_week - COALESCE(t.scheduled_date, 1))::numeric * 5.0 +
         (1.0 - COALESCE(tm.mastery_0_1, 0.5)) * 30.0 as priority_score
       FROM questions q
       JOIN topics t ON t.id = ANY(q.topic_ids)
       LEFT JOIN topic_mastery tm ON tm.topic_id = t.id AND tm.user_id = p_user_id
       WHERE q.needs_review = false
         AND COALESCE(q.difficulty, 3) <= 2 -- Easy questions only
-        AND t.scheduled_week <= v_current_week
+        AND t.scheduled_date <= v_current_week
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND (tm.id IS NULL OR tm.mastery_0_1 < 0.7) -- Unpracticed or weak
       ORDER BY priority_score DESC
@@ -299,7 +299,7 @@ BEGIN
       LEFT JOIN topic_mastery tm ON tm.topic_id = t.id AND tm.user_id = p_user_id
       WHERE q.needs_review = false
         AND COALESCE(q.difficulty, 3) >= v_user_difficulty
-        AND t.scheduled_week <= v_current_week + p_pace_offset
+        AND t.scheduled_date <= v_current_week + p_pace_offset
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND COALESCE(tm.mastery_0_1, 0.5) >= 0.5 -- Only if they have some mastery
       ORDER BY priority_score DESC
@@ -333,7 +333,7 @@ BEGIN
       JOIN topics t ON t.id = ANY(q.topic_ids)
       LEFT JOIN srs_state srs ON srs.question_id = q.id AND srs.user_id = p_user_id
       WHERE q.needs_review = false
-        AND t.scheduled_week <= v_current_week + p_pace_offset
+        AND t.scheduled_date <= v_current_week + p_pace_offset
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND srs.id IS NULL
       ORDER BY priority_score DESC

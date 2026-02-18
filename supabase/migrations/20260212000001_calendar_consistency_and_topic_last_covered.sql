@@ -80,9 +80,9 @@ DECLARE
   v_last_covered TIMESTAMPTZ;
 BEGIN
   FOR r_topic IN
-    SELECT t.id, t.course_pack_id, t.title, t.scheduled_week
+    SELECT t.id, t.course_pack_id, t.title, t.scheduled_date
     FROM topics t
-    WHERE t.scheduled_week IS NOT NULL
+    WHERE t.scheduled_date IS NOT NULL
   LOOP
     -- Find the LATEST event date for this topic's week or explicit coverage
     SELECT MAX(ce.event_date)
@@ -91,7 +91,7 @@ BEGIN
     WHERE ce.course_pack_id = r_topic.course_pack_id
       AND ce.event_date IS NOT NULL
       AND (
-        (ce.week_number = r_topic.scheduled_week AND ce.event_type = 'topic')
+        (ce.week_number = r_topic.scheduled_date AND ce.event_type = 'topic')
         OR
         (ce.topics_covered IS NOT NULL AND r_topic.title = ANY(ce.topics_covered))
       );

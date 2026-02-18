@@ -73,7 +73,7 @@ BEGIN
   v_days_since_practice := COALESCE(v_days_since_practice, 999);
   
   -- 2. Count low mastery topics (mastery < 0.5)
-  -- Use scheduled_date if available, otherwise fall back to scheduled_week
+  -- Use scheduled_date if available, otherwise fall back to scheduled_date
   SELECT COUNT(*)
   INTO v_low_mastery_count
   FROM topic_mastery tm
@@ -82,7 +82,7 @@ BEGIN
     AND tm.mastery_0_1 < 0.5
     AND (
       (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
-      OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week + p_pace_offset)
+      OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week + p_pace_offset)
     )
     AND (p_course_id IS NULL OR t.course_pack_id = p_course_id);
   
@@ -92,7 +92,7 @@ BEGIN
   FROM topics t
   WHERE (
     (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
-    OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week + p_pace_offset)
+    OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week + p_pace_offset)
   )
     AND (p_course_id IS NULL OR t.course_pack_id = p_course_id);
   v_total_eligible_topics := GREATEST(v_total_eligible_topics, 1);
@@ -114,7 +114,7 @@ BEGIN
   FROM topics t
   WHERE (
     (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
-    OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week + p_pace_offset)
+    OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week + p_pace_offset)
   )
     AND (p_course_id IS NULL OR t.course_pack_id = p_course_id)
     AND NOT EXISTS (
@@ -189,7 +189,7 @@ BEGIN
       AND srs.due_at <= now() + interval '1 day'
       AND (
         (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
-        OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week + p_pace_offset)
+        OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week + p_pace_offset)
       )
       AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
       AND ABS(COALESCE(q.difficulty, 3) - v_user_difficulty) <= 1
@@ -222,7 +222,7 @@ BEGIN
           WHEN t.scheduled_date IS NOT NULL THEN 
             'Topic from ' || to_char(t.scheduled_date, 'Mon DD') || ' - ' || t.title
           ELSE 
-            'Topic from week ' || t.scheduled_week || ' - ' || t.title
+            'Topic from week ' || t.scheduled_date || ' - ' || t.title
         END as why_selected,
         -- Priority: prefer unpracticed topics, then lower mastery, use date proximity
         (CASE WHEN tm.id IS NULL THEN 100.0 ELSE 0.0 END) +
@@ -233,7 +233,7 @@ BEGIN
             GREATEST(0.0, 10.0 - ABS(EXTRACT(DAY FROM (v_current_date - t.scheduled_date))))
           ELSE
             -- Fall back to week-based
-            (v_current_week - COALESCE(t.scheduled_week, 1))::numeric
+            (v_current_week - COALESCE(t.scheduled_date, 1))::numeric
         END as priority_score
       FROM questions q
       JOIN topics t ON t.id = ANY(q.topic_ids)
@@ -243,12 +243,12 @@ BEGIN
         AND COALESCE(q.is_published, true) = true
         AND COALESCE(q.status, 'approved') = 'approved'
         AND (
-          -- Use scheduled_date if available, otherwise scheduled_week
+          -- Use scheduled_date if available, otherwise scheduled_date
           (t.scheduled_date IS NOT NULL 
             AND t.scheduled_date >= v_current_date - INTERVAL '14 days'
             AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
           OR (t.scheduled_date IS NULL 
-            AND t.scheduled_week BETWEEN (v_current_week - 2) AND (v_current_week + p_pace_offset))
+            AND t.scheduled_date BETWEEN (v_current_week - 2) AND (v_current_week + p_pace_offset))
         )
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND ABS(COALESCE(q.difficulty, 3) - v_user_difficulty) <= 1
@@ -286,7 +286,7 @@ BEGIN
             -- Earlier dates = higher priority
             (EXTRACT(DAY FROM (v_current_date - t.scheduled_date))::numeric * 5.0)
           ELSE
-            (v_current_week - COALESCE(t.scheduled_week, 1))::numeric * 5.0
+            (v_current_week - COALESCE(t.scheduled_date, 1))::numeric * 5.0
         END +
         (1.0 - COALESCE(tm.mastery_0_1, 0.5)) * 30.0 as priority_score
       FROM questions q
@@ -298,7 +298,7 @@ BEGIN
         AND COALESCE(q.difficulty, 3) <= 2 -- Easy questions only
         AND (
           (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date)
-          OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week)
+          OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week)
         )
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND (tm.id IS NULL OR tm.mastery_0_1 < 0.7) -- Unpracticed or weak
@@ -344,7 +344,7 @@ BEGIN
         AND COALESCE(q.difficulty, 3) >= v_user_difficulty
         AND (
           (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
-          OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week + p_pace_offset)
+          OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week + p_pace_offset)
         )
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND COALESCE(tm.mastery_0_1, 0.5) >= 0.5 -- Only if they have some mastery
@@ -383,7 +383,7 @@ BEGIN
         AND COALESCE(q.status, 'approved') = 'approved'
         AND (
           (t.scheduled_date IS NOT NULL AND t.scheduled_date <= v_current_date + (p_pace_offset * INTERVAL '7 days'))
-          OR (t.scheduled_date IS NULL AND t.scheduled_week <= v_current_week + p_pace_offset)
+          OR (t.scheduled_date IS NULL AND t.scheduled_date <= v_current_week + p_pace_offset)
         )
         AND (p_course_id IS NULL OR q.course_pack_id = p_course_id)
         AND srs.id IS NULL
@@ -400,4 +400,4 @@ $$;
 -- Grant execute permission
 GRANT EXECUTE ON FUNCTION public.build_daily_plan TO authenticated;
 
-COMMENT ON FUNCTION public.build_daily_plan IS 'Builds an intentional daily study plan with Review, Current, Bridge, and Stretch questions. Uses FSRS state for prioritization and scheduled_date (exact dates) when available, falling back to scheduled_week.';
+COMMENT ON FUNCTION public.build_daily_plan IS 'Builds an intentional daily study plan with Review, Current, Bridge, and Stretch questions. Uses FSRS state for prioritization and scheduled_date (exact dates) when available, falling back to scheduled_date.';

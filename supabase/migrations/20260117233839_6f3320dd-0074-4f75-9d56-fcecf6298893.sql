@@ -7,7 +7,7 @@ INSERT INTO public.course_packs (id, title, description) VALUES
   ('11111111-1111-1111-1111-111111111111', 'Calculus I', 'Differential and integral calculus fundamentals');
 
 -- 2. Create Topics
-INSERT INTO public.topics (id, course_pack_id, title, description, scheduled_week) VALUES
+INSERT INTO public.topics (id, course_pack_id, title, description, scheduled_date) VALUES
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '11111111-1111-1111-1111-111111111111', 'Limits', 'Understanding limits and continuity', 1),
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '11111111-1111-1111-1111-111111111111', 'Derivatives', 'Rates of change and differentiation rules', 2),
   ('cccccccc-cccc-cccc-cccc-cccccccccccc', '11111111-1111-1111-1111-111111111111', 'Chain Rule', 'Differentiating composite functions', 3),

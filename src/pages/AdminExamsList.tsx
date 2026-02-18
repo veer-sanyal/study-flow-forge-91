@@ -714,7 +714,7 @@ function groupMaterialsByMidterm(materials: CourseMaterial[]): MaterialGroupedBy
 
   for (const mat of materials) {
     const mt = (mat as any).corresponds_to_midterm as number | null;
-    const week = (mat as any).scheduled_week as number | null;
+    const week = (mat as any).scheduled_date as number | null;
 
     if (!midtermMap.has(mt)) midtermMap.set(mt, new Map());
     const weekMap = midtermMap.get(mt)!;

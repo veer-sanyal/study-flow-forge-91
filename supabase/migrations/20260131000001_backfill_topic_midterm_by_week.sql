@@ -1,6 +1,6 @@
--- Backfill topics.midterm_coverage using scheduled_week comparison against
+-- Backfill topics.midterm_coverage using scheduled_date comparison against
 -- exam week_number from calendar_events.
--- Topics with scheduled_week <= exam.week_number get assigned to that midterm.
+-- Topics with scheduled_date <= exam.week_number get assigned to that midterm.
 -- Topics after all midterms stay NULL (finals).
 
 DO $$
@@ -26,13 +26,13 @@ BEGIN
         AND ce.title ~* '(?:midterm|exam)\s*\d'
       ORDER BY ce.week_number ASC
     LOOP
-      -- Assign topics whose scheduled_week falls up to and including this exam's week
+      -- Assign topics whose scheduled_date falls up to and including this exam's week
       UPDATE topics
       SET midterm_coverage = r_exam.midterm_num
       WHERE course_pack_id = r_course.course_pack_id
-        AND scheduled_week IS NOT NULL
-        AND scheduled_week > prev_week
-        AND scheduled_week <= r_exam.week_number
+        AND scheduled_date IS NOT NULL
+        AND scheduled_date > prev_week
+        AND scheduled_date <= r_exam.week_number
         AND (midterm_coverage IS NULL OR midterm_coverage != r_exam.midterm_num);
 
       prev_week := r_exam.week_number;
