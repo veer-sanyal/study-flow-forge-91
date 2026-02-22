@@ -181,16 +181,17 @@ export function groupEventsByWeek(events: CalendarEvent[]): WeekGroup[] {
 export function getEventTypeColor(eventType: string): string {
   switch (eventType.toLowerCase()) {
     case 'exam':
-      return 'bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/20';
+      return 'bg-destructive/10 text-destructive border-destructive/20';
     case 'quiz':
-      return 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20';
+      return 'bg-warning/10 text-warning border-warning/20';
     case 'topic':
+    case 'lesson':
     case 'lecture':
-      return 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20';
+      return 'bg-primary/10 text-primary border-primary/20';
     case 'homework':
-      return 'bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-500/20';
+      return 'bg-success/10 text-success border-success/20';
     case 'review':
-      return 'bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20';
+      return 'bg-success/10 text-success border-success/20';
     default:
       return 'bg-muted text-muted-foreground border-border';
   }

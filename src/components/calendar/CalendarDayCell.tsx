@@ -19,14 +19,14 @@ interface CalendarDayCellProps {
 }
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
-  topic: 'text-blue-600 dark:text-blue-400',
-  lesson: 'text-blue-600 dark:text-blue-400',
-  recitation: 'text-purple-600 dark:text-purple-400',
-  exam: 'text-red-600 dark:text-red-400',
-  quiz: 'text-orange-600 dark:text-orange-400',
-  homework: 'text-green-600 dark:text-green-400',
-  review: 'text-yellow-600 dark:text-yellow-400',
-  activity: 'text-cyan-600 dark:text-cyan-400',
+  topic: 'text-primary',
+  lesson: 'text-primary',
+  recitation: 'text-muted-foreground',
+  exam: 'text-destructive',
+  quiz: 'text-warning',
+  homework: 'text-success',
+  review: 'text-success',
+  activity: 'text-muted-foreground',
 };
 
 export function CalendarDayCell({
@@ -85,7 +85,7 @@ export function CalendarDayCell({
         {reviewData && reviewData.totalNew > 0 && (
           <Badge
             variant="secondary"
-            className="text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20"
+            className="text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap bg-success/10 text-success border-success/20"
           >
             {reviewData.totalNew} new
           </Badge>

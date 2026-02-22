@@ -353,9 +353,9 @@ export default function AdminCalendar() {
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "completed":
-        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30"><Check className="h-3 w-3 mr-1" />Completed</Badge>;
+        return <Badge className="bg-success/10 text-success border border-success/20"><Check className="h-3 w-3 mr-1" />Completed</Badge>;
       case "processing":
-        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
+        return <Badge className="bg-muted text-muted-foreground border border-border"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
       case "failed":
         return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />Failed</Badge>;
       default:
@@ -365,17 +365,17 @@ export default function AdminCalendar() {
 
   const getEventTypeBadge = (type: string) => {
     const colors: Record<string, string> = {
-      topic: "bg-blue-500/20 text-blue-400",
-      lesson: "bg-blue-500/20 text-blue-400",
-      recitation: "bg-purple-500/20 text-purple-400",
-      exam: "bg-red-500/20 text-red-400",
-      quiz: "bg-orange-500/20 text-orange-400",
-      homework: "bg-green-500/20 text-green-400",
-      no_class: "bg-muted text-muted-foreground",
-      review: "bg-yellow-500/20 text-yellow-400",
-      activity: "bg-cyan-500/20 text-cyan-400",
+      topic: "bg-primary/10 text-primary border-primary/20",
+      lesson: "bg-primary/10 text-primary border-primary/20",
+      recitation: "bg-muted text-muted-foreground border-border",
+      exam: "bg-destructive/10 text-destructive border-destructive/20",
+      quiz: "bg-warning/10 text-warning border-warning/20",
+      homework: "bg-success/10 text-success border-success/20",
+      no_class: "bg-muted text-muted-foreground border-border",
+      review: "bg-success/10 text-success border-success/20",
+      activity: "bg-muted text-muted-foreground border-border",
     };
-    return <Badge className={cn("text-xs", colors[type] || "bg-muted")}>{type}</Badge>;
+    return <Badge className={cn("text-xs border", colors[type] || "bg-muted text-muted-foreground border-border")}>{type}</Badge>;
   };
 
   if (packsLoading) {
@@ -722,14 +722,14 @@ export default function AdminCalendar() {
                                                 key={event.id}
                                                 className={cn(
                                                   "flex items-center justify-between p-2 rounded-md text-sm",
-                                                  event.needs_review ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"
+                                                  event.needs_review ? "bg-warning/10 border border-warning/20" : "bg-muted/30"
                                                 )}
                                               >
                                                 <div className="flex items-center gap-2">
                                                   {getEventTypeBadge(event.event_type)}
                                                   <span>{event.title}</span>
                                                   {event.needs_review && (
-                                                    <Badge variant="outline" className="text-xs text-yellow-500">
+                                                    <Badge variant="outline" className="text-xs text-warning border-warning/30">
                                                       Needs Review
                                                     </Badge>
                                                   )}
@@ -908,7 +908,7 @@ export default function AdminCalendar() {
                             key={event.id}
                             className={cn(
                               "flex items-start justify-between p-3 rounded-lg",
-                              event.needs_review ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"
+                              event.needs_review ? "bg-warning/10 border border-warning/20" : "bg-muted/30"
                             )}
                           >
                             <div className="space-y-1 flex-1">
@@ -916,7 +916,7 @@ export default function AdminCalendar() {
                                 {getEventTypeBadge(event.event_type)}
                                 <span className="font-medium">{event.title}</span>
                                 {event.needs_review && (
-                                  <Badge variant="outline" className="text-xs text-yellow-500">
+                                  <Badge variant="outline" className="text-xs text-warning border-warning/30">
                                     Needs Review
                                   </Badge>
                                 )}
@@ -937,7 +937,7 @@ export default function AdminCalendar() {
                                   className="h-8 w-8"
                                   onClick={() => updateCalendarEvent.mutate({ id: event.id, needs_review: false })}
                                 >
-                                  <Check className="h-4 w-4 text-green-500" />
+                                  <Check className="h-4 w-4 text-success" />
                                 </Button>
                               )}
                               <Button

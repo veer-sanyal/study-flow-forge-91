@@ -2,7 +2,6 @@ import { format, parseISO } from 'date-fns';
 import { PlayCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { getEventTypeColor } from '@/hooks/use-calendar';
 import type { CalendarDayReviewData } from '@/types/progress';
 import { cn } from '@/lib/utils';
@@ -43,27 +42,34 @@ export function DayDetailPanel({
 
   const hasEvents = dayEvents.length > 0;
   const hasReviews = reviewData && reviewData.totalDue > 0;
+  const hasNew = reviewData && reviewData.totalNew > 0;
 
-  if (!hasEvents && !hasReviews) {
+  const stripClass =
+    hasReviews || hasNew ? 'bg-primary' :
+    hasEvents ? 'bg-muted' :
+    'bg-border';
+
+  if (!hasEvents && !hasReviews && !hasNew) {
     return (
-      <Card className="mt-4">
-        <CardContent className="py-6 text-center text-sm text-muted-foreground">
+      <div className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden">
+        <div className="h-1 bg-border" />
+        <div className="py-6 text-center text-sm text-muted-foreground">
           Nothing scheduled for {formattedDate}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Card className="mt-4">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-base">{formattedDate}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden">
+      <div className={cn('h-1', stripClass)} />
+      <div className="p-4 flex flex-col gap-3">
+        <p className="font-semibold text-sm leading-snug">{formattedDate}</p>
+
         {/* Academic events */}
         {hasEvents && (
           <div className="space-y-2">
-            <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+            <h4 className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
               Events
             </h4>
             <div className="space-y-2">
@@ -88,10 +94,10 @@ export function DayDetailPanel({
         )}
 
         {/* Study Plan */}
-        {(hasReviews || (reviewData && reviewData.totalNew > 0)) && (
-          <div className="space-y-3 pt-2 border-t text-sm">
+        {(hasReviews || hasNew) && (
+          <div className={cn('space-y-3 text-sm', hasEvents && 'pt-3 border-t border-border')}>
             <div className="flex items-center justify-between">
-              <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              <h4 className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
                 Study Plan
               </h4>
               <div className="flex gap-2 text-xs">
@@ -101,25 +107,25 @@ export function DayDetailPanel({
                   </span>
                 )}
                 {reviewData?.totalNew > 0 && (
-                  <span className="font-medium text-blue-600 dark:text-blue-400">
+                  <span className="font-medium text-success">
                     {reviewData.totalNew} new
                   </span>
                 )}
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-1.5">
               {reviewData?.topTopics.map(topic => (
                 <div key={topic.topicId} className="flex items-center justify-between p-2 rounded-md bg-muted/40 text-sm">
                   <span className="truncate font-medium">{topic.topicTitle}</span>
                   <div className="flex gap-2 shrink-0 text-xs">
                     {topic.dueCount > 0 && (
-                      <Badge variant="secondary" className="h-5 px-1.5 font-normal">
+                      <Badge variant="secondary" className="h-5 px-1.5 font-normal bg-primary/10 text-primary border-primary/20">
                         {topic.dueCount} review
                       </Badge>
                     )}
                     {topic.newCount > 0 && (
-                      <Badge variant="outline" className="h-5 px-1.5 font-normal border-blue-200 text-blue-600 bg-blue-50/50">
+                      <Badge variant="outline" className="h-5 px-1.5 font-normal bg-success/10 text-success border-success/20">
                         {topic.newCount} new
                       </Badge>
                     )}
@@ -137,7 +143,7 @@ export function DayDetailPanel({
             </Button>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

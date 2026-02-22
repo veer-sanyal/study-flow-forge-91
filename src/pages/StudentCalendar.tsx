@@ -173,14 +173,14 @@ export default function StudentCalendar(): React.ReactElement {
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {upcomingExams.map((exam, i) => {
                   const urgency = exam.daysUntil <= 3 ? 'urgent' : exam.daysUntil <= 7 ? 'soon' : 'calm';
-                  const urgencyClasses = {
-                    urgent: 'bg-destructive/10 border-destructive/20',
-                    soon: 'bg-primary/10 border-primary/20',
-                    calm: 'bg-muted/50 border-border',
+                  const urgencyStripClass = {
+                    urgent: 'bg-destructive',
+                    soon: 'bg-warning',
+                    calm: 'bg-muted',
                   }[urgency];
                   const numberColor = {
                     urgent: 'text-destructive',
-                    soon: 'text-primary',
+                    soon: 'text-warning',
                     calm: 'text-muted-foreground',
                   }[urgency];
                   return (
@@ -189,16 +189,19 @@ export default function StudentCalendar(): React.ReactElement {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * stagger.fast, duration: duration.normal, ease: easing.easeOut }}
-                      className={cn('p-3 rounded-lg border', urgencyClasses)}
+                      className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden"
                     >
-                      <div className={cn('text-2xl font-bold leading-none tabular-nums', numberColor)}>
-                        {exam.daysUntil === 0 ? '!' : exam.daysUntil}
+                      <div className={cn('h-1', urgencyStripClass)} />
+                      <div className="p-3">
+                        <div className={cn('text-2xl font-bold leading-none tabular-nums', numberColor)}>
+                          {exam.daysUntil === 0 ? '!' : exam.daysUntil}
+                        </div>
+                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">
+                          {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
+                        </div>
+                        <p className="font-medium text-sm mt-2 leading-snug line-clamp-2">{exam.title}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{exam.course_title}</p>
                       </div>
-                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">
-                        {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
-                      </div>
-                      <p className="font-medium text-sm mt-2 leading-snug line-clamp-2">{exam.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{exam.course_title}</p>
                     </motion.div>
                   );
                 })}
