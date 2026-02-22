@@ -1,4 +1,4 @@
-import { BookOpen, BarChart3, Settings, GraduationCap, Moon, Sun, Calendar, Shield, Upload, FileQuestion, PanelLeftClose, CalendarDays, Tag, FileText } from "lucide-react";
+import { BookOpen, BarChart3, Settings, GraduationCap, Moon, Sun, Shield, Upload, PanelLeftClose, CalendarDays, Tag } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -15,9 +15,8 @@ const navItems = [
 ];
 
 const adminNavItems = [
-  { to: "/admin/calendar", label: "Courses", icon: Calendar },
+  { to: "/admin/questions", label: "Courses", icon: BookOpen },
   { to: "/admin/ingestion", label: "Ingestion", icon: Upload },
-  { to: "/admin/questions", label: "Questions", icon: FileQuestion },
   { to: "/admin/question-types", label: "Question Types", icon: Tag },
 ];
 

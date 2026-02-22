@@ -172,12 +172,16 @@ IMPORTANT RULES:
    - Generic labels like "Lecture 1" with no topic content
 3. If a row mentions MULTIPLE topics, create a SEPARATE entry for EACH topic.
 4. TITLE FORMAT — CRITICAL:
-   - Use ONLY the topic name as it appears in the image
-   - If there is a textbook section number visible (e.g., "8.3", "13.1"), include it: "13.1: Vectors in the Plane"
-   - DO NOT add your own sequential numbering (no "01 -", "02 -", "09 -", "10 -", etc.)
-   - DO NOT prefix topics with lecture numbers, ordinal numbers, or any numbering that is not a textbook section
-   - WRONG: "09 - Physical applications of integrals I (8.7)"
-   - RIGHT: "Physical applications of integrals I (8.7)" or "8.7: Physical Applications of Integrals"
+   - Use ONLY the PURE topic name — strip away all chapter, section, or module prefixes
+   - DO NOT include "Chapter X", "Chapter X:", "Section X.Y", "Module N", or any chapter/section label
+   - DO NOT include textbook section numbers (e.g. do NOT write "13.1: Vectors" — write "Vectors in the Plane")
+   - DO NOT add sequential numbering (no "01 -", "02 -", "09 -", "10 -", etc.)
+   - WRONG: "Chapter 2: Course Overview, Sample space, events"
+   - WRONG: "13.1: Vectors in the Plane"
+   - WRONG: "Chapter 4: Mean and Variance"
+   - RIGHT: "Course Overview, Sample space, events"
+   - RIGHT: "Vectors in the Plane"
+   - RIGHT: "Mean and Variance"
 5. DESCRIPTION FORMAT — CRITICAL:
    - Start directly with the action or subject: "Interprets financial statements..." or "Explains the concept of..."
    - DO NOT start with "This topic covers", "This module discusses", "In this lecture", etc.
@@ -236,7 +240,7 @@ Be thorough — extract EVERY topic/content unit from the schedule. Even if you'
                       },
                       title: {
                         type: "string",
-                        description: "For topics: Format as 'SECTION#: Topic Name' (e.g., '13.1: Vectors in the Plane', '6.3: Volumes by Slicing'). For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')."
+                        description: "For topics: The PURE topic name with NO chapter numbers, section numbers, or prefixes (e.g., 'Vectors in the Plane', 'Mean and Variance', 'Binomial Distribution'). Never include 'Chapter X', 'Section X.Y', or textbook section codes. For exams: The exam name (e.g., 'Midterm 1', 'Final Exam')."
                       },
                       description: { type: "string", description: "A single sentence explaining what this topic covers academically. Required for topic events." },
                     },

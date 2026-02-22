@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
@@ -6,14 +6,71 @@ import { PageTransition } from "@/components/motion/PageTransition";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BookOpen, FileQuestion, AlertCircle, Globe, GlobeLock, Loader2 } from "lucide-react";
+import {
+  AlertCircle,
+  Globe,
+  GlobeLock,
+  Loader2,
+  Plus,
+  CalendarDays,
+  Pencil,
+  Trash2,
+  Save,
+  Upload,
+  Image,
+  Check,
+  Eye,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
 import { getCourseCardColor } from "@/lib/examUtils";
 import { staggerContainer, staggerItem, reducedMotionProps } from "@/lib/motion";
 import { motion } from "framer-motion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { usePublishCourse } from "@/hooks/use-ingestion";
-import { toast } from "sonner";
+import {
+  useTopicsForPack,
+  useCoursePackMutations,
+  useTopicMutations,
+} from "@/hooks/use-admin";
+import {
+  useIngestionJobs,
+  useCreateIngestionJob,
+  useProcessJob,
+  useCalendarEvents,
+  useDeleteCalendarEvent,
+  useUpdateCalendarEvent,
+  useGenerateTopicsFromEvents,
+} from "@/hooks/use-ingestion";
+import { useToast } from "@/hooks/use-toast";
+import { toast as sonnerToast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface CourseWithStats {
   id: string;
@@ -25,11 +82,17 @@ interface CourseWithStats {
   needsReviewCount: number;
 }
 
+interface EditingTopic {
+  id: string;
+  title: string;
+  description: string;
+  scheduled_date: string | null;
+}
+
 function useCoursesWithStats() {
   return useQuery({
     queryKey: ["courses-with-stats"],
     queryFn: async () => {
-      // Get all course packs
       const { data: courses, error: coursesError } = await supabase
         .from("course_packs")
         .select("id, title, description, is_published")
@@ -37,31 +100,28 @@ function useCoursesWithStats() {
 
       if (coursesError) throw coursesError;
 
-      // Get question counts per course
-      // Only count published/approved questions (matching the standard filters used elsewhere)
       const { data: questions, error: questionsError } = await supabase
         .from("questions")
         .select("id, course_pack_id, needs_review, source_exam, status, is_published");
 
       if (questionsError) throw questionsError;
 
-      // Calculate stats for each course
-      const coursesWithStats: CourseWithStats[] = (courses as any[]).map((course) => {
-        // Filter to only count published/approved questions (matching standard behavior)
+      const coursesWithStats: CourseWithStats[] = (courses as unknown[]).map((course) => {
+        const c = course as { id: string; title: string; description: string | null; is_published: boolean };
         const courseQuestions = questions.filter(
-          (q) => q.course_pack_id === course.id &&
-            (q.is_published !== false) && // is_published is true or null (defaults to true)
-            (q.status === 'approved' || !q.status) // status is 'approved' or null (defaults to 'approved')
+          (q) =>
+            q.course_pack_id === c.id &&
+            q.is_published !== false &&
+            (q.status === "approved" || !q.status)
         );
         const uniqueExams = new Set(
           courseQuestions.map((q) => q.source_exam).filter(Boolean)
         );
-
         return {
-          id: course.id,
-          title: course.title,
-          description: course.description,
-          isPublished: course.is_published ?? false,
+          id: c.id,
+          title: c.title,
+          description: c.description,
+          isPublished: c.is_published ?? false,
           questionCount: courseQuestions.length,
           examCount: uniqueExams.size,
           needsReviewCount: courseQuestions.filter((q) => q.needs_review).length,
@@ -73,16 +133,646 @@ function useCoursesWithStats() {
   });
 }
 
+// ─── Topic Row ──────────────────────────────────────────────────────────────
+
+function TopicRow({
+  topic,
+  onEdit,
+  onDelete,
+}: {
+  topic: { id: string; title: string; description: string | null; scheduled_date?: string | null };
+  onEdit: (topic: EditingTopic) => void;
+  onDelete: (type: "topic", id: string, name: string) => void;
+}) {
+  const scheduledDate = (topic as Record<string, unknown>).scheduled_date as string | null;
+  return (
+    <div className="flex items-center justify-between p-3 bg-muted/30 rounded-lg group">
+      <div>
+        <p className="font-medium text-sm">{topic.title}</p>
+        {topic.description && (
+          <p className="text-xs text-muted-foreground mt-0.5">{topic.description}</p>
+        )}
+        {scheduledDate && (
+          <p className="text-xs text-muted-foreground mt-0.5">{scheduledDate}</p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() =>
+            onEdit({
+              id: topic.id,
+              title: topic.title,
+              description: topic.description || "",
+              scheduled_date: scheduledDate,
+            })
+          }
+        >
+          <Pencil className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+          onClick={() => onDelete("topic", topic.id, topic.title)}
+        >
+          <Trash2 className="h-3 w-3 text-destructive" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Course Manage Dialog ────────────────────────────────────────────────────
+
+function CourseManageDialog({
+  open,
+  onOpenChange,
+  courseId,
+  courseTitle,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  courseId: string;
+  courseTitle: string;
+}) {
+  const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const { data: topics, isLoading: topicsLoading } = useTopicsForPack(courseId);
+  const { data: calendarJobs } = useIngestionJobs(courseId, "calendar");
+  const { data: calendarEvents } = useCalendarEvents(courseId);
+
+  const { createTopic, updateTopic, deleteTopic } = useTopicMutations();
+  const createJob = useCreateIngestionJob();
+  const processJob = useProcessJob();
+  const deleteCalendarEvent = useDeleteCalendarEvent();
+  const updateCalendarEvent = useUpdateCalendarEvent();
+  const generateTopics = useGenerateTopicsFromEvents();
+
+  const [activeTab, setActiveTab] = useState<"topics" | "calendar">("topics");
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [eventsDialogOpen, setEventsDialogOpen] = useState(false);
+  const [topicDialogOpen, setTopicDialogOpen] = useState(false);
+  const [editingTopic, setEditingTopic] = useState<EditingTopic | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingTopic, setDeletingTopic] = useState<{ id: string; name: string } | null>(null);
+
+  const scheduledTopics = topics?.filter((t) => (t as Record<string, unknown>).scheduled_date) ?? [];
+  const unscheduledTopics = topics?.filter((t) => !(t as Record<string, unknown>).scheduled_date) ?? [];
+
+  const eventsByWeek = calendarEvents?.reduce(
+    (acc, event) => {
+      const week = event.week_number ?? 0;
+      if (!acc[week]) acc[week] = [];
+      acc[week].push(event);
+      return acc;
+    },
+    {} as Record<number, typeof calendarEvents>
+  ) ?? {};
+  const maxEventWeek = Math.max(...Object.keys(eventsByWeek).map(Number).filter((w) => w > 0), 0);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "completed":
+        return <Badge className="bg-green-500/20 text-green-400 border-green-500/30"><Check className="h-3 w-3 mr-1" />Completed</Badge>;
+      case "processing":
+        return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/30"><Loader2 className="h-3 w-3 mr-1 animate-spin" />Processing</Badge>;
+      case "failed":
+        return <Badge variant="destructive"><AlertCircle className="h-3 w-3 mr-1" />Failed</Badge>;
+      default:
+        return <Badge variant="secondary">Pending</Badge>;
+    }
+  };
+
+  const getEventTypeBadge = (type: string) => {
+    const colors: Record<string, string> = {
+      topic: "bg-blue-500/20 text-blue-400",
+      lesson: "bg-blue-500/20 text-blue-400",
+      recitation: "bg-purple-500/20 text-purple-400",
+      exam: "bg-red-500/20 text-red-400",
+      quiz: "bg-orange-500/20 text-orange-400",
+      homework: "bg-green-500/20 text-green-400",
+      no_class: "bg-muted text-muted-foreground",
+      review: "bg-yellow-500/20 text-yellow-400",
+      activity: "bg-cyan-500/20 text-cyan-400",
+    };
+    return <Badge className={cn("text-xs", colors[type] || "bg-muted")}>{type}</Badge>;
+  };
+
+  const handleImageUpload = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Please upload an image file", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Uploading calendar image...", description: "Please wait while we process your file" });
+    setUploadingImage(true);
+    try {
+      const job = await createJob.mutateAsync({ coursePackId: courseId, file, kind: "calendar" });
+      toast({ title: "Calendar image uploaded", description: "Processing..." });
+      await processJob.mutateAsync({ jobId: job.id, kind: "calendar" });
+      toast({ title: "Calendar processed successfully!" });
+      try {
+        const result = await generateTopics.mutateAsync(courseId);
+        toast({ title: "Topics generated!", description: `Created ${result.created} topics from calendar events` });
+        setActiveTab("topics");
+      } catch (topicError) {
+        toast({
+          title: "Events extracted, but topic generation failed",
+          description: topicError instanceof Error ? topicError.message : "Unknown error",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      toast({
+        title: "Error processing calendar",
+        description: error instanceof Error ? error.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImage(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
+  const handleProcessJob = async (jobId: string) => {
+    try {
+      await processJob.mutateAsync({ jobId, kind: "calendar" });
+      toast({ title: "Calendar processed successfully!" });
+    } catch (error) {
+      toast({ title: "Processing failed", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const handleGenerateTopics = async () => {
+    try {
+      const result = await generateTopics.mutateAsync(courseId);
+      toast({ title: "Topics generated!", description: `Created ${result.created} topics from calendar events` });
+      setActiveTab("topics");
+    } catch (error) {
+      toast({ title: "Failed to generate topics", description: error instanceof Error ? error.message : "Unknown error", variant: "destructive" });
+    }
+  };
+
+  const handleSaveTopic = async () => {
+    if (!editingTopic?.title.trim()) return;
+    try {
+      if (editingTopic.id) {
+        await updateTopic.mutateAsync({
+          id: editingTopic.id,
+          title: editingTopic.title,
+          description: editingTopic.description || undefined,
+          scheduled_date: editingTopic.scheduled_date,
+        });
+        toast({ title: "Topic updated" });
+      } else {
+        await createTopic.mutateAsync({
+          course_pack_id: courseId,
+          title: editingTopic.title,
+          description: editingTopic.description || undefined,
+          scheduled_date: editingTopic.scheduled_date ?? undefined,
+        });
+        toast({ title: "Topic created" });
+      }
+      setTopicDialogOpen(false);
+      setEditingTopic(null);
+    } catch {
+      toast({ title: "Error saving topic", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteTopic = async () => {
+    if (!deletingTopic) return;
+    try {
+      await deleteTopic.mutateAsync(deletingTopic.id);
+      toast({ title: "Topic deleted" });
+    } catch {
+      toast({ title: "Error deleting topic", variant: "destructive" });
+    } finally {
+      setDeleteDialogOpen(false);
+      setDeletingTopic(null);
+    }
+  };
+
+  const openNewTopic = () => {
+    setEditingTopic({ id: "", title: "", description: "", scheduled_date: null });
+    setTopicDialogOpen(true);
+  };
+
+  const openEditTopic = (topic: EditingTopic) => {
+    setEditingTopic(topic);
+    setTopicDialogOpen(true);
+  };
+
+  const openDeleteTopic = (_type: "topic", id: string, name: string) => {
+    setDeletingTopic({ id, name });
+    setDeleteDialogOpen(true);
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarDays className="h-5 w-5" />
+              {courseTitle}
+            </DialogTitle>
+            <DialogDescription>Manage topics and import calendar images for this course</DialogDescription>
+          </DialogHeader>
+
+          <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "topics" | "calendar")}>
+            <TabsList className="mb-4">
+              <TabsTrigger value="topics">Topics</TabsTrigger>
+              <TabsTrigger value="calendar">
+                Calendar Import
+                {calendarEvents && calendarEvents.length > 0 && (
+                  <Badge variant="secondary" className="ml-2 text-xs">{calendarEvents.length}</Badge>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            {/* ── Topics Tab ── */}
+            <TabsContent value="topics">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm text-muted-foreground">Topics Schedule</h4>
+                  <Button size="sm" variant="outline" onClick={openNewTopic}>
+                    <Plus className="h-3 w-3 mr-1" />
+                    Add Topic
+                  </Button>
+                </div>
+
+                {topicsLoading ? (
+                  <div className="space-y-2">
+                    {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12 w-full" />)}
+                  </div>
+                ) : !topics?.length ? (
+                  <div className="text-center py-8 text-muted-foreground text-sm border border-dashed rounded-lg">
+                    No topics yet. Add manually or import from calendar.
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {scheduledTopics.length > 0 && (
+                      <div className="space-y-2">
+                        <Badge className="text-xs">Scheduled</Badge>
+                        {scheduledTopics.map((topic) => (
+                          <TopicRow
+                            key={topic.id}
+                            topic={topic}
+                            onEdit={openEditTopic}
+                            onDelete={openDeleteTopic}
+                          />
+                        ))}
+                      </div>
+                    )}
+                    {unscheduledTopics.length > 0 && (
+                      <div className="space-y-2">
+                        <Badge variant="secondary" className="text-xs">Unscheduled</Badge>
+                        {unscheduledTopics.map((topic) => (
+                          <TopicRow
+                            key={topic.id}
+                            topic={topic}
+                            packId={courseId}
+                            onEdit={openEditTopic}
+                            onDelete={openDeleteTopic}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            {/* ── Calendar Import Tab ── */}
+            <TabsContent value="calendar">
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-sm text-muted-foreground">Import from Calendar Image</h4>
+                  <div className="flex gap-2">
+                    {calendarEvents && calendarEvents.length > 0 && (
+                      <Button size="sm" variant="outline" onClick={() => setEventsDialogOpen(true)}>
+                        <Eye className="h-3 w-3 mr-1" />
+                        View Events ({calendarEvents.length})
+                      </Button>
+                    )}
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) => { const f = e.target.files?.[0]; if (f) handleImageUpload(f); }}
+                    />
+                    <Button size="sm" onClick={() => fileInputRef.current?.click()} disabled={uploadingImage}>
+                      {uploadingImage ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Upload className="h-4 w-4 mr-2" />}
+                      Upload Calendar
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Drop Zone */}
+                <div
+                  className={cn(
+                    "p-8 border-2 border-dashed rounded-lg transition-colors cursor-pointer",
+                    isDragging ? "border-primary bg-primary/10" : "border-muted-foreground/30 bg-muted/30 hover:border-muted-foreground/50",
+                    uploadingImage && "opacity-50 pointer-events-none"
+                  )}
+                  onDrop={(e) => { e.preventDefault(); setIsDragging(false); const f = e.dataTransfer.files?.[0]; if (f) handleImageUpload(f); }}
+                  onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+                  onDragLeave={(e) => { e.preventDefault(); setIsDragging(false); }}
+                  onClick={() => !uploadingImage && fileInputRef.current?.click()}
+                >
+                  <div className="flex flex-col items-center justify-center gap-3 text-center">
+                    {uploadingImage ? (
+                      <>
+                        <Loader2 className="h-10 w-10 text-primary animate-spin" />
+                        <div>
+                          <p className="font-medium text-foreground">Processing calendar...</p>
+                          <p className="text-sm text-muted-foreground mt-1">AI is extracting events from your image</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className={cn("p-4 rounded-full", isDragging ? "bg-primary/20" : "bg-muted")}>
+                          <Upload className={cn("h-8 w-8", isDragging ? "text-primary" : "text-muted-foreground")} />
+                        </div>
+                        <div>
+                          <p className="font-medium text-foreground">
+                            {isDragging ? "Drop your calendar image here" : "Drag & drop calendar image"}
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-1">or click to browse • PNG, JPG, WEBP</p>
+                        </div>
+                        <p className="text-xs text-muted-foreground/70 mt-2 max-w-sm">
+                          AI will extract distinct topics with exact dates, exams, and quizzes from your calendar
+                        </p>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Recent Imports */}
+                {calendarJobs && calendarJobs.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-sm font-medium text-muted-foreground">Recent Imports</h5>
+                    {calendarJobs.slice(0, 3).map((job) => (
+                      <div key={job.id} className="flex items-center justify-between p-3 bg-muted/30 rounded-lg">
+                        <div className="flex items-center gap-3">
+                          <Image className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{job.file_name}</p>
+                            <p className="text-xs text-muted-foreground">{job.questions_extracted ?? 0} events extracted</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {getStatusBadge(job.status)}
+                          {(job.status === "pending" || job.status === "failed") && (
+                            <Button size="sm" variant="outline" onClick={() => handleProcessJob(job.id)} disabled={processJob.isPending}>
+                              {job.status === "failed" ? "Retry" : "Process"}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Extracted Events Preview */}
+                {calendarEvents && calendarEvents.length > 0 && (
+                  <div className="space-y-2">
+                    <h5 className="text-sm font-medium text-muted-foreground">Extracted Events Preview</h5>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {Array.from({ length: Math.max(maxEventWeek, 1) }, (_, i) => i + 1).slice(0, 3).map(
+                        (week) =>
+                          eventsByWeek[week]?.length > 0 && (
+                            <div key={week} className="space-y-1">
+                              <Badge className="text-xs">Week {week}</Badge>
+                              {eventsByWeek[week].slice(0, 3).map((event) => (
+                                <div
+                                  key={event.id}
+                                  className={cn(
+                                    "flex items-center justify-between p-2 rounded-md text-sm",
+                                    event.needs_review ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2">
+                                    {getEventTypeBadge(event.event_type)}
+                                    <span>{event.title}</span>
+                                  </div>
+                                  {event.event_date && <span className="text-xs text-muted-foreground">{event.event_date}</span>}
+                                </div>
+                              ))}
+                            </div>
+                          )
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <Button variant="outline" size="sm" onClick={() => setEventsDialogOpen(true)}>View All Events</Button>
+                      <Button size="sm" onClick={handleGenerateTopics} disabled={generateTopics.isPending}>
+                        {generateTopics.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+                        Generate Topics
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Events Viewer Dialog */}
+      <Dialog open={eventsDialogOpen} onOpenChange={setEventsDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Extracted Calendar Events</DialogTitle>
+            <DialogDescription>Review and manage events extracted from calendar images</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {calendarEvents && calendarEvents.length > 0 ? (
+              Array.from({ length: maxEventWeek }, (_, i) => i + 1).map(
+                (week) =>
+                  eventsByWeek[week]?.length > 0 && (
+                    <div key={week} className="space-y-2">
+                      <Badge className="text-sm">Week {week}</Badge>
+                      <div className="space-y-2">
+                        {eventsByWeek[week].map((event) => (
+                          <div
+                            key={event.id}
+                            className={cn(
+                              "flex items-start justify-between p-3 rounded-lg",
+                              event.needs_review ? "bg-yellow-500/10 border border-yellow-500/30" : "bg-muted/30"
+                            )}
+                          >
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2">
+                                <Badge className={cn("text-xs", {
+                                  "bg-blue-500/20 text-blue-400": event.event_type === "topic",
+                                  "bg-red-500/20 text-red-400": event.event_type === "exam",
+                                  "bg-orange-500/20 text-orange-400": event.event_type === "quiz",
+                                })}>{event.event_type}</Badge>
+                                <span className="font-medium">{event.title}</span>
+                                {event.needs_review && (
+                                  <Badge variant="outline" className="text-xs text-yellow-500">Needs Review</Badge>
+                                )}
+                              </div>
+                              {event.description && (
+                                <p className="text-sm text-muted-foreground">{event.description}</p>
+                              )}
+                              <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                                {event.day_of_week && <span>{event.day_of_week}</span>}
+                                {event.event_date && <span>{event.event_date}</span>}
+                              </div>
+                            </div>
+                            <div className="flex gap-1 ml-2">
+                              {event.needs_review && (
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                  onClick={() => updateCalendarEvent.mutate({ id: event.id, needs_review: false })}
+                                >
+                                  <Check className="h-4 w-4 text-green-500" />
+                                </Button>
+                              )}
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-8 w-8"
+                                onClick={() => deleteCalendarEvent.mutate(event.id)}
+                              >
+                                <Trash2 className="h-4 w-4 text-destructive" />
+                              </Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+              )
+            ) : (
+              <p className="text-center text-muted-foreground py-8">No events extracted yet. Upload a calendar image to get started.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Topic Edit Dialog */}
+      <Dialog open={topicDialogOpen} onOpenChange={setTopicDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingTopic?.id ? "Edit Topic" : "New Topic"}</DialogTitle>
+            <DialogDescription>Topics are individual units students will practice</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="topic-title">Title</Label>
+              <Input
+                id="topic-title"
+                value={editingTopic?.title ?? ""}
+                onChange={(e) => setEditingTopic((prev) => prev ? { ...prev, title: e.target.value } : null)}
+                placeholder="e.g., Limits and Continuity"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="topic-description">Description (optional)</Label>
+              <Textarea
+                id="topic-description"
+                value={editingTopic?.description ?? ""}
+                onChange={(e) => setEditingTopic((prev) => prev ? { ...prev, description: e.target.value } : null)}
+                placeholder="Brief description of what this topic covers"
+                rows={2}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="topic-date">Scheduled Date</Label>
+              <Input
+                id="topic-date"
+                type="date"
+                value={editingTopic?.scheduled_date ?? ""}
+                onChange={(e) => setEditingTopic((prev) => prev ? { ...prev, scheduled_date: e.target.value || null } : null)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTopicDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleSaveTopic}
+              disabled={!editingTopic?.title.trim() || createTopic.isPending || updateTopic.isPending}
+            >
+              <Save className="h-4 w-4 mr-2" />
+              Save
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Topic Confirm */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deletingTopic?.name}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTopic}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
+// ─── Add Course Card ─────────────────────────────────────────────────────────
+
+function AddCourseCard({ onClick }: { onClick: () => void }) {
+  return (
+    <motion.div {...staggerItem}>
+      <Card
+        className="group cursor-pointer overflow-hidden border-2 border-dashed border-border hover:border-primary/50 bg-card/50 hover:bg-card shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
+        onClick={onClick}
+      >
+        <div className="h-28 flex items-center justify-center bg-muted/30 group-hover:bg-primary/5 transition-colors">
+          <div className="flex flex-col items-center gap-2 text-muted-foreground group-hover:text-primary transition-colors">
+            <div className="p-3 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
+              <Plus className="h-6 w-6" />
+            </div>
+          </div>
+        </div>
+        <CardContent className="p-4">
+          <p className="font-semibold text-foreground">Add Course</p>
+          <p className="text-xs text-muted-foreground mt-1">Create a new course pack</p>
+        </CardContent>
+      </Card>
+    </motion.div>
+  );
+}
+
+// ─── Course Card ─────────────────────────────────────────────────────────────
+
 function CourseCard({
   course,
   index,
   onPublish,
-  isPublishing
+  isPublishing,
+  onManageTopics,
 }: {
   course: CourseWithStats;
   index: number;
   onPublish: (courseId: string, isPublished: boolean) => void;
   isPublishing: boolean;
+  onManageTopics: (courseId: string, courseTitle: string) => void;
 }) {
   const navigate = useNavigate();
   const { gradient, accentColor } = getCourseCardColor(course.title, index);
@@ -93,60 +783,64 @@ function CourseCard({
     onPublish(course.id, !course.isPublished);
   };
 
+  const handleTopicsClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onManageTopics(course.id, course.title);
+  };
+
   return (
-    <motion.div
-      {...(prefersReducedMotion ? reducedMotionProps : staggerItem)}
-    >
+    <motion.div {...(prefersReducedMotion ? reducedMotionProps : staggerItem)}>
       <Card
         className="group cursor-pointer overflow-hidden border-0 bg-card shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
         onClick={() => navigate(`/admin/questions/${course.id}`)}
       >
         {/* Header with gradient */}
         <div className={`h-28 bg-gradient-to-br ${gradient} relative overflow-hidden`}>
-          {/* Decorative circles */}
           <div className={`absolute -right-6 -top-6 w-28 h-28 rounded-full ${accentColor} opacity-20`} />
           <div className={`absolute -right-2 top-12 w-16 h-16 rounded-full ${accentColor} opacity-15`} />
 
           {/* Status badge */}
           <div className="absolute top-3 right-3">
             <Badge
-              className={`gap-1.5 text-xs font-medium shadow-sm ${course.isPublished
+              className={`gap-1.5 text-xs font-medium shadow-sm ${
+                course.isPublished
                   ? "bg-white/95 text-green-700 hover:bg-white"
                   : "bg-white/90 text-muted-foreground hover:bg-white"
-                }`}
+              }`}
             >
               {course.isPublished ? (
-                <>
-                  <Globe className="h-3 w-3" />
-                  Live
-                </>
+                <><Globe className="h-3 w-3" />Live</>
               ) : (
-                <>
-                  <GlobeLock className="h-3 w-3" />
-                  Draft
-                </>
+                <><GlobeLock className="h-3 w-3" />Draft</>
               )}
             </Badge>
           </div>
 
+          {/* Manage topics button */}
+          <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button
+              size="sm"
+              variant="secondary"
+              className="h-7 text-xs gap-1 bg-white/90 hover:bg-white text-foreground"
+              onClick={handleTopicsClick}
+            >
+              <CalendarDays className="h-3 w-3" />
+              Topics
+            </Button>
+          </div>
+
           {/* Course title */}
           <div className="absolute bottom-3 left-4 right-4">
-            <h3 className="text-lg font-bold text-white drop-shadow-sm truncate">
-              {course.title}
-            </h3>
+            <h3 className="text-lg font-bold text-white drop-shadow-sm truncate">{course.title}</h3>
           </div>
         </div>
 
         {/* Content section */}
         <CardContent className="p-4 space-y-4">
-          {/* Description if exists */}
           {course.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">
-              {course.description}
-            </p>
+            <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
           )}
 
-          {/* Stats row */}
           <div className="flex items-center gap-6">
             <div className="flex flex-col">
               <span className="text-lg font-semibold text-foreground">{course.questionCount}</span>
@@ -159,7 +853,6 @@ function CourseCard({
             </div>
           </div>
 
-          {/* Action button */}
           <Button
             variant={course.isPublished ? "outline" : "default"}
             size="sm"
@@ -197,13 +890,31 @@ function CourseCardSkeleton() {
   );
 }
 
+// ─── Main Page ───────────────────────────────────────────────────────────────
+
 export default function AdminCoursesList() {
   const { data: courses, isLoading, error } = useCoursesWithStats();
   const prefersReducedMotion = useReducedMotion();
   const publishMutation = usePublishCourse();
+  const { toast } = useToast();
+
   const [publishingCourseId, setPublishingCourseId] = useState<string | null>(null);
 
-  // Calculate overall stats
+  // Add course dialog state
+  const [addCourseDialogOpen, setAddCourseDialogOpen] = useState(false);
+  const [newCourse, setNewCourse] = useState({ title: "", description: "" });
+
+  // Manage topics dialog state
+  const [manageDialogOpen, setManageDialogOpen] = useState(false);
+  const [managingCourseId, setManagingCourseId] = useState<string | null>(null);
+  const [managingCourseTitle, setManagingCourseTitle] = useState<string>("");
+
+  // Delete course dialog state
+  const [deleteCourseDialogOpen, setDeleteCourseDialogOpen] = useState(false);
+  const [deletingCourse, setDeletingCourse] = useState<{ id: string; name: string } | null>(null);
+
+  const { createPack, deletePack } = useCoursePackMutations();
+
   const totalQuestions = courses?.reduce((sum, c) => sum + c.questionCount, 0) || 0;
   const totalNeedsReview = courses?.reduce((sum, c) => sum + c.needsReviewCount, 0) || 0;
   const totalApproved = totalQuestions - totalNeedsReview;
@@ -214,15 +925,55 @@ export default function AdminCoursesList() {
       { courseId, isPublished },
       {
         onSuccess: () => {
-          toast.success(isPublished ? "Course published!" : "Course unpublished");
+          sonnerToast.success(isPublished ? "Course published!" : "Course unpublished");
           setPublishingCourseId(null);
         },
         onError: (err) => {
-          toast.error("Failed to update course: " + err.message);
+          sonnerToast.error("Failed to update course: " + err.message);
           setPublishingCourseId(null);
         },
       }
     );
+  };
+
+  const handleCreateCourse = async () => {
+    if (!newCourse.title.trim()) return;
+    try {
+      const result = await createPack.mutateAsync({
+        title: newCourse.title,
+        description: newCourse.description || undefined,
+      });
+      toast({ title: "Course created!" });
+      setAddCourseDialogOpen(false);
+      setNewCourse({ title: "", description: "" });
+      // Open manage topics dialog for the newly created course
+      if (result && (result as { id?: string }).id) {
+        setManagingCourseId((result as { id: string }).id);
+        setManagingCourseTitle(newCourse.title);
+        setManageDialogOpen(true);
+      }
+    } catch {
+      toast({ title: "Error creating course", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteCourse = async () => {
+    if (!deletingCourse) return;
+    try {
+      await deletePack.mutateAsync(deletingCourse.id);
+      toast({ title: "Course deleted" });
+    } catch {
+      toast({ title: "Error deleting course", variant: "destructive" });
+    } finally {
+      setDeleteCourseDialogOpen(false);
+      setDeletingCourse(null);
+    }
+  };
+
+  const handleManageTopics = (courseId: string, courseTitle: string) => {
+    setManagingCourseId(courseId);
+    setManagingCourseTitle(courseTitle);
+    setManageDialogOpen(true);
   };
 
   return (
@@ -230,10 +981,8 @@ export default function AdminCoursesList() {
       <div className="container max-w-6xl py-6 space-y-6">
         {/* Header */}
         <div>
-          <h1 className="text-2xl font-bold">Questions</h1>
-          <p className="text-muted-foreground">
-            Manage exam questions by course
-          </p>
+          <h1 className="text-2xl font-bold">Courses</h1>
+          <p className="text-muted-foreground">Manage courses, topics, and exam questions</p>
         </div>
 
         {/* Stats */}
@@ -255,27 +1004,20 @@ export default function AdminCoursesList() {
         {/* Course Cards Grid */}
         {isLoading ? (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {[...Array(6)].map((_, i) => (
-              <CourseCardSkeleton key={i} />
-            ))}
+            {[...Array(6)].map((_, i) => <CourseCardSkeleton key={i} />)}
           </div>
         ) : error ? (
           <Card className="p-8 text-center">
             <p className="text-destructive">Error loading courses: {error.message}</p>
-          </Card>
-        ) : courses?.length === 0 ? (
-          <Card className="p-8 text-center">
-            <BookOpen className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-semibold mb-2">No courses yet</h3>
-            <p className="text-muted-foreground">
-              Upload exam PDFs to start adding questions to courses.
-            </p>
           </Card>
         ) : (
           <motion.div
             className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
+            {/* Add Course card always first */}
+            <AddCourseCard onClick={() => setAddCourseDialogOpen(true)} />
+
             {courses?.map((course, index) => (
               <CourseCard
                 key={course.id}
@@ -283,11 +1025,86 @@ export default function AdminCoursesList() {
                 index={index}
                 onPublish={handlePublish}
                 isPublishing={publishingCourseId === course.id}
+                onManageTopics={handleManageTopics}
               />
             ))}
           </motion.div>
         )}
       </div>
+
+      {/* ── Add Course Dialog ── */}
+      <Dialog open={addCourseDialogOpen} onOpenChange={setAddCourseDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Course</DialogTitle>
+            <DialogDescription>
+              Create a new course pack. You can add topics and import a calendar after creation.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="course-title">Course Name</Label>
+              <Input
+                id="course-title"
+                value={newCourse.title}
+                onChange={(e) => setNewCourse((prev) => ({ ...prev, title: e.target.value }))}
+                placeholder="e.g., IE 230 — Probability and Stats"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="course-description">Description (optional)</Label>
+              <Textarea
+                id="course-description"
+                value={newCourse.description}
+                onChange={(e) => setNewCourse((prev) => ({ ...prev, description: e.target.value }))}
+                placeholder="Brief description of the course"
+                rows={3}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setAddCourseDialogOpen(false)}>Cancel</Button>
+            <Button
+              onClick={handleCreateCourse}
+              disabled={!newCourse.title.trim() || createPack.isPending}
+            >
+              {createPack.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
+              Create & Set Up
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Course Manage Dialog (Topics + Calendar) ── */}
+      {managingCourseId && (
+        <CourseManageDialog
+          open={manageDialogOpen}
+          onOpenChange={setManageDialogOpen}
+          courseId={managingCourseId}
+          courseTitle={managingCourseTitle}
+        />
+      )}
+
+      {/* ── Delete Course Confirm ── */}
+      <AlertDialog open={deleteCourseDialogOpen} onOpenChange={setDeleteCourseDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Course?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete "{deletingCourse?.name}" and all its topics.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteCourse}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </PageTransition>
   );
 }
