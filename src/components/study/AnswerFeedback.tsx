@@ -40,7 +40,7 @@ export function AnswerFeedback({
             <XCircle className="h-4 w-4" />
           )}
           <span className="text-body font-semibold">
-            {isCorrect ? "Correct" : `Incorrect — answer: ${correctAnswer.toUpperCase()}`}
+            {isCorrect ? "Correct" : "Not quite"}
           </span>
         </div>
       </div>

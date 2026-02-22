@@ -13,6 +13,7 @@ interface PlayerControlsProps {
   hasSelection: boolean;
   solutionRevealed: boolean;
   hasGuide?: boolean;
+  hasSimilar?: boolean;
   onSubmit: () => void;
   onGuideMe: () => void;
   onExplain: () => void;
@@ -25,6 +26,7 @@ export function PlayerControls({
   hasSelection,
   solutionRevealed,
   hasGuide = true,
+  hasSimilar = false,
   onSubmit,
   onGuideMe,
   onExplain,
@@ -68,20 +70,24 @@ export function PlayerControls({
           <BookOpen className="h-3.5 w-3.5" />
           Explain
         </button>
-        <button
-          onClick={onSimilar}
-          className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <Shuffle className="h-3.5 w-3.5" />
-          Similar
-        </button>
-        <button
-          onClick={onSkip}
-          className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <SkipForward className="h-3.5 w-3.5" />
-          Skip
-        </button>
+        {hasSimilar && (
+          <button
+            onClick={onSimilar}
+            className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <Shuffle className="h-3.5 w-3.5" />
+            Similar
+          </button>
+        )}
+        {!isSubmitted && (
+          <button
+            onClick={onSkip}
+            className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <SkipForward className="h-3.5 w-3.5" />
+            Skip
+          </button>
+        )}
       </div>
     </div>
   );

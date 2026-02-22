@@ -7,8 +7,6 @@ interface QuestionPromptProps {
   topicName: string;
   questionType: string;
   difficulty: number;
-  questionNumber: number;
-  totalQuestions?: number; // Optional for infinite mode
   imageUrl?: string | null;
   sourceExam?: string | null;
   courseName?: string | null;
@@ -19,8 +17,6 @@ export function QuestionPrompt({
   topicName,
   questionType,
   difficulty,
-  questionNumber,
-  totalQuestions,
   imageUrl,
   sourceExam,
   courseName,
@@ -28,17 +24,14 @@ export function QuestionPrompt({
   return (
     <div className="space-y-5">
       {/* Meta info — compact single line */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center">
         <span className="text-meta text-muted-foreground">
           {[sourceExam, topicName].filter(Boolean).join(' · ')}
-        </span>
-        <span className="text-meta text-muted-foreground shrink-0 ml-2">
-          {totalQuestions ? `${questionNumber} / ${totalQuestions}` : `#${questionNumber}`}
         </span>
       </div>
 
       {/* Question prompt card — standard anatomy, difficulty dots top-right */}
-      <div className="relative p-5 rounded-lg border border-border shadow-surface bg-surface">
+      <div className="relative p-5 rounded-lg border border-border shadow-surface bg-surface border-l-2 border-l-primary/20">
         {/* Difficulty dots — top-right corner */}
         <div className="absolute top-3 right-3 flex gap-0.5">
           {[1, 2, 3, 4, 5].map((level) => (

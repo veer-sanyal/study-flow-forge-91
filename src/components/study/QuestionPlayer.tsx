@@ -162,8 +162,6 @@ export function QuestionPlayer({
         topicName={question.topicNames[0] || 'General'}
         questionType={question.questionType}
         difficulty={question.difficulty}
-        questionNumber={questionNumber}
-        totalQuestions={totalQuestions}
         imageUrl={question.imageUrl}
         sourceExam={question.sourceExam}
         courseName={question.courseName}
@@ -193,6 +191,14 @@ export function QuestionPlayer({
         )}
       </AnimatePresence>
 
+      {/* Next button — primary action, immediately after feedback */}
+      {isSubmitted && (
+        <Button size="lg" className="w-full gap-2" onClick={handleNext}>
+          Next Question
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      )}
+
       {/* Confidence taps */}
       <AnimatePresence>
         {isSubmitted && <ConfidenceTaps selectedConfidence={confidence} onSelect={setConfidence} />}
@@ -204,20 +210,13 @@ export function QuestionPlayer({
         hasSelection={selectedChoice !== null}
         solutionRevealed={solutionRevealed}
         hasGuide={guideSteps !== null}
+        hasSimilar={false}
         onSubmit={handleSubmit}
         onGuideMe={handleGuideMe}
         onExplain={() => setSolutionRevealed(true)}
         onSimilar={onSimilar}
         onSkip={handleSkip}
       />
-
-      {/* Next button after submission */}
-      {isSubmitted && (
-        <Button size="lg" className="w-full gap-2" onClick={handleNext}>
-          Next Question
-          <ArrowRight className="h-4 w-4" />
-        </Button>
-      )}
     </div>
   );
 
