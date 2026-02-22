@@ -782,8 +782,8 @@ function CourseCard({
     >
       <Card className="h-full flex flex-col overflow-hidden border-0 bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
         {/* Compact colour strip — just the course code */}
-        <div className={`bg-gradient-to-r ${gradient} px-4 py-3 flex items-center justify-between shrink-0`}>
-          <span className="text-xl font-bold text-white tracking-wide truncate pr-2">
+        <div className={`bg-gradient-to-r ${gradient} px-4 py-2 flex items-center justify-between shrink-0 border-b border-black/10`}>
+          <span className="text-lg font-bold text-white tracking-wide truncate pr-2">
             {course.title}
           </span>
           <Badge
@@ -846,7 +846,7 @@ function CourseCard({
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" size="sm" className="px-2.5">
+                <Button variant="outline" size="sm" className="px-2 shrink-0">
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
               </DropdownMenuTrigger>
@@ -1017,65 +1017,43 @@ export default function AdminCoursesList() {
     setDeleteCourseDialogOpen(true);
   };
 
-  const filterChips: { key: StatusFilter; label: string }[] = [
-    { key: "all", label: "All" },
-    { key: "live", label: "Live" },
-    { key: "draft", label: "Draft" },
-    { key: "review", label: "Needs Review" },
+  // Filter pill counts (always from full unfiltered dataset)
+  const filterChips: { key: StatusFilter; label: string; count: number }[] = [
+    { key: "all",    label: "All",          count: courses?.length ?? 0 },
+    { key: "live",   label: "Live",         count: courses?.filter((c) => c.isPublished).length ?? 0 },
+    { key: "draft",  label: "Draft",        count: courses?.filter((c) => !c.isPublished).length ?? 0 },
+    { key: "review", label: "Needs Review", count: courses?.filter((c) => c.needsReviewCount > 0).length ?? 0 },
   ];
 
   return (
     <PageTransition>
-      <div className="container max-w-6xl py-6 space-y-5">
+      <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
 
-        {/* ── Header row ── */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        {/* ── Header: title left · stat chips + CTA right (same baseline) ── */}
+        <div className="flex items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold">Courses</h1>
             <p className="text-sm text-muted-foreground">Manage courses, topics, and exam questions</p>
           </div>
 
-          {/* KPI chips + CTA */}
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              onClick={() => setStatusFilter(statusFilter === "review" ? "all" : "review")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors",
-                statusFilter === "review"
-                  ? "bg-destructive/10 border-destructive/30 text-destructive"
-                  : "bg-card border-border hover:bg-muted"
-              )}
-            >
-              <span className="font-bold text-destructive">{totalNeedsReview}</span>
-              <span className="text-muted-foreground">needs review</span>
-            </button>
-            <button
-              onClick={() => setStatusFilter(statusFilter === "live" ? "all" : "live")}
-              className={cn(
-                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors",
-                statusFilter === "live"
-                  ? "bg-green-500/10 border-green-500/30 text-green-700"
-                  : "bg-card border-border hover:bg-muted"
-              )}
-            >
+          {/* Stat chips (informational) + Add Course CTA */}
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-card border-border text-sm">
               <span className="font-bold text-green-600">{totalApproved}</span>
               <span className="text-muted-foreground">approved</span>
-            </button>
-            <button
-              onClick={() => setStatusFilter("all")}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-card border-border hover:bg-muted text-sm transition-colors"
-            >
+            </div>
+            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-card border-border text-sm">
               <span className="font-bold">{totalQuestions}</span>
               <span className="text-muted-foreground">questions</span>
-            </button>
-            <Button onClick={() => setAddCourseDialogOpen(true)} className="gap-2">
+            </div>
+            <Button onClick={() => setAddCourseDialogOpen(true)} className="gap-2 ml-1">
               <Plus className="h-4 w-4" />
               Add Course
             </Button>
           </div>
         </div>
 
-        {/* ── Toolbar ── */}
+        {/* ── Toolbar: search · sort · filter pills (with counts) ── */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
           {/* Search */}
           <div className="relative flex-1 max-w-xs">
@@ -1100,29 +1078,29 @@ export default function AdminCoursesList() {
             </SelectContent>
           </Select>
 
-          {/* Status filter chips */}
+          {/* Filter pills with counts */}
           <div className="flex items-center gap-1">
-            {filterChips.map(({ key, label }) => (
+            {filterChips.map(({ key, label, count }) => (
               <button
                 key={key}
                 onClick={() => setStatusFilter(key)}
                 className={cn(
-                  "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors",
+                  "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors whitespace-nowrap",
                   statusFilter === key
                     ? "bg-primary text-primary-foreground border-primary"
                     : "bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground"
                 )}
               >
-                {label}
+                {label} ({count})
               </button>
             ))}
           </div>
         </div>
 
-        {/* ── Course Grid ── */}
+        {/* ── Course Grid (4-up on xl) ── */}
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
-            {[...Array(6)].map((_, i) => <CourseCardSkeleton key={i} />)}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 auto-rows-fr">
+            {[...Array(8)].map((_, i) => <CourseCardSkeleton key={i} />)}
           </div>
         ) : error ? (
           <Card className="p-8 text-center">
@@ -1138,7 +1116,7 @@ export default function AdminCoursesList() {
           </Card>
         ) : (
           <motion.div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 auto-rows-fr"
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
             {visibleCourses.map((course, index) => (
