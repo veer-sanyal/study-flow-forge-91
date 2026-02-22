@@ -66,7 +66,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { getCourseCardColor } from "@/lib/examUtils";
 import { staggerContainer, staggerItem, reducedMotionProps } from "@/lib/motion";
 import { motion } from "framer-motion";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
@@ -758,21 +757,18 @@ type SortKey = "name" | "questions";
 
 function CourseCard({
   course,
-  index,
   onPublish,
   isPublishing,
   onManageTopics,
   onDelete,
 }: {
   course: CourseWithStats;
-  index: number;
   onPublish: (courseId: string, isPublished: boolean) => void;
   isPublishing: boolean;
   onManageTopics: (courseId: string, courseTitle: string) => void;
   onDelete: (courseId: string, courseName: string) => void;
 }) {
   const navigate = useNavigate();
-  const { gradient } = getCourseCardColor(course.title, index);
   const prefersReducedMotion = useReducedMotion();
 
   return (
@@ -780,58 +776,69 @@ function CourseCard({
       className="h-full"
       {...(prefersReducedMotion ? reducedMotionProps : staggerItem)}
     >
-      <Card className="h-full flex flex-col overflow-hidden border-0 bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
-        {/* Compact colour strip — just the course code */}
-        <div className={`bg-gradient-to-r ${gradient} px-4 py-3 flex items-center justify-between shrink-0 border-b border-black/10`}>
-          <span className="text-lg font-bold text-white tracking-wide min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
-            {course.title}
-          </span>
-          <Badge
-            className={cn(
-              "ml-2 shrink-0 text-xs font-medium px-2 py-0.5",
-              course.isPublished
-                ? "bg-white/90 text-green-700"
-                : "bg-white/80 text-foreground/60"
-            )}
-          >
-            {course.isPublished ? "Live" : "Draft"}
-          </Badge>
-        </div>
+      <Card className="h-full flex flex-col overflow-hidden border border-border shadow-surface hover:shadow-raised transition-shadow duration-200">
+        {/* Status accent strip */}
+        <div className={cn("h-1 shrink-0", course.isPublished ? "bg-success" : "bg-border")} />
 
-        {/* Body */}
         <CardContent className="p-4 flex flex-col flex-1 gap-3">
-          {/* Full course name */}
-          {course.description ? (
-            <p className="text-sm font-medium text-foreground line-clamp-2">{course.description}</p>
-          ) : (
-            <p className="text-sm text-muted-foreground italic">No description</p>
+          {/* Title + status badge */}
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="font-semibold text-sm leading-snug line-clamp-2 flex-1">{course.title}</h3>
+            <Badge className={cn("shrink-0 text-xs border",
+              course.isPublished
+                ? "bg-success/10 text-success border-success/20"
+                : "bg-muted text-muted-foreground border-border"
+            )}>
+              {course.isPublished ? "Live" : "Draft"}
+            </Badge>
+          </div>
+
+          {/* Description */}
+          {course.description && (
+            <p className="text-xs text-muted-foreground line-clamp-2">{course.description}</p>
           )}
 
           {/* Stats */}
-          <div className="flex items-center gap-5 text-sm">
+          <div className="flex items-center gap-4">
             <div className="flex flex-col">
-              <span className="text-lg font-semibold leading-none">{course.questionCount}</span>
-              <span className="text-xs text-muted-foreground mt-0.5">questions</span>
+              <span className="text-lg font-bold leading-none tabular-nums">{course.questionCount}</span>
+              <span className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">questions</span>
             </div>
             <div className="w-px h-7 bg-border" />
             <div className="flex flex-col">
-              <span className="text-lg font-semibold leading-none">{course.examCount}</span>
-              <span className="text-xs text-muted-foreground mt-0.5">exams</span>
+              <span className="text-lg font-bold leading-none tabular-nums">{course.examCount}</span>
+              <span className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">exams</span>
             </div>
-            {course.needsReviewCount > 0 && (
-              <>
-                <div className="w-px h-7 bg-border" />
-                <div className="flex flex-col">
-                  <span className="text-lg font-semibold leading-none text-destructive">
-                    {course.needsReviewCount}
-                  </span>
-                  <span className="text-xs text-muted-foreground mt-0.5">to review</span>
-                </div>
-              </>
-            )}
           </div>
 
-          {/* Actions — pushed to bottom */}
+          {/* Editorial health bar */}
+          {course.questionCount > 0 && (
+            <div className="space-y-1">
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+                <div
+                  className={cn("h-full rounded-full transition-all",
+                    course.needsReviewCount === 0 ? "bg-success" : "bg-warning"
+                  )}
+                  style={{ width: `${Math.round(((course.questionCount - course.needsReviewCount) / course.questionCount) * 100)}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-muted-foreground">
+                {course.questionCount - course.needsReviewCount} of {course.questionCount} approved
+              </p>
+            </div>
+          )}
+
+          {/* Needs review callout */}
+          {course.needsReviewCount > 0 && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-warning/10 border border-warning/20">
+              <AlertCircle className="h-3.5 w-3.5 text-warning shrink-0" />
+              <span className="text-xs text-warning font-medium">
+                {course.needsReviewCount} question{course.needsReviewCount !== 1 ? "s" : ""} need review
+              </span>
+            </div>
+          )}
+
+          {/* Actions */}
           <div className="flex gap-2 mt-auto pt-1">
             <Button
               size="sm"
@@ -884,14 +891,18 @@ function CourseCard({
 
 function CourseCardSkeleton() {
   return (
-    <Card className="h-full flex flex-col overflow-hidden border-0 shadow-sm">
-      <Skeleton className="h-12 rounded-none" />
+    <Card className="h-full flex flex-col overflow-hidden border border-border shadow-surface">
+      <Skeleton className="h-1 rounded-none" />
       <CardContent className="p-4 flex flex-col gap-3 flex-1">
-        <Skeleton className="h-4 w-3/4" />
-        <div className="flex gap-4">
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="h-8 w-16" />
+        <div className="flex items-start justify-between gap-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-5 w-12 rounded-full" />
         </div>
+        <div className="flex gap-4">
+          <Skeleton className="h-8 w-12" />
+          <Skeleton className="h-8 w-12" />
+        </div>
+        <Skeleton className="h-1.5 w-full rounded-full" />
         <Skeleton className="h-9 w-full mt-auto" />
       </CardContent>
     </Card>
@@ -1115,11 +1126,10 @@ export default function AdminCoursesList() {
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr"
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
-            {visibleCourses.map((course, index) => (
+            {visibleCourses.map((course) => (
               <CourseCard
                 key={course.id}
                 course={course}
-                index={index}
                 onPublish={handlePublish}
                 isPublishing={publishingCourseId === course.id}
                 onManageTopics={handleManageTopics}
