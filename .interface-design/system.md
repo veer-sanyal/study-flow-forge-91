@@ -89,7 +89,32 @@ rounded-xl overflow-hidden bg-surface border border-border shadow-surface
 ```
 One dot per question. Outcome visible at a glance. Clickable to navigate. Reused read-only in CompletionCard.
 
+## Signature element — Retention bar (Progress)
+```tsx
+{/* Retention bar — Phase 3 signature */}
+<div className="h-0.5 w-full bg-muted overflow-hidden">
+  <div
+    className={cn(
+      "h-full transition-all",
+      topic.r_now == null ? "bg-muted" :
+      topic.r_now >= 0.9 ? "bg-success" :
+      topic.r_now >= 0.7 ? "bg-warning" : "bg-destructive"
+    )}
+    style={{ width: `${Math.round((topic.r_now ?? 0) * 100)}%` }}
+  />
+</div>
+```
+Half-height (`h-0.5`) bar at the bottom of each collapsed TopicRiskRow. Width = R% (retrievability). Color = success/warning/destructive by threshold. Parallels the Phase 1 health bar but shows memory decay state.
+
+## Status strip color conventions
+- `bg-primary` — actionable / user-owned data (Account, Study Preferences, Enrollment, Review Forecast)
+- `bg-success` — healthy / on-track state (exam R ≥ 90%)
+- `bg-warning` — needs attention (exam R 70–89%)
+- `bg-destructive` — urgent / danger zone (exam R < 70%, ClearDataCard)
+- `bg-muted` — neutral / display-only (Appearance, Notifications, Topics list)
+- `bg-border` — mixed / aggregated (TopicRiskList — contains rows of all risk levels)
+
 ## Phase scope
 - Phase 1 (complete): Admin Courses — card system established, health bar signature
 - Phase 2 (complete): Study.tsx + StudyFocus.tsx — session progress dots, token fixes, white course cards
-- Phase 3: Progress.tsx, Settings.tsx
+- Phase 3 (complete): Progress.tsx, Settings.tsx — retention bars, status strips, token fixes, overdue toggle absorbed into chart card

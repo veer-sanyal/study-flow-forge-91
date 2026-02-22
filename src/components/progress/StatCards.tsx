@@ -35,7 +35,7 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
       label: 'At-Risk',
       value: String(summary.atRiskTopicCount),
       subtitle: 'below target',
-      icon: <AlertTriangle className="h-4 w-4 text-amber-500" />,
+      icon: <AlertTriangle className="h-4 w-4 text-warning" />,
       highlight: summary.atRiskTopicCount > 0,
       tooltip: 'Topics where your estimated recall has dropped below 90%. These need review soon.',
     },
@@ -91,13 +91,13 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
               <TooltipTrigger asChild>
                 <Card className={cn(
                   'h-full cursor-default',
-                  stat.highlight && 'border-amber-500/50',
+                  stat.highlight && 'border-warning/50',
                 )}>
                   <CardContent className="p-2 sm:p-3">
                     <div className="flex flex-col items-center text-center gap-1">
                       <div className={cn(
                         'p-1.5 rounded-lg',
-                        stat.highlight ? 'bg-amber-500/10' : 'bg-primary/10',
+                        stat.highlight ? 'bg-warning/10' : 'bg-primary/10',
                       )}>
                         {stat.icon}
                       </div>

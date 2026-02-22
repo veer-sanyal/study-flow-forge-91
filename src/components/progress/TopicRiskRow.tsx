@@ -25,7 +25,7 @@ export function TopicRiskRow({
 
   return (
     <TooltipProvider>
-    <div className="border rounded-lg bg-card">
+    <div className="border border-border rounded-lg bg-surface overflow-hidden">
       {/* Collapsed row */}
       <button
         type="button"
@@ -114,6 +114,19 @@ export function TopicRiskRow({
           )}
         />
       </button>
+
+      {/* Retention bar — Phase 3 signature */}
+      <div className="h-0.5 w-full bg-muted overflow-hidden">
+        <div
+          className={cn(
+            "h-full transition-all",
+            topic.r_now == null ? "bg-muted" :
+            topic.r_now >= 0.9 ? "bg-success" :
+            topic.r_now >= 0.7 ? "bg-warning" : "bg-destructive"
+          )}
+          style={{ width: `${Math.round((topic.r_now ?? 0) * 100)}%` }}
+        />
+      </div>
 
       {/* Expanded panel */}
       <AnimatePresence>

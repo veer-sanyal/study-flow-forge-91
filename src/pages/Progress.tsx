@@ -2,8 +2,6 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Loader2 } from 'lucide-react';
 import { PageTransition } from '@/components/motion/PageTransition';
-import { Switch } from '@/components/ui/switch';
-import { Label } from '@/components/ui/label';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/hooks/use-auth';
@@ -75,7 +73,7 @@ export default function Progress(): React.ReactElement {
 
         {/* Case B: Enrolled but no attempts yet */}
         {!hasAttempts && (
-          <Card className="border-dashed">
+          <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
             <CardContent className="py-6 text-center space-y-3">
               <p className="text-muted-foreground">
                 Start studying to see your progress here.
@@ -100,22 +98,11 @@ export default function Progress(): React.ReactElement {
         <StatCards summary={summary} />
 
         {/* Review forecast chart */}
-        <div className="space-y-2">
-          <ReviewForecastChart
-            forecast={forecast}
-            includeOverdue={includeOverdue}
-          />
-          <div className="flex items-center gap-2 pl-1">
-            <Switch
-              id="overdue-toggle"
-              checked={includeOverdue}
-              onCheckedChange={setIncludeOverdue}
-            />
-            <Label htmlFor="overdue-toggle" className="text-xs text-muted-foreground">
-              Include overdue backlog
-            </Label>
-          </div>
-        </div>
+        <ReviewForecastChart
+          forecast={forecast}
+          includeOverdue={includeOverdue}
+          onIncludeOverdueChange={setIncludeOverdue}
+        />
 
         {/* Exam readiness (only renders if upcoming exams exist) */}
         <ExamReadinessPanel courseIds={effectiveCourseIds} topics={topics} />

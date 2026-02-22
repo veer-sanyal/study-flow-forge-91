@@ -105,7 +105,12 @@ export function ExamReadinessPanel({
         const atRiskTopics = exam.topics.filter((t) => t.projectedR < 0.9);
 
         return (
-          <Card key={exam.examId}>
+          <Card key={exam.examId} className="bg-surface shadow-surface rounded-xl overflow-hidden">
+            <div className={cn(
+              "h-1",
+              exam.overallProjectedR >= 0.9 ? "bg-success" :
+              exam.overallProjectedR >= 0.7 ? "bg-warning" : "bg-destructive"
+            )} />
             <CardHeader className="pb-3">
               <div className="flex items-start justify-between">
                 <div className="space-y-1">
@@ -148,7 +153,7 @@ export function ExamReadinessPanel({
                 </p>
               ) : (
                 <div className="space-y-2">
-                  <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600 dark:text-amber-400">
+                  <div className="flex items-center gap-1.5 text-sm font-medium text-warning">
                     <AlertTriangle className="h-3.5 w-3.5" />
                     <span>{atRiskTopics.length} topics below target at exam date</span>
                   </div>

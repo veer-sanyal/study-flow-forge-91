@@ -140,7 +140,8 @@ export default function Settings() {
         >
           {/* Account */}
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+              <div className="h-1 bg-primary" />
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Account</CardTitle>
               </CardHeader>
@@ -172,7 +173,8 @@ export default function Settings() {
 
           {/* Study Preferences */}
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+              <div className="h-1 bg-primary" />
               <CardHeader className="pb-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -238,7 +240,8 @@ export default function Settings() {
 
           {/* Appearance */}
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+              <div className="h-1 bg-muted" />
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Appearance</CardTitle>
               </CardHeader>
@@ -290,7 +293,8 @@ export default function Settings() {
 
           {/* Notifications */}
           <motion.div variants={itemVariants}>
-            <Card>
+            <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+              <div className="h-1 bg-muted" />
               <CardHeader className="pb-3">
                 <CardTitle className="text-lg">Notifications</CardTitle>
               </CardHeader>

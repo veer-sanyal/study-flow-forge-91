@@ -7,11 +7,14 @@ import {
   type ChartConfig,
 } from '@/components/ui/chart';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { type ForecastDay } from '@/types/progress';
 
 interface ReviewForecastChartProps {
   forecast: ForecastDay[];
   includeOverdue: boolean;
+  onIncludeOverdueChange: (value: boolean) => void;
 }
 
 const chartConfig = {
@@ -28,6 +31,7 @@ const chartConfig = {
 export function ReviewForecastChart({
   forecast,
   includeOverdue,
+  onIncludeOverdueChange,
 }: ReviewForecastChartProps): React.ReactElement {
   const chartData = useMemo(() => {
     return forecast.map((day, index) => {
@@ -53,9 +57,22 @@ export function ReviewForecastChart({
   const hasData = chartData.some((d) => d.reviews > 0 || d.overdue > 0);
 
   return (
-    <Card>
+    <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+      <div className="h-1 bg-primary" />
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg">Review Forecast</CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Review Forecast</CardTitle>
+          <div className="flex items-center gap-2">
+            <Switch
+              id="overdue-toggle"
+              checked={includeOverdue}
+              onCheckedChange={onIncludeOverdueChange}
+            />
+            <Label htmlFor="overdue-toggle" className="text-xs text-muted-foreground">
+              Include overdue backlog
+            </Label>
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
         {!hasData ? (

@@ -97,7 +97,8 @@ export function EnrollmentCard() {
   }
 
   return (
-    <Card>
+    <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+      <div className="h-1 bg-primary" />
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <div>
@@ -171,11 +172,11 @@ export function EnrollmentCard() {
         ) : (
           <div className="space-y-2">
             {enrollments.map((enrollment) => {
-              const coursePack = enrollment.course_packs as any;
+              const coursePack = enrollment.course_packs as { title: string; description?: string } | null;
               return (
                 <div
                   key={enrollment.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border bg-card"
+                  className="flex items-center gap-3 p-3 rounded-lg border bg-surface"
                 >
                   <div className="p-2 rounded-lg bg-primary/10">
                     <BookOpen className="h-5 w-5 text-primary" />

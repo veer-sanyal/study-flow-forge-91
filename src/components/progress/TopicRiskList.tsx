@@ -47,7 +47,8 @@ export function TopicRiskList({ topics, onPractice }: TopicRiskListProps): React
   const sortedTopics = useMemo(() => sortTopics(topics, sortKey), [topics, sortKey]);
 
   return (
-    <Card>
+    <Card className="bg-surface shadow-surface rounded-xl overflow-hidden">
+      <div className="h-1 bg-border" />
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
           <CardTitle className="text-lg">Topics</CardTitle>

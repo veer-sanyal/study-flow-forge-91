@@ -101,11 +101,12 @@ export function ClearDataCard() {
         description: 'All your study progress has been reset.',
       });
       setIsOpen(false);
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error clearing data:', error);
+      const message = error instanceof Error ? error.message : 'Something went wrong. Please try again.';
       toast({
         title: 'Error clearing data',
-        description: error.message || 'Something went wrong. Please try again.',
+        description: message,
         variant: 'destructive',
       });
     } finally {
@@ -114,7 +115,8 @@ export function ClearDataCard() {
   };
 
   return (
-    <Card className="border-destructive/50">
+    <Card className="border-destructive/50 shadow-surface rounded-xl overflow-hidden">
+      <div className="h-1 bg-destructive" />
       <CardHeader className="pb-3">
         <CardTitle className="text-lg text-destructive">Danger Zone</CardTitle>
         <CardDescription>
