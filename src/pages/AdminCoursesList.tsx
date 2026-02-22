@@ -24,7 +24,24 @@ import {
   Image,
   Check,
   Eye,
+  Search,
+  MoreHorizontal,
+  SortAsc,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -734,32 +751,10 @@ function CourseManageDialog({
   );
 }
 
-// ─── Add Course Card ─────────────────────────────────────────────────────────
-
-function AddCourseCard({ onClick }: { onClick: () => void }) {
-  return (
-    <motion.div {...staggerItem}>
-      <Card
-        className="group cursor-pointer overflow-hidden border-2 border-dashed border-border hover:border-primary/50 bg-card/50 hover:bg-card shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-1"
-        onClick={onClick}
-      >
-        <div className="h-28 flex items-center justify-center bg-muted/30 group-hover:bg-primary/5 transition-colors">
-          <div className="flex flex-col items-center gap-2 text-muted-foreground group-hover:text-primary transition-colors">
-            <div className="p-3 rounded-full bg-muted group-hover:bg-primary/10 transition-colors">
-              <Plus className="h-6 w-6" />
-            </div>
-          </div>
-        </div>
-        <CardContent className="p-4">
-          <p className="font-semibold text-foreground">Add Course</p>
-          <p className="text-xs text-muted-foreground mt-1">Create a new course pack</p>
-        </CardContent>
-      </Card>
-    </motion.div>
-  );
-}
-
 // ─── Course Card ─────────────────────────────────────────────────────────────
+
+type StatusFilter = "all" | "live" | "draft" | "review";
+type SortKey = "name" | "questions";
 
 function CourseCard({
   course,
@@ -767,108 +762,124 @@ function CourseCard({
   onPublish,
   isPublishing,
   onManageTopics,
+  onDelete,
 }: {
   course: CourseWithStats;
   index: number;
   onPublish: (courseId: string, isPublished: boolean) => void;
   isPublishing: boolean;
   onManageTopics: (courseId: string, courseTitle: string) => void;
+  onDelete: (courseId: string, courseName: string) => void;
 }) {
   const navigate = useNavigate();
-  const { gradient, accentColor } = getCourseCardColor(course.title, index);
+  const { gradient } = getCourseCardColor(course.title, index);
   const prefersReducedMotion = useReducedMotion();
 
-  const handlePublishClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onPublish(course.id, !course.isPublished);
-  };
-
-  const handleTopicsClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onManageTopics(course.id, course.title);
-  };
-
   return (
-    <motion.div {...(prefersReducedMotion ? reducedMotionProps : staggerItem)}>
-      <Card
-        className="group cursor-pointer overflow-hidden border-0 bg-card shadow-lg hover:shadow-xl transition-all duration-300 hover:-translate-y-1"
-        onClick={() => navigate(`/admin/questions/${course.id}`)}
-      >
-        {/* Header with gradient */}
-        <div className={`h-28 bg-gradient-to-br ${gradient} relative overflow-hidden`}>
-          <div className={`absolute -right-6 -top-6 w-28 h-28 rounded-full ${accentColor} opacity-20`} />
-          <div className={`absolute -right-2 top-12 w-16 h-16 rounded-full ${accentColor} opacity-15`} />
-
-          {/* Status badge */}
-          <div className="absolute top-3 right-3">
-            <Badge
-              className={`gap-1.5 text-xs font-medium shadow-sm ${
-                course.isPublished
-                  ? "bg-white/95 text-green-700 hover:bg-white"
-                  : "bg-white/90 text-muted-foreground hover:bg-white"
-              }`}
-            >
-              {course.isPublished ? (
-                <><Globe className="h-3 w-3" />Live</>
-              ) : (
-                <><GlobeLock className="h-3 w-3" />Draft</>
-              )}
-            </Badge>
-          </div>
-
-          {/* Manage topics button */}
-          <div className="absolute top-3 left-3 opacity-0 group-hover:opacity-100 transition-opacity">
-            <Button
-              size="sm"
-              variant="secondary"
-              className="h-7 text-xs gap-1 bg-white/90 hover:bg-white text-foreground"
-              onClick={handleTopicsClick}
-            >
-              <CalendarDays className="h-3 w-3" />
-              Topics
-            </Button>
-          </div>
-
-          {/* Course title */}
-          <div className="absolute bottom-3 left-4 right-4">
-            <h3 className="text-lg font-bold text-white drop-shadow-sm truncate">{course.title}</h3>
-          </div>
+    <motion.div
+      className="h-full"
+      {...(prefersReducedMotion ? reducedMotionProps : staggerItem)}
+    >
+      <Card className="h-full flex flex-col overflow-hidden border-0 bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
+        {/* Compact colour strip — just the course code */}
+        <div className={`bg-gradient-to-r ${gradient} px-4 py-3 flex items-center justify-between shrink-0`}>
+          <span className="text-xl font-bold text-white tracking-wide truncate pr-2">
+            {course.title}
+          </span>
+          <Badge
+            className={cn(
+              "shrink-0 gap-1 text-xs font-medium",
+              course.isPublished
+                ? "bg-white/90 text-green-700 hover:bg-white"
+                : "bg-white/80 text-foreground/70 hover:bg-white"
+            )}
+          >
+            {course.isPublished ? (
+              <><Globe className="h-3 w-3" />Live</>
+            ) : (
+              <><GlobeLock className="h-3 w-3" />Draft</>
+            )}
+          </Badge>
         </div>
 
-        {/* Content section */}
-        <CardContent className="p-4 space-y-4">
-          {course.description && (
-            <p className="text-sm text-muted-foreground line-clamp-2">{course.description}</p>
+        {/* Body */}
+        <CardContent className="p-4 flex flex-col flex-1 gap-3">
+          {/* Full course name */}
+          {course.description ? (
+            <p className="text-sm font-medium text-foreground line-clamp-2">{course.description}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground italic">No description</p>
           )}
 
-          <div className="flex items-center gap-6">
+          {/* Stats */}
+          <div className="flex items-center gap-5 text-sm">
             <div className="flex flex-col">
-              <span className="text-lg font-semibold text-foreground">{course.questionCount}</span>
-              <span className="text-xs text-muted-foreground">questions</span>
+              <span className="text-lg font-semibold leading-none">{course.questionCount}</span>
+              <span className="text-xs text-muted-foreground mt-0.5">questions</span>
             </div>
-            <div className="w-px h-8 bg-border" />
+            <div className="w-px h-7 bg-border" />
             <div className="flex flex-col">
-              <span className="text-lg font-semibold text-foreground">{course.examCount}</span>
-              <span className="text-xs text-muted-foreground">exams</span>
+              <span className="text-lg font-semibold leading-none">{course.examCount}</span>
+              <span className="text-xs text-muted-foreground mt-0.5">exams</span>
             </div>
+            {course.needsReviewCount > 0 && (
+              <>
+                <div className="w-px h-7 bg-border" />
+                <div className="flex flex-col">
+                  <span className="text-lg font-semibold leading-none text-destructive">
+                    {course.needsReviewCount}
+                  </span>
+                  <span className="text-xs text-muted-foreground mt-0.5">to review</span>
+                </div>
+              </>
+            )}
           </div>
 
-          <Button
-            variant={course.isPublished ? "outline" : "default"}
-            size="sm"
-            className="w-full gap-2"
-            onClick={handlePublishClick}
-            disabled={isPublishing}
-          >
-            {isPublishing ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : course.isPublished ? (
-              <GlobeLock className="h-4 w-4" />
-            ) : (
-              <Globe className="h-4 w-4" />
-            )}
-            {course.isPublished ? "Unpublish Course" : "Publish Course"}
-          </Button>
+          {/* Actions — pushed to bottom */}
+          <div className="flex gap-2 mt-auto pt-1">
+            <Button
+              size="sm"
+              className="flex-1 gap-1.5"
+              onClick={() => navigate(`/admin/questions/${course.id}`)}
+            >
+              Manage
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="px-2.5">
+                  <MoreHorizontal className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => onManageTopics(course.id, course.title)}>
+                  <CalendarDays className="h-4 w-4 mr-2" />
+                  Topics & Calendar
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => onPublish(course.id, !course.isPublished)}
+                  disabled={isPublishing}
+                >
+                  {isPublishing ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : course.isPublished ? (
+                    <GlobeLock className="h-4 w-4 mr-2" />
+                  ) : (
+                    <Globe className="h-4 w-4 mr-2" />
+                  )}
+                  {course.isPublished ? "Unpublish" : "Publish"}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onClick={() => onDelete(course.id, course.title)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
         </CardContent>
       </Card>
     </motion.div>
@@ -877,14 +888,15 @@ function CourseCard({
 
 function CourseCardSkeleton() {
   return (
-    <Card className="overflow-hidden border-0 shadow-lg">
-      <Skeleton className="h-32 rounded-none" />
-      <CardContent className="p-4 space-y-3">
+    <Card className="h-full flex flex-col overflow-hidden border-0 shadow-sm">
+      <Skeleton className="h-12 rounded-none" />
+      <CardContent className="p-4 flex flex-col gap-3 flex-1">
         <Skeleton className="h-4 w-3/4" />
         <div className="flex gap-4">
-          <Skeleton className="h-4 w-24" />
-          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-8 w-16" />
         </div>
+        <Skeleton className="h-9 w-full mt-auto" />
       </CardContent>
     </Card>
   );
@@ -898,26 +910,51 @@ export default function AdminCoursesList() {
   const publishMutation = usePublishCourse();
   const { toast } = useToast();
 
+  // Toolbar state
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortKey>("name");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+
   const [publishingCourseId, setPublishingCourseId] = useState<string | null>(null);
 
-  // Add course dialog state
+  // Add course dialog
   const [addCourseDialogOpen, setAddCourseDialogOpen] = useState(false);
   const [newCourse, setNewCourse] = useState({ title: "", description: "" });
 
-  // Manage topics dialog state
+  // Manage topics dialog
   const [manageDialogOpen, setManageDialogOpen] = useState(false);
   const [managingCourseId, setManagingCourseId] = useState<string | null>(null);
   const [managingCourseTitle, setManagingCourseTitle] = useState<string>("");
 
-  // Delete course dialog state
+  // Delete course dialog
   const [deleteCourseDialogOpen, setDeleteCourseDialogOpen] = useState(false);
   const [deletingCourse, setDeletingCourse] = useState<{ id: string; name: string } | null>(null);
 
   const { createPack, deletePack } = useCoursePackMutations();
 
+  // KPI totals (always from full dataset)
   const totalQuestions = courses?.reduce((sum, c) => sum + c.questionCount, 0) || 0;
   const totalNeedsReview = courses?.reduce((sum, c) => sum + c.needsReviewCount, 0) || 0;
   const totalApproved = totalQuestions - totalNeedsReview;
+
+  // Client-side filter + sort
+  const visibleCourses = (courses ?? [])
+    .filter((c) => {
+      const matchesSearch =
+        !search ||
+        c.title.toLowerCase().includes(search.toLowerCase()) ||
+        (c.description ?? "").toLowerCase().includes(search.toLowerCase());
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "live" && c.isPublished) ||
+        (statusFilter === "draft" && !c.isPublished) ||
+        (statusFilter === "review" && c.needsReviewCount > 0);
+      return matchesSearch && matchesStatus;
+    })
+    .sort((a, b) => {
+      if (sort === "questions") return b.questionCount - a.questionCount;
+      return a.title.localeCompare(b.title);
+    });
 
   const handlePublish = (courseId: string, isPublished: boolean) => {
     setPublishingCourseId(courseId);
@@ -946,7 +983,6 @@ export default function AdminCoursesList() {
       toast({ title: "Course created!" });
       setAddCourseDialogOpen(false);
       setNewCourse({ title: "", description: "" });
-      // Open manage topics dialog for the newly created course
       if (result && (result as { id?: string }).id) {
         setManagingCourseId((result as { id: string }).id);
         setManagingCourseTitle(newCourse.title);
@@ -976,49 +1012,136 @@ export default function AdminCoursesList() {
     setManageDialogOpen(true);
   };
 
+  const handleDeleteRequest = (courseId: string, courseName: string) => {
+    setDeletingCourse({ id: courseId, name: courseName });
+    setDeleteCourseDialogOpen(true);
+  };
+
+  const filterChips: { key: StatusFilter; label: string }[] = [
+    { key: "all", label: "All" },
+    { key: "live", label: "Live" },
+    { key: "draft", label: "Draft" },
+    { key: "review", label: "Needs Review" },
+  ];
+
   return (
     <PageTransition>
-      <div className="container max-w-6xl py-6 space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-2xl font-bold">Courses</h1>
-          <p className="text-muted-foreground">Manage courses, topics, and exam questions</p>
+      <div className="container max-w-6xl py-6 space-y-5">
+
+        {/* ── Header row ── */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">Courses</h1>
+            <p className="text-sm text-muted-foreground">Manage courses, topics, and exam questions</p>
+          </div>
+
+          {/* KPI chips + CTA */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={() => setStatusFilter(statusFilter === "review" ? "all" : "review")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                statusFilter === "review"
+                  ? "bg-destructive/10 border-destructive/30 text-destructive"
+                  : "bg-card border-border hover:bg-muted"
+              )}
+            >
+              <span className="font-bold text-destructive">{totalNeedsReview}</span>
+              <span className="text-muted-foreground">needs review</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter(statusFilter === "live" ? "all" : "live")}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm transition-colors",
+                statusFilter === "live"
+                  ? "bg-green-500/10 border-green-500/30 text-green-700"
+                  : "bg-card border-border hover:bg-muted"
+              )}
+            >
+              <span className="font-bold text-green-600">{totalApproved}</span>
+              <span className="text-muted-foreground">approved</span>
+            </button>
+            <button
+              onClick={() => setStatusFilter("all")}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-card border-border hover:bg-muted text-sm transition-colors"
+            >
+              <span className="font-bold">{totalQuestions}</span>
+              <span className="text-muted-foreground">questions</span>
+            </button>
+            <Button onClick={() => setAddCourseDialogOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Add Course
+            </Button>
+          </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-4">
-          <Card className="p-4">
-            <div className="text-2xl font-bold text-destructive">{totalNeedsReview}</div>
-            <div className="text-sm text-muted-foreground">Needs Review</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-2xl font-bold text-success">{totalApproved}</div>
-            <div className="text-sm text-muted-foreground">Approved</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-2xl font-bold">{totalQuestions}</div>
-            <div className="text-sm text-muted-foreground">Total Questions</div>
-          </Card>
+        {/* ── Toolbar ── */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+          {/* Search */}
+          <div className="relative flex-1 max-w-xs">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+            <Input
+              className="pl-9"
+              placeholder="Search courses…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </div>
+
+          {/* Sort */}
+          <Select value={sort} onValueChange={(v) => setSort(v as SortKey)}>
+            <SelectTrigger className="w-40 gap-2">
+              <SortAsc className="h-4 w-4 text-muted-foreground" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name">Name</SelectItem>
+              <SelectItem value="questions">Most Questions</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {/* Status filter chips */}
+          <div className="flex items-center gap-1">
+            {filterChips.map(({ key, label }) => (
+              <button
+                key={key}
+                onClick={() => setStatusFilter(key)}
+                className={cn(
+                  "px-3 py-1.5 rounded-md text-xs font-medium border transition-colors",
+                  statusFilter === key
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card border-border text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {/* Course Cards Grid */}
+        {/* ── Course Grid ── */}
         {isLoading ? (
-          <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
             {[...Array(6)].map((_, i) => <CourseCardSkeleton key={i} />)}
           </div>
         ) : error ? (
           <Card className="p-8 text-center">
             <p className="text-destructive">Error loading courses: {error.message}</p>
           </Card>
+        ) : visibleCourses.length === 0 ? (
+          <Card className="p-10 text-center">
+            <p className="text-muted-foreground">
+              {search || statusFilter !== "all"
+                ? "No courses match your filters."
+                : "No courses yet. Click \"Add Course\" to get started."}
+            </p>
+          </Card>
         ) : (
           <motion.div
-            className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr"
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
-            {/* Add Course card always first */}
-            <AddCourseCard onClick={() => setAddCourseDialogOpen(true)} />
-
-            {courses?.map((course, index) => (
+            {visibleCourses.map((course, index) => (
               <CourseCard
                 key={course.id}
                 course={course}
@@ -1026,6 +1149,7 @@ export default function AdminCoursesList() {
                 onPublish={handlePublish}
                 isPublishing={publishingCourseId === course.id}
                 onManageTopics={handleManageTopics}
+                onDelete={handleDeleteRequest}
               />
             ))}
           </motion.div>
@@ -1049,6 +1173,7 @@ export default function AdminCoursesList() {
                 value={newCourse.title}
                 onChange={(e) => setNewCourse((prev) => ({ ...prev, title: e.target.value }))}
                 placeholder="e.g., IE 230 — Probability and Stats"
+                onKeyDown={(e) => e.key === "Enter" && handleCreateCourse()}
               />
             </div>
             <div className="space-y-2">
@@ -1064,10 +1189,7 @@ export default function AdminCoursesList() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddCourseDialogOpen(false)}>Cancel</Button>
-            <Button
-              onClick={handleCreateCourse}
-              disabled={!newCourse.title.trim() || createPack.isPending}
-            >
+            <Button onClick={handleCreateCourse} disabled={!newCourse.title.trim() || createPack.isPending}>
               {createPack.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Plus className="h-4 w-4 mr-2" />}
               Create & Set Up
             </Button>
