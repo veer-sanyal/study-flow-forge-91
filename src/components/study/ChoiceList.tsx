@@ -62,14 +62,14 @@ export function ChoiceList({
             onClick={() => !isSubmitted && onSelect(choice.id)}
             disabled={isSubmitted}
             className={cn(
-              "w-full flex items-center gap-3 p-4 rounded-lg border-2 text-left transition-colors",
+              "w-full flex items-center gap-3 p-4 rounded-lg border text-left transition-colors",
               stateStyles[state],
               canHover && "hover:border-primary/50 hover:bg-accent"
             )}
           >
             <span
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 font-medium text-sm",
+                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full border font-medium text-sm",
                 state === "selected" && "border-primary bg-primary text-primary-foreground",
                 state === "correct" && "border-success bg-success text-success-foreground",
                 state === "incorrect" && "border-destructive bg-destructive text-destructive-foreground",

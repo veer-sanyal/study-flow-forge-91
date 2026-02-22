@@ -9,9 +9,9 @@ interface ConfidenceTapsProps {
 }
 
 const confidenceLevels = [
-  { level: 1, label: "Guessed", emoji: "😅" },
-  { level: 2, label: "Unsure", emoji: "🤔" },
-  { level: 3, label: "Knew it", emoji: "😎" },
+  { level: 1, label: "Lucky guess" },
+  { level: 2, label: "Unsure" },
+  { level: 3, label: "Knew it" },
 ];
 
 export function ConfidenceTaps({ selectedConfidence, onSelect }: ConfidenceTapsProps) {
@@ -28,14 +28,13 @@ export function ConfidenceTaps({ selectedConfidence, onSelect }: ConfidenceTapsP
             key={item.level}
             onClick={() => onSelect(item.level)}
             className={cn(
-              "flex flex-col items-center gap-1 px-4 py-3 rounded-lg border-2 transition-all",
+              "px-3 py-1.5 rounded-full border text-meta transition-all",
               selectedConfidence === item.level
-                ? "border-primary bg-primary/10"
-                : "border-border hover:border-primary/50 hover:bg-accent/50"
+                ? "border-primary bg-primary/10 text-primary"
+                : "border-border text-muted-foreground hover:border-primary/50"
             )}
           >
-            <span className="text-xl">{item.emoji}</span>
-            <span className="text-xs font-medium">{item.label}</span>
+            {item.label}
           </button>
         ))}
       </div>

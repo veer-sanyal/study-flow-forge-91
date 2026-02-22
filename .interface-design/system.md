@@ -71,7 +71,25 @@ rounded-xl overflow-hidden bg-surface border border-border shadow-surface
 )}
 ```
 
+## Signature element — Session Progress Dots (Study)
+```tsx
+<div className="flex flex-wrap gap-1 py-2 px-4">
+  {Array.from({ length: totalQuestions }).map((_, i) => (
+    <button key={i} onClick={() => onNavigate?.(i)}
+      className={cn("w-2.5 h-2.5 rounded-full transition-all",
+        i === currentIndex && "ring-2 ring-primary/40 bg-primary",
+        outcomes[i] === 'correct' && "bg-success",
+        outcomes[i] === 'incorrect' && "bg-destructive",
+        outcomes[i] === 'skipped' && "bg-muted-foreground/40",
+        !outcomes[i] && i !== currentIndex && "bg-muted border border-border"
+      )}
+    />
+  ))}
+</div>
+```
+One dot per question. Outcome visible at a glance. Clickable to navigate. Reused read-only in CompletionCard.
+
 ## Phase scope
 - Phase 1 (complete): Admin Courses — card system established, health bar signature
-- Phase 2: Progress.tsx, Study.tsx
-- Phase 3: Settings.tsx
+- Phase 2 (complete): Study.tsx + StudyFocus.tsx — session progress dots, token fixes, white course cards
+- Phase 3: Progress.tsx, Settings.tsx

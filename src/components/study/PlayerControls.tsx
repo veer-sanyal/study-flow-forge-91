@@ -1,8 +1,9 @@
 import { Button } from "@/components/ui/button";
-import { 
-  Compass, 
-  BookOpen, 
-  Shuffle, 
+import { cn } from "@/lib/utils";
+import {
+  Compass,
+  BookOpen,
+  Shuffle,
   SkipForward,
   Send
 } from "lucide-react";
@@ -45,50 +46,42 @@ export function PlayerControls({
         </Button>
       )}
 
-      {/* Secondary controls - always visible */}
-      <div className="grid grid-cols-4 gap-2">
+      {/* Secondary controls — inline text links */}
+      <div className="flex items-center justify-center gap-5">
         {hasGuide && (
-          <Button
-            variant="outline"
-            size="sm"
-            className="flex-col h-auto py-3 gap-1 border-primary/30 text-primary hover:bg-primary/10 hover:border-primary/50"
+          <button
             onClick={onGuideMe}
+            className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
           >
-            <Compass className="h-4 w-4" />
-            <span className="text-xs font-medium">Guide</span>
-          </Button>
+            <Compass className="h-3.5 w-3.5" />
+            Guide
+          </button>
         )}
-
-        <Button
-          variant={solutionRevealed ? "secondary" : "outline"}
-          size="sm"
-          className="flex-col h-auto py-3 gap-1"
+        <button
           onClick={onExplain}
           disabled={!isSubmitted}
+          className={cn(
+            "flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors",
+            "disabled:opacity-40 disabled:cursor-not-allowed"
+          )}
         >
-          <BookOpen className="h-4 w-4" />
-          <span className="text-xs">Explain</span>
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-col h-auto py-3 gap-1"
+          <BookOpen className="h-3.5 w-3.5" />
+          Explain
+        </button>
+        <button
           onClick={onSimilar}
+          className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
         >
-          <Shuffle className="h-4 w-4" />
-          <span className="text-xs">Similar</span>
-        </Button>
-
-        <Button
-          variant="outline"
-          size="sm"
-          className="flex-col h-auto py-3 gap-1"
+          <Shuffle className="h-3.5 w-3.5" />
+          Similar
+        </button>
+        <button
           onClick={onSkip}
+          className="flex items-center gap-1.5 text-meta text-muted-foreground hover:text-foreground transition-colors"
         >
-          <SkipForward className="h-4 w-4" />
-          <span className="text-xs">Skip</span>
-        </Button>
+          <SkipForward className="h-3.5 w-3.5" />
+          Skip
+        </button>
       </div>
     </div>
   );

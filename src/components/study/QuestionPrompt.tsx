@@ -1,6 +1,6 @@
 import { MathRenderer } from "./MathRenderer";
 import { QuestionImage } from "./QuestionImage";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface QuestionPromptProps {
   prompt: string;
@@ -27,48 +27,30 @@ export function QuestionPrompt({
 }: QuestionPromptProps) {
   return (
     <div className="space-y-5">
-      {/* Meta info */}
+      {/* Meta info — compact single line */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2 flex-wrap">
-          {courseName && (
-            <Badge variant="outline" className="text-xs bg-primary/5 border-primary/30">
-              {courseName}
-            </Badge>
-          )}
-          {sourceExam && (
-            <Badge variant="default" className="text-xs">
-              {sourceExam}
-            </Badge>
-          )}
-          <Badge variant="secondary" className="text-xs">
-            {topicName}
-          </Badge>
-          <Badge variant="outline" className="text-xs">
-            {questionType}
-          </Badge>
-        </div>
-        <span className="text-sm text-muted-foreground shrink-0 ml-2">
+        <span className="text-meta text-muted-foreground">
+          {[sourceExam, topicName].filter(Boolean).join(' · ')}
+        </span>
+        <span className="text-meta text-muted-foreground shrink-0 ml-2">
           {totalQuestions ? `${questionNumber} / ${totalQuestions}` : `#${questionNumber}`}
         </span>
       </div>
 
-      {/* Difficulty indicator */}
-      <div className="flex items-center gap-1">
-        {[1, 2, 3, 4, 5].map((level) => (
-          <div
-            key={level}
-            className={`h-1.5 w-4 rounded-full ${
-              level <= difficulty ? "bg-primary" : "bg-muted"
-            }`}
-          />
-        ))}
-        <span className="ml-2 text-xs text-muted-foreground">
-          Difficulty {difficulty}/5
-        </span>
-      </div>
-
-      {/* Question prompt - more prominent with visual separation */}
-      <div className="p-5 rounded-lg border-2 border-primary/20 bg-card shadow-sm">
+      {/* Question prompt card — standard anatomy, difficulty dots top-right */}
+      <div className="relative p-5 rounded-lg border border-border shadow-surface bg-surface">
+        {/* Difficulty dots — top-right corner */}
+        <div className="absolute top-3 right-3 flex gap-0.5">
+          {[1, 2, 3, 4, 5].map((level) => (
+            <div
+              key={level}
+              className={cn(
+                "w-1 h-1 rounded-full",
+                level <= difficulty ? "bg-primary" : "bg-muted"
+              )}
+            />
+          ))}
+        </div>
         <div className="text-lg leading-relaxed font-medium">
           <MathRenderer content={prompt} />
         </div>
@@ -78,9 +60,6 @@ export function QuestionPrompt({
       {imageUrl && (
         <QuestionImage src={imageUrl} alt="Question diagram" />
       )}
-
-      {/* Visual separator between question and choices */}
-      <div className="h-px bg-border" />
     </div>
   );
 }

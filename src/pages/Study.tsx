@@ -14,7 +14,7 @@ import { ContinueSessionCard } from "@/components/study/ContinueSessionCard";
 import { StudyFocusBar } from "@/components/study/StudyFocusBar";
 import { RecommendationCards } from "@/components/study/RecommendationCards";
 import { StatsStrip } from "@/components/study/StatsStrip";
-import { QuestionNav } from "@/components/study/QuestionNav";
+import { SessionProgressDots } from "@/components/study/SessionProgressDots";
 import { useStudyQuestions, useSubmitAttempt } from "@/hooks/use-study";
 import { useFocusContext, FocusPreset } from "@/contexts/FocusContext";
 import { useStudyDashboard, PracticeRecommendation } from "@/hooks/use-study-dashboard";
@@ -40,6 +40,7 @@ export default function Study() {
   const [studyPhase, setStudyPhase] = useState<StudyPhase>("today_plan");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedIndices, setCompletedIndices] = useState<number[]>([]);
+  const [questionOutcomes, setQuestionOutcomes] = useState<Record<number, 'correct' | 'incorrect' | 'skipped'>>({});
   const [sessionResults, setSessionResults] = useState<{
     correct: number;
     total: number;
@@ -136,6 +137,7 @@ export default function Study() {
     setStudyPhase("diagnostic");
     setCurrentIndex(0);
     setCompletedIndices([]);
+    setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     setDiagnosticResults([]);
     questionStartTime.current = Date.now();
@@ -190,10 +192,14 @@ export default function Study() {
       };
       setSessionResults(newResults);
 
-      // Mark current question as completed
+      // Mark current question as completed and record outcome
       setCompletedIndices(prev =>
         prev.includes(currentIndex) ? prev : [...prev, currentIndex]
       );
+      setQuestionOutcomes(prev => ({
+        ...prev,
+        [currentIndex]: result.skipped ? 'skipped' : result.isCorrect ? 'correct' : 'incorrect',
+      }));
 
       if (currentIndex < currentQuestions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
@@ -296,6 +302,7 @@ export default function Study() {
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
+    setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
@@ -310,6 +317,7 @@ export default function Study() {
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
+    setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     questionStartTime.current = Date.now();
   }, [queryClient, refetch, applyPreset]);
@@ -321,6 +329,7 @@ export default function Study() {
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
+    setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
@@ -331,6 +340,7 @@ export default function Study() {
     await refetch();
     setCurrentIndex(0);
     setCompletedIndices([]);
+    setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     questionStartTime.current = Date.now();
   }, [queryClient, refetch]);
@@ -340,6 +350,7 @@ export default function Study() {
     setStudyPhase("today_plan");
     setCurrentIndex(0);
     setCompletedIndices([]);
+    setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     clearFilters();
     queryClient.invalidateQueries({ queryKey: ['study-questions'] });
@@ -636,13 +647,13 @@ export default function Study() {
           </span>
         </div>
 
-        {/* Question navigation - allows jumping to any question */}
+        {/* Session progress dots — navigate + outcome at a glance */}
         {activeQuestions.length > 1 && (
-          <div className="px-4 border-b">
-            <QuestionNav
+          <div className="border-b">
+            <SessionProgressDots
               totalQuestions={activeQuestions.length}
               currentIndex={currentIndex}
-              completedIndices={completedIndices}
+              outcomes={questionOutcomes}
               onNavigate={handleNavigateQuestion}
             />
           </div>
@@ -682,13 +693,15 @@ export default function Study() {
     return (
       <PageTransition className="flex-1">
         <CompletionCard
-          title={isDiagnostic ? "Diagnostic Complete!" : "Today's Plan Complete! 🎉"}
+          title={isDiagnostic ? "Diagnostic Complete!" : "Today's Plan Complete!"}
           subtitle={isDiagnostic ? "We've calibrated your study plan." : "Great work on your daily goal"}
           correctCount={isDiagnostic ? sessionResults.correct : (todayPlanResults?.correct || 0)}
           totalCount={isDiagnostic ? sessionResults.total : (todayPlanResults?.total || 0)}
           suggestions={isDiagnostic ? [] : completionSuggestions}
           onDone={handleGoHome}
           variant="plan_complete"
+          outcomes={questionOutcomes}
+          totalQuestions={activeQuestions?.length}
         />
       </PageTransition>
     );
@@ -714,6 +727,8 @@ export default function Study() {
           ]}
           onDone={handleGoHome}
           variant="session_pause"
+          outcomes={questionOutcomes}
+          totalQuestions={activeQuestions?.length}
         />
       </PageTransition>
     );

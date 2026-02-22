@@ -32,7 +32,7 @@ export function TodayPlanCard({ stats, isLoading, onStart, onCustomize }: TodayP
       )}
     >
       {/* Hero header accent line */}
-      <div className="h-1 bg-gradient-to-r from-primary via-primary-glow to-primary" />
+      <div className="h-1 bg-primary" />
 
       <div className="relative p-5 space-y-4">
         {/* Header row */}

@@ -232,36 +232,38 @@ export default function StudyFocus() {
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {courses.map((course, index) => {
                 const isSelected = filters.courseIds.includes(course.id);
-                const { gradient } = getCourseCardColor(course.title, index);
-                
+                const { accentColor } = getCourseCardColor(course.title, index);
+
                 return (
                   <button
                     key={course.id}
                     onClick={() => handleCourseToggle(course.id)}
                     className={cn(
-                      "relative p-6 rounded-xl text-left overflow-hidden",
-                      "bg-gradient-to-br transition-all duration-200 ease-out",
-                      "active:scale-[0.98]",
-                      gradient,
+                      "relative p-5 rounded-xl text-left overflow-hidden",
+                      "bg-surface border border-border shadow-surface",
+                      "transition-all duration-200 ease-out active:scale-[0.98]",
                       isSelected
-                        ? "ring-2 ring-primary ring-offset-2 ring-offset-background scale-100"
-                        : "opacity-80 hover:opacity-100 hover:scale-[1.02]"
+                        ? "ring-2 ring-primary ring-offset-2 bg-primary/5"
+                        : "hover:border-primary/30 hover:shadow-raised"
                     )}
                   >
+                    {/* Left accent strip */}
+                    <div className={cn("absolute left-0 top-0 bottom-0 w-1 rounded-l-xl", accentColor)} />
+
                     {/* Selected indicator */}
                     {isSelected && (
-                      <div className="absolute top-3 right-3 h-6 w-6 rounded-full bg-white/90 flex items-center justify-center">
-                        <Check className="h-4 w-4 text-primary" />
+                      <div className="absolute top-3 right-3 h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
+                        <Check className="h-3.5 w-3.5 text-primary" />
                       </div>
                     )}
-                    
+
                     {/* Course icon */}
-                    <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center mb-4">
-                      <BookOpen className="h-5 w-5 text-white" />
+                    <div className="h-9 w-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center mb-3 ml-2">
+                      <BookOpen className="h-4 w-4" />
                     </div>
-                    
+
                     {/* Course title */}
-                    <h3 className="font-semibold text-white text-lg leading-tight line-clamp-2">
+                    <h3 className="font-semibold text-foreground text-base leading-tight line-clamp-2 ml-2">
                       {course.title}
                     </h3>
                   </button>
@@ -291,7 +293,7 @@ export default function StudyFocus() {
                       key={exam.id}
                       onClick={() => setMidtermNumber(exam.midtermNumber)}
                       className={cn(
-                        "flex items-center justify-between p-4 rounded-xl border-2 transition-all text-left",
+                        "flex items-center justify-between p-4 rounded-xl border transition-all text-left",
                         filters.midtermNumber === exam.midtermNumber
                           ? "border-primary bg-primary/5"
                           : "border-border hover:border-primary/50 hover:bg-accent/50"

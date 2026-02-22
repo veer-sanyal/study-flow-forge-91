@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
+import { cn } from "@/lib/utils";
 import { MathRenderer } from "./MathRenderer";
 
 interface AnswerFeedbackProps {
@@ -23,28 +24,24 @@ export function AnswerFeedback({
 
   const content = (
     <div className="space-y-4">
-      {/* Correctness indicator */}
+      {/* Correctness indicator — compact left-border strip */}
       <div
-        className={`flex items-center gap-4 p-5 rounded-xl border ${
+        className={cn(
+          "pl-4 py-3 border-l-4 rounded-r-lg",
           isCorrect
-            ? "bg-green-500/10 border-green-500/20 text-green-600 dark:text-green-400"
-            : "bg-destructive/10 border-destructive/20 text-destructive"
-        }`}
-      >
-        {isCorrect ? (
-          <CheckCircle2 className="h-8 w-8 shrink-0" />
-        ) : (
-          <XCircle className="h-8 w-8 shrink-0" />
+            ? "border-success bg-success/5 text-success"
+            : "border-destructive bg-destructive/5 text-destructive"
         )}
-        <div>
-          <p className="text-lg font-bold">
-            {isCorrect ? "Correct!" : "Incorrect"}
-          </p>
-          {!isCorrect && (
-            <p className="text-sm opacity-80 mt-0.5">
-              The correct answer is {correctAnswer}
-            </p>
+      >
+        <div className="flex items-center gap-2">
+          {isCorrect ? (
+            <CheckCircle2 className="h-4 w-4" />
+          ) : (
+            <XCircle className="h-4 w-4" />
           )}
+          <span className="text-body font-semibold">
+            {isCorrect ? "Correct" : `Incorrect — answer: ${correctAnswer.toUpperCase()}`}
+          </span>
         </div>
       </div>
 

@@ -1,6 +1,8 @@
 import { motion } from 'framer-motion';
 import { Trophy, ArrowRight, Target, RefreshCw, Home } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ProgressRing } from '@/components/ui/primitives';
+import { SessionProgressDots } from './SessionProgressDots';
 import { fadeSlideUp, scaleIn, duration, easing, stagger } from '@/lib/motion';
 import { cn } from '@/lib/utils';
 
@@ -20,6 +22,8 @@ interface CompletionCardProps {
   suggestions: CompletionSuggestion[];
   onDone: () => void;
   variant?: 'plan_complete' | 'session_pause';
+  outcomes?: Record<number, 'correct' | 'incorrect' | 'skipped'>;
+  totalQuestions?: number;
 }
 
 const suggestionIcons = {
@@ -36,8 +40,12 @@ export function CompletionCard({
   suggestions,
   onDone,
   variant = 'plan_complete',
+  outcomes = {},
+  totalQuestions,
 }: CompletionCardProps) {
   const isPlanComplete = variant === 'plan_complete';
+  const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
+  const dotCount = totalQuestions ?? totalCount;
 
   return (
     <motion.div
@@ -45,19 +53,38 @@ export function CompletionCard({
       transition={{ duration: duration.slow, ease: easing.easeOut }}
       className="flex flex-col items-center justify-center py-8 px-4 space-y-6 text-center max-w-md mx-auto"
     >
-      {/* Trophy/icon */}
+      {/* Session arc — dots showing outcome of each question */}
+      {dotCount > 0 && (
+        <motion.div
+          {...scaleIn}
+          transition={{ duration: duration.slow, ease: easing.easeOut, delay: 0.05 }}
+          className="w-full"
+        >
+          <SessionProgressDots
+            totalQuestions={dotCount}
+            currentIndex={-1}
+            outcomes={outcomes}
+          />
+        </motion.div>
+      )}
+
+      {/* Score ring + fraction */}
       <motion.div
         {...scaleIn}
         transition={{ duration: duration.slow, ease: easing.easeOut, delay: 0.1 }}
-        className={cn(
-          'rounded-full p-6',
-          isPlanComplete ? 'bg-success/10' : 'bg-primary/10'
-        )}
+        className="flex items-center gap-4"
       >
-        <Trophy className={cn(
-          'h-12 w-12',
-          isPlanComplete ? 'text-success' : 'text-primary'
-        )} />
+        <ProgressRing
+          value={accuracy}
+          size={72}
+          strokeWidth={6}
+        />
+        <div className="text-left">
+          <p className="text-h1 font-bold tabular-nums leading-none">
+            {correctCount}/{totalCount}
+          </p>
+          <p className="text-meta text-muted-foreground mt-0.5">correct</p>
+        </div>
       </motion.div>
 
       {/* Title and subtitle */}
@@ -66,11 +93,11 @@ export function CompletionCard({
         transition={{ duration: duration.normal, ease: easing.easeOut, delay: 0.2 }}
         className="space-y-2"
       >
-        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center justify-center gap-2">
+          <Trophy className={cn('h-4 w-4', isPlanComplete ? 'text-success' : 'text-primary')} />
+          {title}
+        </h1>
         <p className="text-muted-foreground">{subtitle}</p>
-        <p className="text-sm text-muted-foreground">
-          {correctCount} of {totalCount} correct
-        </p>
       </motion.div>
 
       {/* Suggestions */}

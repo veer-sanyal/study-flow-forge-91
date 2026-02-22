@@ -16,6 +16,7 @@ const typeConfig = {
   overdue_review: {
     icon: RefreshCw,
     accentColor: 'bg-warning',
+    iconClass: 'bg-warning/10 text-warning',
     badgeText: 'High impact',
     badgeClass: 'text-warning bg-warning/10',
     ctaText: 'Do now',
@@ -23,6 +24,7 @@ const typeConfig = {
   weak_topic: {
     icon: Target,
     accentColor: 'bg-destructive',
+    iconClass: 'bg-destructive/10 text-destructive',
     badgeText: 'Needs work',
     badgeClass: 'text-destructive bg-destructive/10',
     ctaText: 'Practice',
@@ -30,6 +32,7 @@ const typeConfig = {
   upcoming_exam: {
     icon: Calendar,
     accentColor: 'bg-primary',
+    iconClass: 'bg-primary/10 text-primary',
     badgeText: 'Exam prep',
     badgeClass: 'text-primary bg-primary/10',
     ctaText: 'Practice',
@@ -37,6 +40,7 @@ const typeConfig = {
   question_type: {
     icon: Zap,
     accentColor: 'bg-muted-foreground',
+    iconClass: 'bg-muted text-muted-foreground',
     badgeText: 'Practice',
     badgeClass: 'text-muted-foreground bg-muted',
     ctaText: 'Start',
@@ -70,7 +74,7 @@ function RecommendationRow({ recommendation, onStart, index }: RecommendationRow
       <div className={cn('w-1 self-stretch rounded-full shrink-0 min-h-[60px]', config.accentColor)} />
 
       {/* Icon */}
-      <div className="shrink-0 p-2.5 rounded-lg bg-muted text-muted-foreground">
+      <div className={cn("shrink-0 p-2.5 rounded-lg", config.iconClass)}>
         <Icon className="h-5 w-5" />
       </div>
 
