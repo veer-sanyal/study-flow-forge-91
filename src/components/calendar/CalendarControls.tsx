@@ -192,7 +192,7 @@ export function CalendarControls({
             </PopoverContent>
           </Popover>
         ) : (
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2">
             {/* Course filter */}
             <Popover>
               <PopoverTrigger asChild>
@@ -260,14 +260,17 @@ export function CalendarControls({
               </PopoverContent>
             </Popover>
 
-            {/* Overdue toggle */}
+            {/* Divider */}
+            <div className="w-px h-4 bg-border" />
+
+            {/* Overdue — inline */}
             <div className="flex items-center gap-1.5">
               <Switch
                 id="overdue-switch"
                 checked={includeOverdue}
                 onCheckedChange={onToggleOverdue}
               />
-              <Label htmlFor="overdue-switch" className="text-xs text-muted-foreground cursor-pointer">
+              <Label htmlFor="overdue-switch" className="text-xs text-muted-foreground cursor-pointer whitespace-nowrap">
                 Overdue
               </Label>
             </div>

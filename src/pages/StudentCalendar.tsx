@@ -1,11 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Calendar, BookOpen } from 'lucide-react';
+import { Calendar } from 'lucide-react';
 import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, addDays } from 'date-fns';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { PageTransition } from '@/components/motion/PageTransition';
 import { CalendarGrid } from '@/components/calendar/CalendarGrid';
 import { CalendarControls } from '@/components/calendar/CalendarControls';
@@ -173,36 +171,37 @@ export default function StudentCalendar(): React.ReactElement {
                 Upcoming exams
               </h2>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {upcomingExams.map((exam, i) => (
-                  <motion.div
-                    key={exam.id}
-                    initial={{ opacity: 0, y: 8 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: i * stagger.fast, duration: duration.normal, ease: easing.easeOut }}
-                    className={cn(
-                      'p-2.5 rounded-lg border',
-                      exam.event_type === 'exam'
-                        ? 'bg-destructive/5 border-destructive/20'
-                        : 'bg-accent/50 border-border',
-                    )}
-                  >
-                    <p className="font-medium text-sm truncate">{exam.title}</p>
-                    <p className="text-xs text-muted-foreground truncate">{exam.course_title}</p>
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        'mt-1.5 text-xs',
-                        exam.daysUntil <= 3 && 'bg-destructive/10 text-destructive',
-                      )}
+                {upcomingExams.map((exam, i) => {
+                  const urgency = exam.daysUntil <= 3 ? 'urgent' : exam.daysUntil <= 7 ? 'soon' : 'calm';
+                  const urgencyClasses = {
+                    urgent: 'bg-destructive/10 border-destructive/20',
+                    soon: 'bg-primary/10 border-primary/20',
+                    calm: 'bg-muted/50 border-border',
+                  }[urgency];
+                  const numberColor = {
+                    urgent: 'text-destructive',
+                    soon: 'text-primary',
+                    calm: 'text-muted-foreground',
+                  }[urgency];
+                  return (
+                    <motion.div
+                      key={exam.id}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: i * stagger.fast, duration: duration.normal, ease: easing.easeOut }}
+                      className={cn('p-3 rounded-lg border', urgencyClasses)}
                     >
-                      {exam.daysUntil === 0
-                        ? 'Today'
-                        : exam.daysUntil === 1
-                          ? 'Tomorrow'
-                          : `in ${exam.daysUntil} days`}
-                    </Badge>
-                  </motion.div>
-                ))}
+                      <div className={cn('text-2xl font-bold leading-none tabular-nums', numberColor)}>
+                        {exam.daysUntil === 0 ? '!' : exam.daysUntil}
+                      </div>
+                      <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">
+                        {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
+                      </div>
+                      <p className="font-medium text-sm mt-2 leading-snug line-clamp-2">{exam.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">{exam.course_title}</p>
+                    </motion.div>
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -228,26 +227,14 @@ export default function StudentCalendar(): React.ReactElement {
 
           {/* No reviews message */}
           {!isLoadingReviews && !hasAnyReviews && (
-            <Card className="border-dashed">
-              <CardContent className="py-8 text-center space-y-3">
-                <BookOpen className="h-8 w-8 mx-auto text-muted-foreground/50" />
-                <div className="space-y-1">
-                  <p className="text-sm text-muted-foreground font-medium">
-                    No reviews scheduled yet
-                  </p>
-                  <p className="text-xs text-muted-foreground/70">
-                    Start studying to build your review schedule.
-                  </p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => navigate('/study')}
-                >
-                  Go to Study
-                </Button>
-              </CardContent>
-            </Card>
+            <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-muted/30 border border-dashed">
+              <p className="text-sm text-muted-foreground">
+                No reviews scheduled yet — start studying to build your schedule.
+              </p>
+              <Button variant="ghost" size="sm" onClick={() => navigate('/study')} className="shrink-0 ml-3">
+                Go to Study
+              </Button>
+            </div>
           )}
 
           {/* Day detail panel */}
