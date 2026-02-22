@@ -782,23 +782,19 @@ function CourseCard({
     >
       <Card className="h-full flex flex-col overflow-hidden border-0 bg-card shadow-sm hover:shadow-md transition-shadow duration-200">
         {/* Compact colour strip — just the course code */}
-        <div className={`bg-gradient-to-r ${gradient} px-4 py-2 flex items-center justify-between shrink-0 border-b border-black/10`}>
-          <span className="text-lg font-bold text-white tracking-wide truncate pr-2">
+        <div className={`bg-gradient-to-r ${gradient} px-4 py-3 flex items-center justify-between shrink-0 border-b border-black/10`}>
+          <span className="text-lg font-bold text-white tracking-wide min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
             {course.title}
           </span>
           <Badge
             className={cn(
-              "shrink-0 gap-1 text-xs font-medium",
+              "ml-2 shrink-0 text-xs font-medium px-2 py-0.5",
               course.isPublished
-                ? "bg-white/90 text-green-700 hover:bg-white"
-                : "bg-white/80 text-foreground/70 hover:bg-white"
+                ? "bg-white/90 text-green-700"
+                : "bg-white/80 text-foreground/60"
             )}
           >
-            {course.isPublished ? (
-              <><Globe className="h-3 w-3" />Live</>
-            ) : (
-              <><GlobeLock className="h-3 w-3" />Draft</>
-            )}
+            {course.isPublished ? "Live" : "Draft"}
           </Badge>
         </div>
 
@@ -1027,17 +1023,17 @@ export default function AdminCoursesList() {
 
   return (
     <PageTransition>
-      <div className="max-w-7xl mx-auto px-6 py-6 space-y-5">
+      <div className="w-full px-6 py-6 space-y-6">
 
         {/* ── Header: title left · stat chips + CTA right (same baseline) ── */}
-        <div className="flex items-center justify-between gap-4">
+        <div className="flex items-start justify-between gap-6">
           <div>
             <h1 className="text-2xl font-bold">Courses</h1>
-            <p className="text-sm text-muted-foreground">Manage courses, topics, and exam questions</p>
+            <p className="text-sm text-muted-foreground mt-0.5">Manage courses, topics, and exam questions</p>
           </div>
 
           {/* Stat chips (informational) + Add Course CTA */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 pt-1 shrink-0">
             <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border bg-card border-border text-sm">
               <span className="font-bold text-green-600">{totalApproved}</span>
               <span className="text-muted-foreground">approved</span>
@@ -1099,7 +1095,7 @@ export default function AdminCoursesList() {
 
         {/* ── Course Grid (4-up on xl) ── */}
         {isLoading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 auto-rows-fr">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr">
             {[...Array(8)].map((_, i) => <CourseCardSkeleton key={i} />)}
           </div>
         ) : error ? (
@@ -1116,7 +1112,7 @@ export default function AdminCoursesList() {
           </Card>
         ) : (
           <motion.div
-            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5 auto-rows-fr"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 auto-rows-fr"
             {...(prefersReducedMotion ? reducedMotionProps : staggerContainer)}
           >
             {visibleCourses.map((course, index) => (
