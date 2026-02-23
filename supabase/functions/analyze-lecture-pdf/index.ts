@@ -304,7 +304,7 @@ EVIDENCE LINKING: Every atomic_fact, definition, formula, constraint, worked_exa
 Call extract_lecture_chunks with ALL pages/slides.`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-05-06:generateContent?key=${geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -361,7 +361,7 @@ Identify:
 Call extract_outline.`;
 
   const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-04-17:generateContent?key=${geminiApiKey}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },

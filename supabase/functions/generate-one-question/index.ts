@@ -345,7 +345,7 @@ serve(async (req) => {
     // Call Gemini API with PDF directly for visual understanding
     // Using gemini-3-pro-preview for higher quality question generation
     const geminiResponse = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-preview:generateContent?key=" + GEMINI_API_KEY,
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=" + GEMINI_API_KEY,
       {
         method: "POST",
         headers: {
