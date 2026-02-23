@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage } from "@/hooks/use-materials";
+import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage, useAnalyzeLecturePdf } from "@/hooks/use-materials";
 import { useBatchGenerateFromMaterial, useGenerationJobStatus } from "@/hooks/use-generate-one-question";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +28,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const deleteMaterialQuestions = useDeleteMaterialQuestions();
   const cleanupStorage = useCleanupMaterialStorage();
   const { startJob, isStarting } = useBatchGenerateFromMaterial();
+  const analyzeLecturePdf = useAnalyzeLecturePdf();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const { job: activeJob } = useGenerationJobStatus(activeJobId);
   const { toast } = useToast();
@@ -89,6 +90,24 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
           variant: "destructive"
         });
       }
+    }
+  };
+
+  const handleAnalyzeV4 = async () => {
+    if (!materialId) return;
+    try {
+      toast({ title: "Running V4 analysis…", description: "Extracting question-ready facts from the PDF." });
+      const result = await analyzeLecturePdf.mutateAsync(materialId);
+      toast({
+        title: "Analysis complete",
+        description: `${result.chunksExtracted} chunks extracted (${result.highPotentialChunks} high-potential). Ready to generate questions.`,
+      });
+    } catch (error) {
+      toast({
+        title: "Analysis failed",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
     }
   };
 
@@ -159,62 +178,98 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  {activeJob?.status === "completed" ? (
-                    <div className="flex items-center gap-2 text-sm text-green-600">
-                      <CheckCircle2 className="h-4 w-4 shrink-0" />
-                      <span>
-                        {activeJob.total_questions_generated} question{activeJob.total_questions_generated !== 1 ? "s" : ""} generated successfully.
-                      </span>
-                    </div>
-                  ) : activeJob?.status === "failed" ? (
-                    <div className="flex items-center gap-2 text-sm text-destructive">
-                      <AlertCircle className="h-4 w-4 shrink-0" />
-                      <span>{activeJob.error_message ?? "Generation failed."}</span>
-                    </div>
-                  ) : activeJob?.status === "running" || activeJob?.status === "pending" ? (
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>
-                          {activeJob.current_chunk_summary
-                            ? `Processing: ${activeJob.current_chunk_summary.slice(0, 50)}…`
-                            : "Starting…"}
-                        </span>
-                        <span>{activeJob.completed_chunks} / {activeJob.total_chunks} chunks</span>
+                  {(() => {
+                    const hasV4 = !!(material as unknown as { analysis_json_v4?: unknown }).analysis_json_v4;
+
+                    // Job in terminal state
+                    if (activeJob?.status === "completed") {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-green-600">
+                          <CheckCircle2 className="h-4 w-4 shrink-0" />
+                          <span>
+                            {activeJob.total_questions_generated} question{activeJob.total_questions_generated !== 1 ? "s" : ""} generated successfully.
+                          </span>
+                        </div>
+                      );
+                    }
+
+                    if (activeJob?.status === "failed") {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-destructive">
+                          <AlertCircle className="h-4 w-4 shrink-0" />
+                          <span>{activeJob.error_message ?? "Generation failed."}</span>
+                        </div>
+                      );
+                    }
+
+                    // Job running
+                    if (activeJob?.status === "running" || activeJob?.status === "pending") {
+                      return (
+                        <div className="space-y-2">
+                          <div className="flex justify-between text-xs text-muted-foreground">
+                            <span>
+                              {activeJob.current_chunk_summary
+                                ? `Processing: ${activeJob.current_chunk_summary.slice(0, 50)}…`
+                                : "Starting…"}
+                            </span>
+                            <span>{activeJob.completed_chunks} / {activeJob.total_chunks} chunks</span>
+                          </div>
+                          <Progress
+                            value={activeJob.total_chunks > 0
+                              ? (activeJob.completed_chunks / activeJob.total_chunks) * 100
+                              : 0}
+                            className="h-2"
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            Targeting {activeJob.total_questions_target} questions — running in background
+                          </p>
+                        </div>
+                      );
+                    }
+
+                    // No V4 analysis yet — show Analyze step
+                    if (!hasV4) {
+                      return (
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            Step 1 of 2: Extract question-ready facts from the PDF before generating questions.
+                          </p>
+                          <Button
+                            onClick={handleAnalyzeV4}
+                            disabled={analyzeLecturePdf.isPending}
+                            variant="outline"
+                            className="w-full"
+                          >
+                            {analyzeLecturePdf.isPending ? (
+                              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Analyzing PDF…</>
+                            ) : (
+                              <><Sparkles className="h-4 w-4 mr-2" />Analyze PDF (V4)</>
+                            )}
+                          </Button>
+                        </div>
+                      );
+                    }
+
+                    // V4 ready — show Generate step
+                    return (
+                      <div className="space-y-2">
+                        <p className="text-xs text-muted-foreground">
+                          Step 2 of 2: Question count is auto-determined from the content analysis.
+                        </p>
+                        <Button
+                          onClick={handleGenerateQuestions}
+                          disabled={isStarting}
+                          className="w-full"
+                        >
+                          {isStarting ? (
+                            <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Starting…</>
+                          ) : (
+                            <><Sparkles className="h-4 w-4 mr-2" />Generate Questions</>
+                          )}
+                        </Button>
                       </div>
-                      <Progress
-                        value={activeJob.total_chunks > 0
-                          ? (activeJob.completed_chunks / activeJob.total_chunks) * 100
-                          : 0}
-                        className="h-2"
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Targeting {activeJob.total_questions_target} questions — running in background
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        Question count is auto-determined from content analysis. Requires V4 analysis to be complete.
-                      </p>
-                      <Button
-                        onClick={handleGenerateQuestions}
-                        disabled={isStarting}
-                        className="w-full"
-                      >
-                        {isStarting ? (
-                          <>
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                            Starting…
-                          </>
-                        ) : (
-                          <>
-                            <Sparkles className="h-4 w-4 mr-2" />
-                            Generate Questions
-                          </>
-                        )}
-                      </Button>
-                    </>
-                  )}
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
