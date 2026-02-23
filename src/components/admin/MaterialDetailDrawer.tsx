@@ -11,10 +11,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage } from "@/hooks/use-materials";
-import { useGenerateAndSaveQuestions } from "@/hooks/use-generate-one-question";
+import { useBatchGenerateFromMaterial, useGenerationJobStatus } from "@/hooks/use-generate-one-question";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2 } from "lucide-react";
+import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2 } from "lucide-react";
 import { format } from "date-fns";
 
 interface MaterialDetailDrawerProps {
@@ -27,14 +27,15 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const updateMaterial = useUpdateMaterial();
   const deleteMaterialQuestions = useDeleteMaterialQuestions();
   const cleanupStorage = useCleanupMaterialStorage();
-  const { generateAndSave, isGenerating, progress, reset: resetGeneration } = useGenerateAndSaveQuestions();
+  const { startJob, isStarting } = useBatchGenerateFromMaterial();
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const { job: activeJob } = useGenerationJobStatus(activeJobId);
   const { toast } = useToast();
 
   // Editable fields
   const [editTitle, setEditTitle] = useState("");
   const [editWeek, setEditWeek] = useState<string>("");
   const [editMidterm, setEditMidterm] = useState<string>("unassigned");
-  const [questionCount, setQuestionCount] = useState<string>("5");
 
   // Sync editable fields when material loads
   useEffect(() => {
@@ -46,12 +47,12 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     }
   }, [material]);
 
-  // Reset generation state when drawer closes
+  // Clear job tracking when drawer closes
   useEffect(() => {
     if (!materialId) {
-      resetGeneration();
+      setActiveJobId(null);
     }
-  }, [materialId, resetGeneration]);
+  }, [materialId]);
 
   const handleSaveMetadata = async () => {
     if (!materialId) return;
@@ -92,44 +93,21 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   };
 
   const handleGenerateQuestions = async () => {
-    if (!materialId || !material) return;
-
-    const count = parseInt(questionCount, 10);
-    if (isNaN(count) || count < 1 || count > 20) {
-      toast({ title: "Invalid count", description: "Please enter a number between 1 and 20", variant: "destructive" });
-      return;
-    }
+    if (!materialId) return;
 
     try {
-      toast({ title: "Generating questions...", description: `Creating ${count} questions from the lecture material` });
-
-      const result = await generateAndSave({
-        materialId,
-        count,
-        coursePackId: material.course_pack_id,
+      const { jobId, totalQuestionsTarget } = await startJob(materialId);
+      setActiveJobId(jobId);
+      toast({
+        title: "Generation started",
+        description: `Targeting up to ${totalQuestionsTarget} questions — auto-computed from content analysis.`,
       });
-
-      if (result.saved > 0) {
-        toast({
-          title: "Questions generated!",
-          description: `Successfully created ${result.saved} question${result.saved > 1 ? 's' : ''}`
-        });
-
-        // Auto-cleanup PDF storage after generation
-        try {
-          await cleanupStorage.mutateAsync(materialId);
-        } catch {
-          // Non-fatal: PDF cleanup is best-effort
-        }
-      } else {
-        toast({
-          title: "Generation failed",
-          description: result.errors.join(", ") || "No questions were generated",
-          variant: "destructive"
-        });
-      }
     } catch (error) {
-      toast({ title: "Generation failed", description: String(error), variant: "destructive" });
+      toast({
+        title: "Generation failed",
+        description: error instanceof Error ? error.message : String(error),
+        variant: "destructive",
+      });
     }
   };
 
@@ -181,59 +159,61 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-3">
-                  <p className="text-xs text-muted-foreground">
-                    Generate MCQ questions from this lecture material using AI.
-                  </p>
-
-                  <div className="flex items-center gap-3">
-                    <div className="flex-1">
-                      <Label className="text-xs">Number of questions</Label>
-                      <Select value={questionCount} onValueChange={setQuestionCount} disabled={isGenerating}>
-                        <SelectTrigger className="mt-1">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="3">3 questions</SelectItem>
-                          <SelectItem value="5">5 questions</SelectItem>
-                          <SelectItem value="10">10 questions</SelectItem>
-                          <SelectItem value="15">15 questions</SelectItem>
-                          <SelectItem value="20">20 questions</SelectItem>
-                        </SelectContent>
-                      </Select>
+                  {activeJob?.status === "completed" ? (
+                    <div className="flex items-center gap-2 text-sm text-green-600">
+                      <CheckCircle2 className="h-4 w-4 shrink-0" />
+                      <span>
+                        {activeJob.total_questions_generated} question{activeJob.total_questions_generated !== 1 ? "s" : ""} generated successfully.
+                      </span>
                     </div>
-                    <Button
-                      onClick={handleGenerateQuestions}
-                      disabled={isGenerating}
-                      className="mt-5"
-                    >
-                      {isGenerating ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Generating...
-                        </>
-                      ) : (
-                        <>
-                          <Sparkles className="h-4 w-4 mr-2" />
-                          Generate
-                        </>
-                      )}
-                    </Button>
-                  </div>
-
-                  {/* Progress indicator */}
-                  {isGenerating && progress.total > 0 && (
+                  ) : activeJob?.status === "failed" ? (
+                    <div className="flex items-center gap-2 text-sm text-destructive">
+                      <AlertCircle className="h-4 w-4 shrink-0" />
+                      <span>{activeJob.error_message ?? "Generation failed."}</span>
+                    </div>
+                  ) : activeJob?.status === "running" || activeJob?.status === "pending" ? (
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>Progress</span>
-                        <span>{progress.completed} / {progress.total}</span>
+                        <span>
+                          {activeJob.current_chunk_summary
+                            ? `Processing: ${activeJob.current_chunk_summary.slice(0, 50)}…`
+                            : "Starting…"}
+                        </span>
+                        <span>{activeJob.completed_chunks} / {activeJob.total_chunks} chunks</span>
                       </div>
-                      <Progress value={(progress.completed / progress.total) * 100} className="h-2" />
-                      {progress.currentQuestion && (
-                        <p className="text-xs text-muted-foreground truncate">
-                          Latest: {progress.currentQuestion.stem.slice(0, 60)}...
-                        </p>
-                      )}
+                      <Progress
+                        value={activeJob.total_chunks > 0
+                          ? (activeJob.completed_chunks / activeJob.total_chunks) * 100
+                          : 0}
+                        className="h-2"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Targeting {activeJob.total_questions_target} questions — running in background
+                      </p>
                     </div>
+                  ) : (
+                    <>
+                      <p className="text-xs text-muted-foreground">
+                        Question count is auto-determined from content analysis. Requires V4 analysis to be complete.
+                      </p>
+                      <Button
+                        onClick={handleGenerateQuestions}
+                        disabled={isStarting}
+                        className="w-full"
+                      >
+                        {isStarting ? (
+                          <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Starting…
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="h-4 w-4 mr-2" />
+                            Generate Questions
+                          </>
+                        )}
+                      </Button>
+                    </>
                   )}
                 </CardContent>
               </Card>
