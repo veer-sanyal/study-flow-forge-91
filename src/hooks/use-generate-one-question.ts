@@ -1,11 +1,26 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { supabase, invokeEdgeFunction } from "@/lib/supabase";
 import type {
   SimplifiedQuestion,
   GenerateOneQuestionResult,
   GenerateOneQuestionError,
 } from "@/types/simplified-question";
+
+// ─── Batch generation types ───────────────────────────────────────────────────
+
+interface BatchGenerateStartResponse {
+  success: true;
+  jobId: string;
+  totalChunks: number;
+  totalQuestionsTarget: number;
+  message: string;
+}
+
+interface BatchGenerateStartError {
+  success: false;
+  error: string;
+}
 
 /**
  * Parameters for generating a single question.
@@ -328,4 +343,157 @@ export function useGenerateAndSaveQuestions() {
     errors,
     reset,
   };
+}
+
+/**
+ * Hook for starting a parallel batch generation job for an entire material.
+ *
+ * Calls the `generate-questions-batch` edge function which:
+ * - Uses cached QuestionReadyChunk data (no raw PDF scan)
+ * - Auto-computes per-chunk question targets
+ * - Runs generation in parallel (concurrency 4) with progressive retry
+ * - Runs semantic dedup via embeddings before saving
+ *
+ * Returns immediately with a jobId. Consumers can subscribe to progress via
+ * Supabase Realtime on the `generation_jobs` table, or poll via a useEffect interval.
+ *
+ * @example
+ * ```tsx
+ * const { startJob, isStarting, error } = useBatchGenerateFromMaterial();
+ *
+ * const handleBatch = async () => {
+ *   const { jobId, totalQuestionsTarget } = await startJob(materialId);
+ *   console.log(`Job ${jobId} started — targeting ${totalQuestionsTarget} questions`);
+ * };
+ * ```
+ */
+export function useBatchGenerateFromMaterial(): {
+  startJob: (materialId: string) => Promise<{ jobId: string; totalQuestionsTarget: number }>;
+  isStarting: boolean;
+  error: Error | null;
+} {
+  const [isStarting, setIsStarting] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const startJob = useCallback(
+    async (materialId: string): Promise<{ jobId: string; totalQuestionsTarget: number }> => {
+      setIsStarting(true);
+      setError(null);
+
+      try {
+        const { data, error: fnError } = await invokeEdgeFunction<
+          BatchGenerateStartResponse | BatchGenerateStartError
+        >("generate-questions-batch", { body: { materialId } });
+
+        if (fnError) {
+          throw new Error(`Function invocation failed: ${fnError.message}`);
+        }
+
+        if (!data) {
+          throw new Error("No response from generate-questions-batch function");
+        }
+
+        if (!data.success) {
+          throw new Error((data as BatchGenerateStartError).error);
+        }
+
+        const result = data as BatchGenerateStartResponse;
+        return { jobId: result.jobId, totalQuestionsTarget: result.totalQuestionsTarget };
+      } catch (err) {
+        const wrapped = err instanceof Error ? err : new Error("Unknown error");
+        setError(wrapped);
+        throw wrapped;
+      } finally {
+        setIsStarting(false);
+      }
+    },
+    []
+  );
+
+  return { startJob, isStarting, error };
+}
+
+/**
+ * Subscribe to live updates for a generation job.
+ *
+ * Returns the latest `generation_jobs` row for the given jobId.
+ * Uses a simple polling approach to avoid requiring Realtime subscription setup.
+ *
+ * @example
+ * ```tsx
+ * const { job } = useGenerationJobStatus(jobId);
+ * if (job?.status === 'completed') { ... }
+ * ```
+ */
+export function useGenerationJobStatus(jobId: string | null): {
+  job: {
+    id: string;
+    status: string;
+    total_chunks: number;
+    completed_chunks: number;
+    failed_chunks: number;
+    total_questions_target: number;
+    total_questions_generated: number;
+    current_chunk_summary: string | null;
+    error_message: string | null;
+  } | null;
+  isLoading: boolean;
+} {
+  const [job, setJob] = useState<{
+    id: string;
+    status: string;
+    total_chunks: number;
+    completed_chunks: number;
+    failed_chunks: number;
+    total_questions_target: number;
+    total_questions_generated: number;
+    current_chunk_summary: string | null;
+    error_message: string | null;
+  } | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  const fetchJob = useCallback(async () => {
+    if (!jobId) return;
+    setIsLoading(true);
+    try {
+      const { data } = await supabase
+        .from("generation_jobs")
+        .select(
+          "id, status, total_chunks, completed_chunks, failed_chunks, total_questions_target, total_questions_generated, current_chunk_summary, error_message"
+        )
+        .eq("id", jobId)
+        .single();
+      if (data) setJob(data as typeof job);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [jobId]);
+
+  // Initial fetch + poll every 3s; stops once job reaches a terminal state
+  useEffect(() => {
+    if (!jobId) return;
+
+    let stopped = false;
+    fetchJob();
+
+    const interval = setInterval(async () => {
+      if (stopped) return;
+      await fetchJob();
+      setJob((current) => {
+        if (current?.status === "completed" || current?.status === "failed") {
+          stopped = true;
+          clearInterval(interval);
+        }
+        return current;
+      });
+    }, 3000);
+
+    return () => {
+      stopped = true;
+      clearInterval(interval);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobId]);
+
+  return { job, isLoading };
 }

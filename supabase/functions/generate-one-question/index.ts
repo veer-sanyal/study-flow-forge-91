@@ -27,6 +27,10 @@ interface SimplifiedQuestion {
   choices: SimplifiedChoice[];
   difficulty: 1 | 2 | 3;
   topic: string;
+  explanation?: string;
+  sourcePages?: number[];
+  misconceptions?: Record<"A" | "B" | "C" | "D", string>;
+  correctChoiceId?: "A" | "B" | "C" | "D";
 }
 
 interface ValidationResult {
@@ -118,15 +122,29 @@ function validateQuestion(question: unknown): ValidationResult {
 
 /**
  * Builds the prompt for generating one high-quality MCQ.
+ *
+ * @param existingQuestions - Stems to avoid duplicating
+ * @param selectedTopicBlock - Optional serialized QuestionReadyChunk JSON for topic-constrained generation
  */
-function buildPrompt(existingQuestions?: string[]): string {
+function buildPrompt(existingQuestions?: string[], selectedTopicBlock?: string): string {
   const existingSection =
     existingQuestions && existingQuestions.length > 0
       ? `\nDO NOT DUPLICATE THESE EXISTING QUESTIONS (avoid similar stems):\n${existingQuestions.map((q, i) => `${i + 1}. ${q}`).join("\n")}\n`
       : "";
 
+  const topicBlockSection = selectedTopicBlock
+    ? `
+SELECTED TOPIC BLOCK — test ONLY content from this block:
+${selectedTopicBlock}
+
+HARD CONSTRAINT: Every factual claim in your question must trace to an evidence_span
+or atomic_fact in the block above. sourcePages must match the chunk page references.
+For each wrong choice, reference the misconception_id from the block if one applies.
+`
+    : "";
+
   return `You are an expert educational assessment designer. Analyze the lecture material provided and create ONE high-quality MCQ.
-${existingSection}
+${existingSection}${topicBlockSection}
 REQUIREMENTS:
 1. Test understanding of a CONCEPT from the lecture, not just memorization
 2. Exactly 4 choices (A, B, C, D), exactly ONE correct
@@ -141,12 +159,17 @@ REQUIREMENTS:
   * Misremembering formulas or definitions
   * Applying wrong rules to a situation
 - Each distractor should be what a student who partially understands would pick
+- Set misconceptions[choiceId] to a one-phrase label describing the specific error for each wrong choice
+  (e.g., 'forgot overlap in inclusion-exclusion', 'swapped P(B|A) with P(A|B)')
+- Set misconceptions[correctChoiceId] to 'correct reasoning'
 
 QUALITY SELF-CHECK (verify before responding):
 - [ ] Exactly one unambiguous correct answer
 - [ ] Answerable from lecture content alone
 - [ ] Tests understanding, not recall
 - [ ] Each distractor represents a real misconception
+- [ ] correctChoiceId matches the choice with isCorrect: true
+- [ ] sourcePages set to relevant page/slide numbers from the material
 
 Generate the question using the generate_question function.`;
 }
@@ -316,8 +339,8 @@ serve(async (req) => {
       );
     }
 
-    // Build the prompt
-    const prompt = buildPrompt(existingQuestions);
+    // Build the prompt (no topic block in single-question path)
+    const prompt = buildPrompt(existingQuestions, undefined);
 
     // Call Gemini API with PDF directly for visual understanding
     // Using gemini-3-pro-preview for higher quality question generation
@@ -353,7 +376,7 @@ serve(async (req) => {
                   description: "Generate a single MCQ with stem, choices, difficulty, and topic",
                   parameters: {
                     type: "object",
-                    required: ["stem", "choices", "difficulty", "topic"],
+                    required: ["stem", "choices", "difficulty", "topic", "explanation", "correctChoiceId", "misconceptions", "sourcePages"],
                     properties: {
                       stem: {
                         type: "string",
@@ -392,6 +415,32 @@ serve(async (req) => {
                       topic: {
                         type: "string",
                         description: "The topic this question tests",
+                      },
+                      explanation: {
+                        type: "string",
+                        description: "2-4 sentences: why correct is correct and why the most tempting distractor is wrong.",
+                      },
+                      sourcePages: {
+                        type: "array",
+                        items: { type: "integer" },
+                        minItems: 1,
+                        description: "Page or slide numbers in the PDF where this content appears.",
+                      },
+                      correctChoiceId: {
+                        type: "string",
+                        enum: ["A", "B", "C", "D"],
+                        description: "The ID of the correct choice — must match the choice with isCorrect: true.",
+                      },
+                      misconceptions: {
+                        type: "object",
+                        required: ["A", "B", "C", "D"],
+                        properties: {
+                          A: { type: "string" },
+                          B: { type: "string" },
+                          C: { type: "string" },
+                          D: { type: "string" },
+                        },
+                        description: "One-phrase misconception label for each choice. Use 'correct reasoning' for the right answer.",
                       },
                     },
                   },

@@ -12,14 +12,23 @@ export interface SimplifiedChoice {
 /**
  * Simplified question returned from the generate-one-question edge function.
  *
- * NOTE: No explanation or distractorRationales - these are added by the
- * analyze-questions function in a separate enrichment pass.
+ * NOTE: explanation, sourcePages, misconceptions, and correctChoiceId are
+ * populated by the generate-questions-batch function (Gap 1 fix). The older
+ * single-question path omits them and they remain optional here.
  */
 export interface SimplifiedQuestion {
   stem: string;
   choices: SimplifiedChoice[];
   difficulty: 1 | 2 | 3;  // 1 = Basic, 2 = Intermediate, 3 = Advanced
   topic: string;
+  /** 2-4 sentences: why correct is correct and why the most tempting distractor is wrong */
+  explanation?: string;
+  /** Page or slide numbers in the PDF where this content appears */
+  sourcePages?: number[];
+  /** One-phrase misconception label per choice; use 'correct reasoning' for the right answer */
+  misconceptions?: Record<'A' | 'B' | 'C' | 'D', string>;
+  /** Explicit correct choice ID — must match the choice where isCorrect === true when present */
+  correctChoiceId?: 'A' | 'B' | 'C' | 'D';
 }
 
 /**
@@ -150,6 +159,26 @@ export function validateSimplifiedQuestion(
   // Validate topic
   if (typeof q.topic !== 'string' || q.topic.length === 0) {
     errors.push('Topic must be a non-empty string');
+  }
+
+  // Validate correctChoiceId consistency when present
+  if (q.correctChoiceId !== undefined) {
+    const validChoiceIds = new Set(['A', 'B', 'C', 'D']);
+    if (typeof q.correctChoiceId !== 'string' || !validChoiceIds.has(q.correctChoiceId)) {
+      errors.push('correctChoiceId must be A, B, C, or D');
+    } else if (Array.isArray(q.choices)) {
+      const markedCorrect = (q.choices as unknown[]).find(
+        (c) => c && typeof c === 'object' && (c as Record<string, unknown>).isCorrect === true
+      );
+      if (markedCorrect) {
+        const markedId = (markedCorrect as Record<string, unknown>).id;
+        if (markedId !== q.correctChoiceId) {
+          errors.push(
+            `correctChoiceId "${String(q.correctChoiceId)}" does not match the choice marked isCorrect (id: "${String(markedId)}")`
+          );
+        }
+      }
+    }
   }
 
   return {
