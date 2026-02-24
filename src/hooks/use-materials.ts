@@ -455,31 +455,17 @@ export function useAnalyzeMaterial() {
 export function useAnalyzeLecturePdf() {
   const queryClient = useQueryClient();
 
-  return useMutation<
-    { chunksExtracted: number; outlineSections: number; courseGuess: string | null; highPotentialChunks: number },
-    Error,
-    string
-  >({
+  return useMutation<{ queued: boolean }, Error, string>({
     mutationFn: async (materialId: string) => {
       const { data, error } = await invokeEdgeFunction<{
-        success: boolean;
-        chunksExtracted: number;
-        outlineSections: number;
-        courseGuess: string | null;
-        highPotentialChunks: number;
+        queued: boolean;
         error?: string;
       }>('analyze-lecture-pdf', { body: { materialId } });
 
       if (error) throw new Error(`Function error: ${error.message}`);
       if (!data) throw new Error('No response from analyze-lecture-pdf');
-      if (!data.success) throw new Error(data.error ?? 'Analysis failed');
 
-      return {
-        chunksExtracted: data.chunksExtracted,
-        outlineSections: data.outlineSections,
-        courseGuess: data.courseGuess,
-        highPotentialChunks: data.highPotentialChunks,
-      };
+      return { queued: true };
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-materials"] });

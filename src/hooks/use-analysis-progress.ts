@@ -38,7 +38,10 @@ export function useAnalysisProgress() {
       if (error) throw error;
       return (data as unknown as AnalysisJob[]) || [];
     },
-    refetchInterval: 2000, // Poll every 2 seconds
+    refetchInterval: (query) => {
+      const data = query.state.data as AnalysisJob[] | undefined;
+      return data?.some(j => ['pending', 'running'].includes(j.status)) ? 2000 : false;
+    },
   });
 
   // Subscribe to realtime updates

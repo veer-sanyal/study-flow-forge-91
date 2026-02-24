@@ -57,7 +57,10 @@ export function useMaterialProgress() {
       }
       return (data as unknown as MaterialJob[]) || [];
     },
-    refetchInterval: 2000, // Poll every 2 seconds
+    refetchInterval: (query) => {
+      const data = query.state.data as MaterialJob[] | undefined;
+      return data?.some(j => ['pending', 'running'].includes(j.status)) ? 2000 : false;
+    },
     refetchOnMount: true,
     refetchOnWindowFocus: true,
   });

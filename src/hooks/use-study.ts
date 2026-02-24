@@ -74,7 +74,7 @@ export function useStudyQuestions(params: RecommendationParams = {}) {
         } as any);
 
       if (recError) {
-        console.error('Recommendation error:', recError);
+        console.error('Recommendation error:', JSON.stringify(recError, null, 2));
         // Fallback to simple query if recommendation fails
         let fallbackQuery = supabase
           .from('questions')

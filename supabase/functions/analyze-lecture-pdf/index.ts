@@ -25,6 +25,9 @@ import {
   getExternalAnonKey,
 } from "../_shared/external-db.ts";
 
+// EdgeRuntime is a global provided by the Supabase Edge Runtime host
+declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
+
 // ─── CORS ─────────────────────────────────────────────────────────────────────
 
 const allowedOrigins = [
@@ -391,6 +394,100 @@ Call extract_outline.`;
   };
 }
 
+// ─── Background analysis task ─────────────────────────────────────────────────
+
+async function runAnalysis(
+  supabase: ReturnType<typeof createClient>,
+  materialId: string,
+  geminiApiKey: string,
+  material: { storage_path: string; title: string; status: string },
+): Promise<void> {
+  try {
+    // Download PDF
+    const { data: blob, error: dlErr } = await supabase.storage
+      .from("course-materials")
+      .download(material.storage_path);
+
+    if (dlErr || !blob) {
+      await supabase.from("course_materials")
+        .update({ status: "failed", error_message: "PDF download failed" })
+        .eq("id", materialId);
+      return;
+    }
+
+    const arrayBuffer = await blob.arrayBuffer();
+    if (arrayBuffer.byteLength > 15 * 1024 * 1024) {
+      await supabase.from("course_materials")
+        .update({ status: "failed", error_message: "PDF too large (>15MB)" })
+        .eq("id", materialId);
+      return;
+    }
+
+    // PDF → base64
+    const uint8 = new Uint8Array(arrayBuffer);
+    let binary = "";
+    for (let i = 0; i < uint8.length; i += 32768) {
+      binary += String.fromCharCode(...uint8.slice(i, i + 32768));
+    }
+    const pdfBase64 = btoa(binary);
+
+    console.log(`[analyze-lecture-pdf] ${material.title} — Phase A starting (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
+
+    // Phase A: extract chunks
+    let chunks: QuestionReadyChunk[];
+    try {
+      chunks = await phaseA(pdfBase64, geminiApiKey);
+      console.log(`[analyze-lecture-pdf] Phase A done: ${chunks.length} chunks extracted`);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "unknown";
+      await supabase.from("course_materials")
+        .update({ status: "failed", error_message: `Phase A: ${msg}` })
+        .eq("id", materialId);
+      return;
+    }
+
+    // Phase B: outline
+    const { outline, course_guess, lecture_date_guess } = await phaseB(chunks, geminiApiKey);
+    console.log(`[analyze-lecture-pdf] Phase B done: ${outline.length} sections`);
+
+    // Assemble V4 analysis
+    const analysisV4: MaterialAnalysisV4 = {
+      schema_version: 4,
+      question_ready_chunks: chunks,
+      outline,
+      topics: [],
+      ...(course_guess && { course_guess }),
+      ...(lecture_date_guess && { lecture_date_guess }),
+    };
+
+    // Persist
+    const { error: updateErr } = await supabase
+      .from("course_materials")
+      .update({
+        analysis_json_v4: analysisV4 as unknown as Record<string, unknown>,
+        status: "analyzed",
+        error_message: null,
+      })
+      .eq("id", materialId);
+
+    if (updateErr) {
+      await supabase.from("course_materials")
+        .update({ status: "failed", error_message: `Save failed: ${updateErr.message}` })
+        .eq("id", materialId);
+      return;
+    }
+
+    console.log(`[analyze-lecture-pdf] ${material.title} — analysis complete`);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "unknown";
+    console.error("[analyze-lecture-pdf] runAnalysis error:", error);
+    await supabase.from("course_materials")
+      .update({ status: "failed", error_message: msg })
+      .eq("id", materialId)
+      .catch(() => {});
+  }
+}
+
 // ─── HTTP Handler ─────────────────────────────────────────────────────────────
 
 serve(async (req) => {
@@ -475,98 +572,14 @@ serve(async (req) => {
       );
     }
 
-    // Mark as analyzing
+    // Mark as analyzing then immediately return 202 — analysis runs in background
     await supabase.from("course_materials").update({ status: "analyzing" }).eq("id", materialId);
 
-    // Download PDF
-    const { data: blob, error: dlErr } = await supabase.storage
-      .from("course-materials")
-      .download(material.storage_path);
-
-    if (dlErr || !blob) {
-      await supabase.from("course_materials").update({ status: "failed", error_message: "PDF download failed" }).eq("id", materialId);
-      return new Response(
-        JSON.stringify({ success: false, error: `Failed to download PDF: ${dlErr?.message ?? "unknown"}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const arrayBuffer = await blob.arrayBuffer();
-    if (arrayBuffer.byteLength > 15 * 1024 * 1024) {
-      await supabase.from("course_materials").update({ status: "failed", error_message: "PDF too large (>15MB)" }).eq("id", materialId);
-      return new Response(
-        JSON.stringify({ success: false, error: "PDF too large (>15MB)" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // PDF → base64
-    const uint8 = new Uint8Array(arrayBuffer);
-    let binary = "";
-    for (let i = 0; i < uint8.length; i += 32768) {
-      binary += String.fromCharCode(...uint8.slice(i, i + 32768));
-    }
-    const pdfBase64 = btoa(binary);
-
-    console.log(`[analyze-lecture-pdf] ${material.title} — Phase A starting (${Math.round(arrayBuffer.byteLength / 1024)}KB)`);
-
-    // Phase A: extract chunks
-    let chunks: QuestionReadyChunk[];
-    try {
-      chunks = await phaseA(pdfBase64, GEMINI_API_KEY);
-      console.log(`[analyze-lecture-pdf] Phase A done: ${chunks.length} chunks extracted`);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : "unknown";
-      await supabase.from("course_materials").update({ status: "failed", error_message: `Phase A: ${msg}` }).eq("id", materialId);
-      return new Response(
-        JSON.stringify({ success: false, error: `Phase A failed: ${msg}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Phase B: outline
-    const { outline, course_guess, lecture_date_guess } = await phaseB(chunks, GEMINI_API_KEY);
-    console.log(`[analyze-lecture-pdf] Phase B done: ${outline.length} sections`);
-
-    // Assemble V4 analysis
-    const analysisV4: MaterialAnalysisV4 = {
-      schema_version: 4,
-      question_ready_chunks: chunks,
-      outline,
-      topics: [],
-      ...(course_guess && { course_guess }),
-      ...(lecture_date_guess && { lecture_date_guess }),
-    };
-
-    // Persist
-    const { error: updateErr } = await supabase
-      .from("course_materials")
-      .update({
-        analysis_json_v4: analysisV4 as unknown as Record<string, unknown>,
-        status: "analyzed",
-        error_message: null,
-      })
-      .eq("id", materialId);
-
-    if (updateErr) {
-      return new Response(
-        JSON.stringify({ success: false, error: `Failed to save analysis: ${updateErr.message}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    console.log(`[analyze-lecture-pdf] ${material.title} — analysis complete`);
+    EdgeRuntime.waitUntil(runAnalysis(supabase, materialId, GEMINI_API_KEY, material));
 
     return new Response(
-      JSON.stringify({
-        success: true,
-        chunksExtracted: chunks.length,
-        outlineSections: outline.length,
-        courseGuess: course_guess?.course_code ?? null,
-        highPotentialChunks: chunks.filter((c) => c.question_potential === "high").length,
-        message: `V4 analysis complete. ${chunks.length} chunks ready for question generation.`,
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ queued: true }),
+      { status: 202, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     console.error("analyze-lecture-pdf error:", error);

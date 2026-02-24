@@ -10,6 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
+import { useQueryClient } from "@tanstack/react-query";
 import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage, useAnalyzeLecturePdf } from "@/hooks/use-materials";
 import { useBatchGenerateFromMaterial, useGenerationJobStatus } from "@/hooks/use-generate-one-question";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
@@ -23,6 +24,7 @@ interface MaterialDetailDrawerProps {
 }
 
 export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDrawerProps) {
+  const queryClient = useQueryClient();
   const { data: material, isLoading } = useMaterialById(materialId);
   const updateMaterial = useUpdateMaterial();
   const deleteMaterialQuestions = useDeleteMaterialQuestions();
@@ -54,6 +56,15 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
       setActiveJobId(null);
     }
   }, [materialId]);
+
+  // Poll single-material query every 3s while analysis is in progress
+  useEffect(() => {
+    if (material?.status !== "analyzing") return;
+    const id = setInterval(() => {
+      queryClient.invalidateQueries({ queryKey: ["course-material", materialId] });
+    }, 3000);
+    return () => clearInterval(id);
+  }, [material?.status, materialId, queryClient]);
 
   const handleSaveMetadata = async () => {
     if (!materialId) return;
@@ -96,11 +107,10 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const handleAnalyzeV4 = async () => {
     if (!materialId) return;
     try {
-      toast({ title: "Running V4 analysis…", description: "Extracting question-ready facts from the PDF." });
-      const result = await analyzeLecturePdf.mutateAsync(materialId);
+      await analyzeLecturePdf.mutateAsync(materialId);
       toast({
-        title: "Analysis complete",
-        description: `${result.chunksExtracted} chunks extracted (${result.highPotentialChunks} high-potential). Ready to generate questions.`,
+        title: "Analysis started — processing in background",
+        description: "The material status will update to 'analyzed' when complete.",
       });
     } catch (error) {
       toast({
