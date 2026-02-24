@@ -30,7 +30,7 @@ export interface AnalysisJob {
 export function useAnalysisQueue() {
   const queryClient = useQueryClient();
 
-  // Fetch all recent analysis jobs (pending, running, and recent completed)
+  // Fetch all recent analysis jobs (pending, running) — Realtime subscription handles live updates
   const { data: jobs } = useQuery({
     queryKey: ["analysis-jobs-queue"],
     queryFn: async () => {
@@ -43,10 +43,7 @@ export function useAnalysisQueue() {
       if (error) throw error;
       return (data as unknown as AnalysisJob[]) || [];
     },
-    refetchInterval: (query) => {
-      const data = query.state.data as AnalysisJob[] | undefined;
-      return data?.some(j => ['pending', 'running'].includes(j.status)) ? 2000 : false;
-    },
+    refetchOnWindowFocus: false,
   });
 
   // Subscribe to realtime updates
@@ -58,7 +55,6 @@ export function useAnalysisQueue() {
         { event: "*", schema: "public", table: "analysis_jobs" },
         () => {
           queryClient.invalidateQueries({ queryKey: ["analysis-jobs-queue"] });
-          queryClient.invalidateQueries({ queryKey: ["analysis-jobs-active"] });
         }
       )
       .subscribe();
@@ -102,7 +98,6 @@ export function useAnalysisQueue() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["analysis-jobs-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["analysis-jobs-active"] });
     },
   });
 
@@ -118,7 +113,6 @@ export function useAnalysisQueue() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["analysis-jobs-queue"] });
-      queryClient.invalidateQueries({ queryKey: ["analysis-jobs-active"] });
     },
   });
 

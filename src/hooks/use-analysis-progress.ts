@@ -24,7 +24,7 @@ export function useAnalysisProgress() {
   const [activeJob, setActiveJob] = useState<AnalysisJob | null>(null);
   const queryClient = useQueryClient();
 
-  // Fetch active analysis jobs
+  // Fetch active analysis jobs — Realtime subscription handles live updates
   const { data: jobs } = useQuery({
     queryKey: ["analysis-jobs-active"],
     queryFn: async () => {
@@ -38,10 +38,7 @@ export function useAnalysisProgress() {
       if (error) throw error;
       return (data as unknown as AnalysisJob[]) || [];
     },
-    refetchInterval: (query) => {
-      const data = query.state.data as AnalysisJob[] | undefined;
-      return data?.some(j => ['pending', 'running'].includes(j.status)) ? 2000 : false;
-    },
+    refetchOnWindowFocus: false,
   });
 
   // Subscribe to realtime updates

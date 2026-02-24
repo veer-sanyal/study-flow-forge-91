@@ -57,12 +57,7 @@ export function useMaterialProgress() {
       }
       return (data as unknown as MaterialJob[]) || [];
     },
-    refetchInterval: (query) => {
-      const data = query.state.data as MaterialJob[] | undefined;
-      return data?.some(j => ['pending', 'running'].includes(j.status)) ? 2000 : false;
-    },
-    refetchOnMount: true,
-    refetchOnWindowFocus: true,
+    refetchOnWindowFocus: false,
   });
 
   // Subscribe to realtime updates
