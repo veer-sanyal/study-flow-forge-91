@@ -29,3 +29,9 @@ verify_jwt = true
 
 [functions.generate-one-question]
 verify_jwt = false
+
+[functions.analyze-lecture-pdf]
+verify_jwt = false
+
+[functions.generate-questions-batch]
+verify_jwt = false
