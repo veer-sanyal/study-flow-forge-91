@@ -359,14 +359,14 @@ async function callGeminiGenerate(
       }
     );
 
-    clearTimeout(timeoutId);
-
     if (!response.ok) {
+      clearTimeout(timeoutId);
       console.error(`Gemini API error: ${response.status}`);
       return null;
     }
 
     const result = await response.json();
+    clearTimeout(timeoutId);
     const functionCall = result.candidates?.[0]?.content?.parts?.[0]?.functionCall;
 
     if (functionCall?.name !== "generate_question" || !functionCall.args) {

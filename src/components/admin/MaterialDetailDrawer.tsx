@@ -11,11 +11,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useQueryClient } from "@tanstack/react-query";
+import { supabase } from "@/lib/supabase";
 import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage, useAnalyzeLecturePdf } from "@/hooks/use-materials";
 import { useBatchGenerateFromMaterial, useGenerationJobStatus } from "@/hooks/use-generate-one-question";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2 } from "lucide-react";
+import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 
 interface MaterialDetailDrawerProps {
@@ -149,6 +150,16 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     }
   };
 
+  const handleResetJob = async () => {
+    if (!activeJobId) return;
+    await supabase
+      .from("generation_jobs")
+      .update({ status: "failed", error_message: "Manually reset (job was stuck)" })
+      .eq("id", activeJobId);
+    setActiveJobId(null);
+    toast({ title: "Job reset", description: "You can now re-trigger generation." });
+  };
+
   const getStatusBadge = (status: MaterialStatus) => {
     const config = MATERIAL_STATUS_CONFIG[status];
     return (
@@ -239,9 +250,20 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                               : 0}
                             className="h-2"
                           />
-                          <p className="text-xs text-muted-foreground">
-                            Targeting {activeJob.total_questions_target} questions — running in background
-                          </p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-xs text-muted-foreground">
+                              Targeting {activeJob.total_questions_target} questions — running in background
+                            </p>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                              onClick={handleResetJob}
+                            >
+                              <RotateCcw className="h-3 w-3 mr-1" />
+                              Reset
+                            </Button>
+                          </div>
                         </div>
                       );
                     }
