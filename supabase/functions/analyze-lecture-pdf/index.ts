@@ -306,14 +306,16 @@ EVIDENCE LINKING: Every atomic_fact, definition, formula, constraint, worked_exa
 
 Call extract_lecture_chunks with ALL pages/slides.`;
 
-  // 110s timeout — leaves ~40s for Phase B + DB write within Supabase's 150s wall-clock limit
+  // Use gemini-3-flash-preview for Phase A — supports PDF + function calling, significantly
+  // faster than gemini-3.1-pro-preview (which has thinking enabled and exceeds the 150s limit).
+  // 110s timeout — leaves ~40s for Phase B + DB write within Supabase's 150s wall-clock limit.
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 110_000);
 
   let response: Response;
   try {
     response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
