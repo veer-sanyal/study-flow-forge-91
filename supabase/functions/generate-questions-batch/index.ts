@@ -104,7 +104,7 @@ const CONFIG = {
   STAGGER_MS: 1500,
   MAX_RETRIES: 3,
   RETRY_DELAY_MS: 2000,
-  REQUEST_TIMEOUT_MS: 120_000,
+  REQUEST_TIMEOUT_MS: 60_000,
   MAX_QUESTIONS_PER_MATERIAL: 50,
   EMBEDDING_SIMILARITY_THRESHOLD: 0.85,
 } as const;
@@ -276,7 +276,7 @@ async function callGeminiGenerate(
 
   try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
