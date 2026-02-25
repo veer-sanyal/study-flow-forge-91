@@ -329,7 +329,11 @@ Call extract_lecture_chunks with ALL pages/slides.`;
           }],
           tools: [{ functionDeclarations: [CHUNK_SCHEMA] }],
           toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["extract_lecture_chunks"] } },
-          generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
+          generationConfig: {
+            temperature: 0.1,
+            maxOutputTokens: 16384,
+            thinkingConfig: { thinkingBudget: 0 }, // disable extended thinking — saves 40-60s
+          },
         }),
         signal: controller.signal,
       }
