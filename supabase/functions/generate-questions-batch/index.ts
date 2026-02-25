@@ -100,10 +100,10 @@ interface MaterialAnalysisV4 {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const CONFIG = {
-  CONCURRENCY: 4,
-  STAGGER_MS: 1500,
+  CONCURRENCY: 2,
+  STAGGER_MS: 0,
   MAX_RETRIES: 3,
-  RETRY_DELAY_MS: 2000,
+  RETRY_DELAY_MS: 5000,
   REQUEST_TIMEOUT_MS: 60_000,
   MAX_QUESTIONS_PER_MATERIAL: 50,
   EMBEDDING_SIMILARITY_THRESHOLD: 0.85,
@@ -263,10 +263,46 @@ OUTPUT: Call the generate_question function with the full schema including
 explanation, sourcePages, correctChoiceId, and misconceptions.`;
 }
 
+// ─── Gemini Files API upload ──────────────────────────────────────────────────
+
+async function uploadPdfToGemini(pdfBytes: Uint8Array, geminiApiKey: string): Promise<string> {
+  const boundary = `boundary${Math.random().toString(36).slice(2)}`;
+  const encoder = new TextEncoder();
+  const part1 = encoder.encode(
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `{"file":{"display_name":"lecture.pdf"}}\r\n` +
+    `--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`
+  );
+  const part2 = encoder.encode(`\r\n--${boundary}--`);
+  const body = new Uint8Array(part1.byteLength + pdfBytes.byteLength + part2.byteLength);
+  body.set(part1, 0);
+  body.set(pdfBytes, part1.byteLength);
+  body.set(part2, part1.byteLength + pdfBytes.byteLength);
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?uploadType=multipart&key=${geminiApiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+      body,
+    }
+  );
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`Gemini file upload failed: ${response.status} ${errText}`);
+  }
+
+  const result = await response.json();
+  const uri = result?.file?.uri as string | undefined;
+  if (!uri) throw new Error("Gemini file upload: no URI in response");
+  return uri;
+}
+
 // ─── Gemini API call ──────────────────────────────────────────────────────────
 
 async function callGeminiGenerate(
-  pdfBase64: string,
+  fileUri: string,
   prompt: string,
   temperature: number,
   geminiApiKey: string
@@ -285,7 +321,7 @@ async function callGeminiGenerate(
             {
               role: "user",
               parts: [
-                { inlineData: { mimeType: "application/pdf", data: pdfBase64 } },
+                { fileData: { mimeType: "application/pdf", fileUri } },
                 { text: prompt },
               ],
             },
@@ -358,6 +394,12 @@ async function callGeminiGenerate(
         signal: controller.signal,
       }
     );
+
+    if (response.status === 429) {
+      clearTimeout(timeoutId);
+      // Rate limited — signal caller to back off
+      throw new Error("RATE_LIMITED");
+    }
 
     if (!response.ok) {
       clearTimeout(timeoutId);
@@ -439,7 +481,7 @@ function validateEnhancedQuestion(q: unknown): q is EnhancedQuestion {
 async function generateQuestionsForChunk(
   chunk: QuestionReadyChunk,
   target: number,
-  pdfBase64: string,
+  fileUri: string,
   geminiApiKey: string,
   existingStems: string[]
 ): Promise<EnhancedQuestion[]> {
@@ -462,15 +504,25 @@ async function generateQuestionsForChunk(
           : undefined;
 
       const prompt = buildEnhancedPrompt(topicBlock, localStems, { styleConstraint, formulaOnly });
-      const raw = await callGeminiGenerate(pdfBase64, prompt, temp, geminiApiKey);
 
-      if (raw && validateEnhancedQuestion(raw)) {
-        question = raw;
-        break;
+      try {
+        const raw = await callGeminiGenerate(fileUri, prompt, temp, geminiApiKey);
+        if (raw && validateEnhancedQuestion(raw)) {
+          question = raw;
+          break;
+        }
+      } catch (err) {
+        const isRateLimit = err instanceof Error && err.message === "RATE_LIMITED";
+        const delay = isRateLimit ? 30_000 : CONFIG.RETRY_DELAY_MS * attempt;
+        console.warn(
+          `Chunk ${chunk.chunk_index} question ${i + 1}: attempt ${attempt} ${isRateLimit ? "rate limited" : "failed"}, waiting ${delay}ms...`
+        );
+        await sleep(delay);
+        continue;
       }
 
       console.warn(
-        `Chunk ${chunk.chunk_index} question ${i + 1}: attempt ${attempt} failed, retrying...`
+        `Chunk ${chunk.chunk_index} question ${i + 1}: attempt ${attempt} returned invalid response, retrying...`
       );
       await sleep(CONFIG.RETRY_DELAY_MS * attempt);
     }
@@ -623,7 +675,7 @@ async function generateInBackground(
   supabase: SupabaseClient,
   jobId: string,
   materialId: string,
-  pdfBase64: string,
+  fileUri: string,
   analysisV4: MaterialAnalysisV4,
   geminiApiKey: string
 ): Promise<void> {
@@ -689,7 +741,7 @@ async function generateInBackground(
         const questions = await generateQuestionsForChunk(
           chunk,
           target,
-          pdfBase64,
+          fileUri,
           geminiApiKey,
           [...globalStems]
         );
@@ -895,15 +947,9 @@ serve(async (req) => {
       );
     }
 
-    // Convert PDF to base64
+    // Upload PDF once to Gemini Files API — all generation calls reuse the URI
     const uint8Array = new Uint8Array(arrayBuffer);
-    let binary = "";
-    const chunkSize = 32768;
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.slice(i, i + chunkSize);
-      binary += String.fromCharCode(...chunk);
-    }
-    const pdfBase64 = btoa(binary);
+    const fileUri = await uploadPdfToGemini(uint8Array, GEMINI_API_KEY);
 
     // Compute totals for response
     const chunks = analysisV4.question_ready_chunks;
@@ -946,11 +992,11 @@ serve(async (req) => {
     if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
       // @ts-ignore
       EdgeRuntime.waitUntil(
-        generateInBackground(supabase, jobId, materialId, pdfBase64, analysisV4, GEMINI_API_KEY)
+        generateInBackground(supabase, jobId, materialId, fileUri, analysisV4, GEMINI_API_KEY)
       );
     } else {
       // Fallback for local dev
-      generateInBackground(supabase, jobId, materialId, pdfBase64, analysisV4, GEMINI_API_KEY);
+      generateInBackground(supabase, jobId, materialId, fileUri, analysisV4, GEMINI_API_KEY);
     }
 
     return new Response(
