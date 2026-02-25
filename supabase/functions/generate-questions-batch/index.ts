@@ -207,60 +207,36 @@ function buildTopicBlock(chunk: QuestionReadyChunk): string {
   );
 }
 
-// ─── Gap 2 + Gap 1: Enhanced prompt builder ───────────────────────────────────
+// ─── Gap 2 + Gap 1: Batch prompt builder ─────────────────────────────────────
 
-interface RetryOpts {
-  styleConstraint?: string;
-  formulaOnly?: string;
-}
-
-function buildEnhancedPrompt(
-  topicBlock: string,
-  existingStems: string[],
-  retryOpts: RetryOpts = {}
-): string {
+function buildBatchPrompt(topicBlock: string, existingStems: string[], count: number): string {
   const stemsSection =
     existingStems.length > 0
-      ? `RECENT STEMS TO AVOID (do not generate questions with similar meaning):\n${existingStems
-          .slice(-10)
+      ? `STEMS TO AVOID (do not generate questions with similar meaning to these):\n${existingStems
+          .slice(-20)
           .map((s, i) => `${i + 1}. ${s}`)
-          .join("\n")}\n`
+          .join("\n")}\n\n`
       : "";
 
-  const styleBlock = retryOpts.styleConstraint
-    ? `\nSTYLE CONSTRAINT: ${retryOpts.styleConstraint}`
-    : "";
-  const formulaBlock = retryOpts.formulaOnly
-    ? `\nFORMULA CONSTRAINT: ${retryOpts.formulaOnly}`
-    : "";
-
-  return `You are a university exam writer creating questions for a Probability/Statistics midterm.
+  return `You are a university exam writer creating questions for a Probability/Statistics course.
 
 SELECTED TOPIC BLOCK — test ONLY content from this block:
 ${topicBlock}
 
-HARD CONSTRAINTS:
-1. Every factual claim in your question must trace to an evidence_span or atomic_fact in the block above.
-2. sourcePages must match the chunk page references found in the block.
+${stemsSection}Generate exactly ${count} DISTINCT multiple-choice questions from the topic block above.
+
+HARD CONSTRAINTS for EACH question:
+1. Every factual claim must trace to an evidence_span or atomic_fact in the block.
+2. sourcePages must match chunk page references from the block.
 3. Exactly 4 choices (A, B, C, D), exactly ONE correct answer.
 4. Do NOT use "all of the above" or "none of the above".
 5. correctChoiceId must match the choice where isCorrect === true.
-6. For each wrong choice, set misconceptions[id] to a one-phrase label describing the specific error
-   (e.g., 'forgot overlap in inclusion-exclusion', 'swapped P(B|A) with P(A|B)').
-   If the misconception matches an ID in the block, use that label.
-7. Set misconceptions[correctChoiceId] to 'correct reasoning'.
-${styleBlock}${formulaBlock}
+6. misconceptions[id]: one-phrase label per wrong choice describing the specific error.
+   Set misconceptions[correctChoiceId] to 'correct reasoning'.
+7. Questions must cover DIFFERENT aspects — no near-duplicate stems.
+8. Mix difficulty levels: some 1 (recall), some 2 (application), some 3 (analysis).
 
-${stemsSection}
-SILENT SELF-CHECK before calling the tool:
-- [ ] Exactly one correct answer
-- [ ] Answerable from the topic block only
-- [ ] All distractor misconceptions named
-- [ ] correctChoiceId set and consistent with isCorrect
-- [ ] sourcePages populated
-
-OUTPUT: Call the generate_question function with the full schema including
-explanation, sourcePages, correctChoiceId, and misconceptions.`;
+Call generate_questions with ALL ${count} questions in the questions array.`;
 }
 
 // ─── Gemini Files API upload ──────────────────────────────────────────────────
@@ -299,14 +275,45 @@ async function uploadPdfToGemini(pdfBytes: Uint8Array, geminiApiKey: string): Pr
   return uri;
 }
 
-// ─── Gemini API call ──────────────────────────────────────────────────────────
+// ─── Gemini batch API call (all questions for one chunk in one request) ────────
 
-async function callGeminiGenerate(
+const QUESTION_SCHEMA = {
+  type: "object",
+  required: ["stem", "choices", "difficulty", "topic", "explanation", "correctChoiceId", "misconceptions", "sourcePages"],
+  properties: {
+    stem: { type: "string" },
+    choices: {
+      type: "array",
+      items: {
+        type: "object",
+        required: ["id", "text", "isCorrect"],
+        properties: {
+          id: { type: "string", enum: ["A", "B", "C", "D"] },
+          text: { type: "string" },
+          isCorrect: { type: "boolean" },
+        },
+      },
+    },
+    difficulty: { type: "string", enum: ["1", "2", "3"] },
+    topic: { type: "string" },
+    explanation: { type: "string" },
+    sourcePages: { type: "array", items: { type: "integer" } },
+    correctChoiceId: { type: "string", enum: ["A", "B", "C", "D"] },
+    misconceptions: {
+      type: "object",
+      required: ["A", "B", "C", "D"],
+      properties: { A: { type: "string" }, B: { type: "string" }, C: { type: "string" }, D: { type: "string" } },
+    },
+  },
+};
+
+async function callGeminiGenerateBatch(
   fileUri: string,
   prompt: string,
+  count: number,
   temperature: number,
   geminiApiKey: string
-): Promise<EnhancedQuestion | null> {
+): Promise<EnhancedQuestion[]> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CONFIG.REQUEST_TIMEOUT_MS);
 
@@ -317,78 +324,24 @@ async function callGeminiGenerate(
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [
-                { fileData: { mimeType: "application/pdf", fileUri } },
-                { text: prompt },
-              ],
-            },
-          ],
-          tools: [
-            {
-              functionDeclarations: [
-                {
-                  name: "generate_question",
-                  description: "Generate a single MCQ with full enriched schema",
-                  parameters: {
-                    type: "object",
-                    required: ["stem", "choices", "difficulty", "topic", "explanation", "correctChoiceId", "misconceptions", "sourcePages"],
-                    properties: {
-                      stem: { type: "string", description: "The question stem (at least 10 characters)" },
-                      choices: {
-                        type: "array",
-                        minItems: 4,
-                        maxItems: 4,
-                        description: "Exactly 4 choices with IDs A, B, C, D",
-                        items: {
-                          type: "object",
-                          required: ["id", "text", "isCorrect"],
-                          properties: {
-                            id: { type: "string", enum: ["A", "B", "C", "D"] },
-                            text: { type: "string" },
-                            isCorrect: { type: "boolean" },
-                          },
-                        },
-                      },
-                      difficulty: { type: "string", enum: ["1", "2", "3"], description: "1=Basic 2=Intermediate 3=Advanced" },
-                      topic: { type: "string" },
-                      explanation: {
-                        type: "string",
-                        description: "2-4 sentences: why correct is correct and why the most tempting distractor is wrong.",
-                      },
-                      sourcePages: {
-                        type: "array",
-                        items: { type: "integer" },
-                        minItems: 1,
-                        description: "Page or slide numbers in the PDF where this content appears.",
-                      },
-                      correctChoiceId: {
-                        type: "string",
-                        enum: ["A", "B", "C", "D"],
-                        description: "Must match the choice with isCorrect: true.",
-                      },
-                      misconceptions: {
-                        type: "object",
-                        required: ["A", "B", "C", "D"],
-                        properties: {
-                          A: { type: "string" },
-                          B: { type: "string" },
-                          C: { type: "string" },
-                          D: { type: "string" },
-                        },
-                        description: "One-phrase misconception label per choice. 'correct reasoning' for the right answer.",
-                      },
-                    },
-                  },
+          contents: [{ role: "user", parts: [
+            { fileData: { mimeType: "application/pdf", fileUri } },
+            { text: prompt },
+          ]}],
+          tools: [{
+            functionDeclarations: [{
+              name: "generate_questions",
+              description: `Generate exactly ${count} distinct MCQ questions`,
+              parameters: {
+                type: "object",
+                required: ["questions"],
+                properties: {
+                  questions: { type: "array", items: QUESTION_SCHEMA },
                 },
-              ],
-            },
-          ],
-          toolConfig: {
-            functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["generate_question"] },
-          },
+              },
+            }],
+          }],
+          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["generate_questions"] } },
           generationConfig: { temperature },
         }),
         signal: controller.signal,
@@ -397,36 +350,37 @@ async function callGeminiGenerate(
 
     if (response.status === 429) {
       clearTimeout(timeoutId);
-      // Rate limited — signal caller to back off
       throw new Error("RATE_LIMITED");
     }
 
     if (!response.ok) {
       clearTimeout(timeoutId);
       console.error(`Gemini API error: ${response.status}`);
-      return null;
+      return [];
     }
 
     const result = await response.json();
     clearTimeout(timeoutId);
+
     const functionCall = result.candidates?.[0]?.content?.parts?.[0]?.functionCall;
-
-    if (functionCall?.name !== "generate_question" || !functionCall.args) {
-      return null;
+    if (functionCall?.name !== "generate_questions" || !Array.isArray(functionCall.args?.questions)) {
+      return [];
     }
 
-    const args = functionCall.args as Record<string, unknown>;
-
-    // Coerce difficulty from string to number (Gemini returns enum as string)
-    if (typeof args.difficulty === "string") {
-      args.difficulty = parseInt(args.difficulty, 10) as 1 | 2 | 3;
-    }
-
-    return args as unknown as EnhancedQuestion;
+    return (functionCall.args.questions as unknown[])
+      .map((q) => {
+        if (q && typeof q === "object") {
+          const qq = q as Record<string, unknown>;
+          if (typeof qq.difficulty === "string") qq.difficulty = parseInt(qq.difficulty, 10) as 1 | 2 | 3;
+        }
+        return q;
+      })
+      .filter((q) => validateEnhancedQuestion(q)) as EnhancedQuestion[];
   } catch (err) {
     clearTimeout(timeoutId);
-    console.error("Gemini call failed:", err instanceof Error ? err.message : "unknown");
-    return null;
+    if (err instanceof Error && err.message === "RATE_LIMITED") throw err;
+    console.error("Gemini batch call failed:", err instanceof Error ? err.message : "unknown");
+    return [];
   }
 }
 
@@ -486,56 +440,26 @@ async function generateQuestionsForChunk(
   existingStems: string[]
 ): Promise<EnhancedQuestion[]> {
   const topicBlock = buildTopicBlock(chunk);
-  const generated: EnhancedQuestion[] = [];
-  const localStems = [...existingStems];
+  const prompt = buildBatchPrompt(topicBlock, existingStems, target);
 
-  for (let i = 0; i < target; i++) {
-    let question: EnhancedQuestion | null = null;
+  let questions: EnhancedQuestion[] = [];
 
-    for (let attempt = 1; attempt <= CONFIG.MAX_RETRIES; attempt++) {
-      const temp = attempt === 1 ? 0.5 : attempt === 2 ? 0.3 : 0.2;
-      const styleConstraint =
-        attempt >= 2
-          ? "MUST be computation or rule-application style. Do NOT ask for a definition."
-          : undefined;
-      const formulaOnly =
-        attempt === 3
-          ? "MUST use a specific formula from the topic block with concrete numeric values."
-          : undefined;
-
-      const prompt = buildEnhancedPrompt(topicBlock, localStems, { styleConstraint, formulaOnly });
-
-      try {
-        const raw = await callGeminiGenerate(fileUri, prompt, temp, geminiApiKey);
-        if (raw && validateEnhancedQuestion(raw)) {
-          question = raw;
-          break;
-        }
-      } catch (err) {
-        const isRateLimit = err instanceof Error && err.message === "RATE_LIMITED";
-        const delay = isRateLimit ? 30_000 : CONFIG.RETRY_DELAY_MS * attempt;
-        console.warn(
-          `Chunk ${chunk.chunk_index} question ${i + 1}: attempt ${attempt} ${isRateLimit ? "rate limited" : "failed"}, waiting ${delay}ms...`
-        );
-        await sleep(delay);
-        continue;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const temp = attempt === 1 ? 0.5 : 0.3;
+      questions = await callGeminiGenerateBatch(fileUri, prompt, target, temp, geminiApiKey);
+      if (questions.length > 0) break;
+    } catch (err) {
+      if (err instanceof Error && err.message === "RATE_LIMITED") {
+        console.warn(`Chunk ${chunk.chunk_index}: rate limited, waiting 30s...`);
+        await sleep(30_000);
       }
-
-      console.warn(
-        `Chunk ${chunk.chunk_index} question ${i + 1}: attempt ${attempt} returned invalid response, retrying...`
-      );
-      await sleep(CONFIG.RETRY_DELAY_MS * attempt);
     }
-
-    if (question) {
-      generated.push(question);
-      localStems.push(question.stem);
-    } else {
-      console.warn(`Chunk ${chunk.chunk_index}: question ${i + 1} skipped after ${CONFIG.MAX_RETRIES} attempts`);
-    }
+    if (attempt < 2) await sleep(CONFIG.RETRY_DELAY_MS);
   }
 
-  return generated;
+  console.log(`Chunk ${chunk.chunk_index}: generated ${questions.length}/${target} questions`);
+  return questions;
 }
 
 // ─── Gap 5: Semantic dedup via Gemini embeddings ──────────────────────────────
