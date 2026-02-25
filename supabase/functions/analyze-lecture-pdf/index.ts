@@ -306,25 +306,35 @@ EVIDENCE LINKING: Every atomic_fact, definition, formula, constraint, worked_exa
 
 Call extract_lecture_chunks with ALL pages/slides.`;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
-          role: "user",
-          parts: [
-            { inlineData: { mimeType: "application/pdf", data: pdfBase64 } },
-            { text: prompt },
-          ],
-        }],
-        tools: [{ functionDeclarations: [CHUNK_SCHEMA] }],
-        toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["extract_lecture_chunks"] } },
-        generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
-      }),
-    }
-  );
+  // 110s timeout — leaves ~40s for Phase B + DB write within Supabase's 150s wall-clock limit
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 110_000);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-pro-preview:generateContent?key=${geminiApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{
+            role: "user",
+            parts: [
+              { inlineData: { mimeType: "application/pdf", data: pdfBase64 } },
+              { text: prompt },
+            ],
+          }],
+          tools: [{ functionDeclarations: [CHUNK_SCHEMA] }],
+          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["extract_lecture_chunks"] } },
+          generationConfig: { temperature: 0.1, maxOutputTokens: 65536 },
+        }),
+        signal: controller.signal,
+      }
+    );
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     const err = await response.text();
@@ -363,19 +373,32 @@ Identify:
 
 Call extract_outline.`;
 
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        tools: [{ functionDeclarations: [OUTLINE_SCHEMA] }],
-        toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["extract_outline"] } },
-        generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
-      }),
-    }
-  );
+  // 25s timeout for Phase B — text-only, should be fast
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 25_000);
+
+  let response: Response;
+  try {
+    response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${geminiApiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          tools: [{ functionDeclarations: [OUTLINE_SCHEMA] }],
+          toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: ["extract_outline"] } },
+          generationConfig: { temperature: 0.1, maxOutputTokens: 4096 },
+        }),
+        signal: controller.signal,
+      }
+    );
+  } catch {
+    console.warn("Phase B timed out or failed — using empty outline");
+    return { outline: [] };
+  } finally {
+    clearTimeout(timeoutId);
+  }
 
   if (!response.ok) {
     console.warn("Phase B failed, using empty outline:", response.status);
@@ -480,11 +503,13 @@ async function runAnalysis(
     console.log(`[analyze-lecture-pdf] ${material.title} — analysis complete`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "unknown";
-    console.error("[analyze-lecture-pdf] runAnalysis error:", error);
-    await supabase.from("course_materials")
+    console.error("[analyze-lecture-pdf] runAnalysis error:", msg);
+    const { error: dbErr } = await supabase.from("course_materials")
       .update({ status: "failed", error_message: msg })
-      .eq("id", materialId)
-      .catch(() => {});
+      .eq("id", materialId);
+    if (dbErr) {
+      console.error("[analyze-lecture-pdf] Failed to persist error status:", dbErr.message);
+    }
   }
 }
 

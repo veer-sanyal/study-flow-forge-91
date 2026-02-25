@@ -33,6 +33,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const analyzeLecturePdf = useAnalyzeLecturePdf();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const { job: activeJob } = useGenerationJobStatus(activeJobId);
+  const [analysisPollCount, setAnalysisPollCount] = useState(0);
   const { toast } = useToast();
 
   // Editable fields
@@ -50,21 +51,29 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     }
   }, [material]);
 
-  // Clear job tracking when drawer closes
+  // Clear job tracking and poll count when drawer closes
   useEffect(() => {
     if (!materialId) {
       setActiveJobId(null);
+      setAnalysisPollCount(0);
     }
   }, [materialId]);
 
-  // Poll single-material query every 3s while analysis is in progress
+  // Poll single-material query every 3s while analysis is in progress.
+  // Hard cap at 200 polls (~10 min) to prevent infinite polling on stuck jobs.
+  const MAX_ANALYSIS_POLLS = 200;
   useEffect(() => {
-    if (material?.status !== "analyzing") return;
+    if (material?.status !== "analyzing") {
+      setAnalysisPollCount(0);
+      return;
+    }
+    if (analysisPollCount >= MAX_ANALYSIS_POLLS) return;
     const id = setInterval(() => {
+      setAnalysisPollCount((n) => n + 1);
       queryClient.invalidateQueries({ queryKey: ["course-material", materialId] });
     }, 3000);
     return () => clearInterval(id);
-  }, [material?.status, materialId, queryClient]);
+  }, [material?.status, materialId, queryClient, analysisPollCount]);
 
   const handleSaveMetadata = async () => {
     if (!materialId) return;
@@ -239,11 +248,19 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
 
                     // No V4 analysis yet — show Analyze step
                     if (!hasV4) {
+                      const isStuck = material.status === "analyzing" && analysisPollCount >= MAX_ANALYSIS_POLLS;
                       return (
                         <div className="space-y-2">
-                          <p className="text-xs text-muted-foreground">
-                            Step 1 of 2: Extract question-ready facts from the PDF before generating questions.
-                          </p>
+                          {isStuck ? (
+                            <div className="flex items-start gap-2 text-sm text-destructive">
+                              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                              <span>Analysis appears stuck — no response after 10 min. Re-trigger below.</span>
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">
+                              Step 1 of 2: Extract question-ready facts from the PDF before generating questions.
+                            </p>
+                          )}
                           <Button
                             onClick={handleAnalyzeV4}
                             disabled={analyzeLecturePdf.isPending}
