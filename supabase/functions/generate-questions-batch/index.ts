@@ -1,16 +1,13 @@
 /**
- * generate-questions-batch — Parallel batch question generation edge function
+ * generate-questions-batch — Client-driven chunk processing
  *
- * Fixes all 5 gaps in the single-question pipeline:
- *   Gap 1: Full schema (explanation, sourcePages, misconceptions, correctChoiceId)
- *   Gap 2: Uses cached QuestionReadyChunk data instead of raw PDF scan
- *   Gap 3: Auto-computes per-chunk question targets from question_potential + content_density
- *   Gap 4: Progressive retry with temperature tightening (3 attempts per question)
- *   Gap 5: Semantic dedup via Gemini text-embedding-004
+ * Three modes dispatched by request body shape:
+ *   1. Init:     { materialId }               → upload PDF, create job, return chunk list
+ *   2. Chunk:    { jobId, fileUri, chunkIndex } → generate one chunk, save immediately
+ *   3. Finalize: { jobId, finalize: true }    → dedup saved questions, mark job complete
  *
- * HTTP: POST { materialId: string }
- * Returns immediately with { success, jobId, totalChunks, totalQuestionsTarget }
- * Background processing tracked in generation_jobs table
+ * No EdgeRuntime.waitUntil — client drives the loop with concurrency=2.
+ * Each invocation runs ≤15s. Questions are saved after every chunk call.
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
@@ -100,9 +97,7 @@ interface MaterialAnalysisV4 {
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 const CONFIG = {
-  CONCURRENCY: 2,
-  STAGGER_MS: 0,
-  MAX_RETRIES: 3,
+  MAX_RETRIES: 2,
   RETRY_DELAY_MS: 5000,
   REQUEST_TIMEOUT_MS: 60_000,
   MAX_QUESTIONS_PER_MATERIAL: 50,
@@ -128,16 +123,19 @@ const getCorsHeaders = (origin: string) => ({
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+function jsonResponse(body: unknown, corsHeaders: Record<string, string>, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
+  });
+}
+
 function potentialRank(chunk: QuestionReadyChunk): number {
   return chunk.question_potential === "high" ? 3 : chunk.question_potential === "medium" ? 2 : 1;
 }
 
 // ─── Gap 3: Auto-count per chunk ──────────────────────────────────────────────
 
-/**
- * Compute how many questions to target for a single chunk based on its potential,
- * example count, and content density.
- */
 function computeTargetCount(chunk: QuestionReadyChunk): number {
   const base = chunk.question_potential === "high" ? 6 : chunk.question_potential === "medium" ? 4 : 2;
   const exampleBonus = Math.min(chunk.worked_examples.length, 2);
@@ -146,9 +144,6 @@ function computeTargetCount(chunk: QuestionReadyChunk): number {
   return Math.min(Math.round((base + exampleBonus) * densityMult), 8);
 }
 
-/**
- * Distribute targets across all chunks respecting global cap and existing question count.
- */
 function computeAllTargets(
   chunks: QuestionReadyChunk[],
   existingCount: number,
@@ -160,18 +155,15 @@ function computeAllTargets(
   const rawTotal = [...rawTargets.values()].reduce((s, v) => s + v, 0);
   const available = Math.max(0, globalCap - existingCount);
 
-  if (rawTotal <= available) {
-    return rawTargets;
-  }
+  if (rawTotal <= available) return rawTargets;
 
-  // Scale down proportionally
   const scale = available / rawTotal;
   return new Map(
     [...rawTargets.entries()].map(([idx, t]) => [idx, Math.max(0, Math.floor(t * scale))])
   );
 }
 
-// ─── Gap 2: Topic block serializer ────────────────────────────────────────────
+// ─── Topic block serializer ───────────────────────────────────────────────────
 
 function buildTopicBlock(chunk: QuestionReadyChunk): string {
   return JSON.stringify(
@@ -207,7 +199,7 @@ function buildTopicBlock(chunk: QuestionReadyChunk): string {
   );
 }
 
-// ─── Gap 2 + Gap 1: Batch prompt builder ─────────────────────────────────────
+// ─── Batch prompt builder ─────────────────────────────────────────────────────
 
 function buildBatchPrompt(topicBlock: string, existingStems: string[], count: number): string {
   const stemsSection =
@@ -275,7 +267,7 @@ async function uploadPdfToGemini(pdfBytes: Uint8Array, geminiApiKey: string): Pr
   return uri;
 }
 
-// ─── Gemini batch API call (all questions for one chunk in one request) ────────
+// ─── Gemini batch API call ────────────────────────────────────────────────────
 
 const QUESTION_SCHEMA = {
   type: "object",
@@ -384,7 +376,7 @@ async function callGeminiGenerateBatch(
   }
 }
 
-// ─── Gap 1: Validation ────────────────────────────────────────────────────────
+// ─── Validation ───────────────────────────────────────────────────────────────
 
 function validateEnhancedQuestion(q: unknown): q is EnhancedQuestion {
   if (!q || typeof q !== "object") return false;
@@ -415,7 +407,6 @@ function validateEnhancedQuestion(q: unknown): q is EnhancedQuestion {
   )
     return false;
 
-  // Verify correctChoiceId matches isCorrect
   const markedCorrect = (question.choices as { id: string; isCorrect: boolean }[]).find(
     (c) => c.isCorrect
   );
@@ -430,7 +421,7 @@ function validateEnhancedQuestion(q: unknown): q is EnhancedQuestion {
   return true;
 }
 
-// ─── Gap 4: Per-chunk generation with progressive retry ────────────────────────
+// ─── Per-chunk generation with retry ─────────────────────────────────────────
 
 async function generateQuestionsForChunk(
   chunk: QuestionReadyChunk,
@@ -462,7 +453,7 @@ async function generateQuestionsForChunk(
   return questions;
 }
 
-// ─── Gap 5: Semantic dedup via Gemini embeddings ──────────────────────────────
+// ─── Embeddings + dedup ───────────────────────────────────────────────────────
 
 async function fetchEmbeddings(texts: string[], geminiApiKey: string): Promise<number[][]> {
   const response = await fetch(
@@ -479,18 +470,13 @@ async function fetchEmbeddings(texts: string[], geminiApiKey: string): Promise<n
     }
   );
 
-  if (!response.ok) {
-    throw new Error(`Embedding API error: ${response.status}`);
-  }
-
+  if (!response.ok) throw new Error(`Embedding API error: ${response.status}`);
   const result = await response.json();
   return (result.embeddings as { values: number[] }[]).map((e) => e.values);
 }
 
 function cosineSimilarity(a: number[], b: number[]): number {
-  let dot = 0;
-  let normA = 0;
-  let normB = 0;
+  let dot = 0, normA = 0, normB = 0;
   for (let i = 0; i < a.length; i++) {
     dot += a[i] * b[i];
     normA += a[i] * a[i];
@@ -499,64 +485,52 @@ function cosineSimilarity(a: number[], b: number[]): number {
   return dot / (Math.sqrt(normA) * Math.sqrt(normB));
 }
 
-function filterBySimilarity(
-  questions: EnhancedQuestion[],
-  embeddings: number[][],
-  threshold: number
-): EnhancedQuestion[] {
+/**
+ * Returns the set of indices to keep (first-seen wins for duplicates).
+ */
+function filterKeptIndices(embeddings: number[][], threshold: number): Set<number> {
   const kept: number[] = [];
-
-  for (let i = 0; i < questions.length; i++) {
+  for (let i = 0; i < embeddings.length; i++) {
     let isDuplicate = false;
     for (const j of kept) {
       if (cosineSimilarity(embeddings[i], embeddings[j]) >= threshold) {
-        // Drop the one with fewer populated fields
-        const scoreI = (questions[i].explanation ? 1 : 0) + (questions[i].sourcePages.length > 0 ? 1 : 0);
-        const scoreJ = (questions[j].explanation ? 1 : 0) + (questions[j].sourcePages.length > 0 ? 1 : 0);
-        if (scoreI <= scoreJ) {
-          isDuplicate = true;
-          break;
-        } else {
-          // Replace j with i
-          kept.splice(kept.indexOf(j), 1, i);
-          isDuplicate = true;
-          break;
-        }
+        isDuplicate = true;
+        break;
       }
     }
-    if (!isDuplicate) {
-      kept.push(i);
-    }
+    if (!isDuplicate) kept.push(i);
   }
-
-  return kept.map((i) => questions[i]);
+  return new Set(kept);
 }
 
-function deduplicateByNormalizedStem(questions: EnhancedQuestion[]): EnhancedQuestion[] {
-  const seen = new Set<string>();
-  return questions.filter((q) => {
-    const normalized = q.stem.toLowerCase().replace(/\s+/g, " ").trim();
-    if (seen.has(normalized)) return false;
-    seen.add(normalized);
-    return true;
-  });
-}
-
-async function deduplicateByEmbedding(
-  questions: EnhancedQuestion[],
+/**
+ * Deduplicates DB question records by prompt embedding.
+ * Returns the IDs of questions to delete.
+ */
+async function deduplicateDbQuestions(
+  questions: { id: string; prompt: string }[],
   geminiApiKey: string
-): Promise<EnhancedQuestion[]> {
-  if (questions.length <= 1) return questions;
+): Promise<string[]> {
+  if (questions.length <= 1) return [];
 
   try {
-    const embeddings = await fetchEmbeddings(
-      questions.map((q) => q.stem),
-      geminiApiKey
-    );
-    return filterBySimilarity(questions, embeddings, CONFIG.EMBEDDING_SIMILARITY_THRESHOLD);
+    const stems = questions.map((q) => q.prompt);
+    const embeddings = await fetchEmbeddings(stems, geminiApiKey);
+    const keptSet = filterKeptIndices(embeddings, CONFIG.EMBEDDING_SIMILARITY_THRESHOLD);
+    return questions.filter((_, i) => !keptSet.has(i)).map((q) => q.id);
   } catch (err) {
-    console.warn("Embedding dedup failed, falling back to string dedup:", err instanceof Error ? err.message : "unknown");
-    return deduplicateByNormalizedStem(questions);
+    console.warn("Embedding dedup failed, using string dedup:", err instanceof Error ? err.message : "unknown");
+    const seen = new Set<string>();
+    const toDelete: string[] = [];
+    for (const q of questions) {
+      const normalized = q.prompt.toLowerCase().replace(/\s+/g, " ").trim();
+      if (seen.has(normalized)) {
+        toDelete.push(q.id);
+      } else {
+        seen.add(normalized);
+      }
+    }
+    return toDelete;
   }
 }
 
@@ -587,46 +561,85 @@ async function saveQuestions(
       needs_review: true,
     } as Record<string, unknown>);
 
-    if (error) {
-      console.error("Failed to save question:", error.message);
-    }
+    if (error) console.error("Failed to save question:", error.message);
   }
 }
 
-// ─── Background orchestration ─────────────────────────────────────────────────
+// ─── Mode 1: Init ─────────────────────────────────────────────────────────────
 
-async function generateInBackground(
-  supabase: SupabaseClient,
-  jobId: string,
+async function handleInit(
   materialId: string,
-  fileUri: string,
-  analysisV4: MaterialAnalysisV4,
-  geminiApiKey: string
-): Promise<void> {
-  // Mark job as running
-  await supabase
-    .from("generation_jobs")
-    .update({ status: "running", started_at: new Date().toISOString() })
-    .eq("id", jobId);
+  supabase: SupabaseClient,
+  userId: string,
+  geminiApiKey: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  // Load material + analysis
+  const { data: material, error: materialError } = await supabase
+    .from("course_materials")
+    .select("storage_path, title, analysis_json_v4")
+    .eq("id", materialId)
+    .single();
 
-  // Sort chunks: high potential first, then medium, then low
+  if (materialError || !material) {
+    return jsonResponse(
+      { success: false, error: `Material not found: ${materialError?.message ?? "unknown"}` },
+      corsHeaders, 404
+    );
+  }
+
+  const analysisV4 = material.analysis_json_v4 as MaterialAnalysisV4 | null;
+  if (
+    !analysisV4 ||
+    analysisV4.schema_version !== 4 ||
+    !Array.isArray(analysisV4.question_ready_chunks) ||
+    analysisV4.question_ready_chunks.length === 0
+  ) {
+    return jsonResponse(
+      { success: false, error: "Material has no analysis_json_v4 with question_ready_chunks. Run the V4 analysis pipeline first." },
+      corsHeaders, 400
+    );
+  }
+
+  if (!material.storage_path) {
+    return jsonResponse({ success: false, error: "Material has no storage path" }, corsHeaders, 400);
+  }
+
+  // Download PDF
+  const { data: pdfData, error: downloadError } = await supabase.storage
+    .from("course-materials")
+    .download(material.storage_path);
+
+  if (downloadError || !pdfData) {
+    return jsonResponse(
+      { success: false, error: `Failed to download PDF: ${downloadError?.message ?? "unknown"}` },
+      corsHeaders, 500
+    );
+  }
+
+  const arrayBuffer = await pdfData.arrayBuffer();
+  if (arrayBuffer.byteLength > 15 * 1024 * 1024) {
+    return jsonResponse({ success: false, error: "PDF too large (>15MB). Please upload a smaller file." }, corsHeaders, 400);
+  }
+
+  // Upload PDF once to Gemini Files API
+  const uint8Array = new Uint8Array(arrayBuffer);
+  const fileUri = await uploadPdfToGemini(uint8Array, geminiApiKey);
+
+  // Compute chunk targets
   const sorted = [...analysisV4.question_ready_chunks].sort(
     (a, b) => potentialRank(b) - potentialRank(a)
   );
 
-  // Get existing question count for this material
   const { count: existingCount } = await supabase
     .from("questions")
     .select("id", { count: "exact", head: true })
     .eq("source_material_id", materialId);
 
-  const chunkTargets = computeAllTargets(
-    sorted,
-    existingCount ?? 0,
-    CONFIG.MAX_QUESTIONS_PER_MATERIAL
-  );
+  const chunkTargets = computeAllTargets(sorted, existingCount ?? 0, CONFIG.MAX_QUESTIONS_PER_MATERIAL);
+  const totalQuestionsTarget = [...chunkTargets.values()].reduce((s, v) => s + v, 0);
 
-  // Initialize topic_coverage tracking
+  // Build topic_coverage map (stored in job row so chunk mode can look up targets)
   const topicCoverage: Record<number, { target: number; generated: number }> = {};
   for (const chunk of sorted) {
     topicCoverage[chunk.chunk_index] = {
@@ -635,106 +648,217 @@ async function generateInBackground(
     };
   }
 
-  const inFlight = new Set<Promise<void>>();
-  const allGenerated: EnhancedQuestion[] = [];
-  const globalStems: string[] = [];
-  let completedChunks = 0;
-  let failedChunks = 0;
+  // Non-zero chunks only
+  const chunks = sorted
+    .filter((c) => (chunkTargets.get(c.chunk_index) ?? 0) > 0)
+    .map((c) => ({
+      chunkIndex: c.chunk_index,
+      target: chunkTargets.get(c.chunk_index)!,
+      summary: c.summary.slice(0, 200),
+    }));
 
-  for (let i = 0; i < sorted.length; i++) {
-    const chunk = sorted[i];
-    const target = chunkTargets.get(chunk.chunk_index) ?? 0;
-    if (target === 0) {
-      completedChunks++;
-      continue;
-    }
+  // Create job row — status 'running' immediately so UI shows progress
+  const { data: job, error: jobError } = await supabase
+    .from("generation_jobs")
+    .insert({
+      material_id: materialId,
+      status: "running",
+      started_at: new Date().toISOString(),
+      total_chunks: chunks.length,
+      completed_chunks: 0,
+      failed_chunks: 0,
+      total_questions_target: totalQuestionsTarget,
+      total_questions_generated: 0,
+      created_by: userId,
+      topic_coverage: topicCoverage,
+    })
+    .select("id")
+    .single();
 
-    // Wait if at concurrency limit
-    while (inFlight.size >= CONFIG.CONCURRENCY) {
-      await Promise.race(inFlight);
-    }
-
-    // Update current chunk in job row
-    await supabase
-      .from("generation_jobs")
-      .update({ current_chunk_summary: chunk.summary.slice(0, 200) })
-      .eq("id", jobId);
-
-    const task: Promise<void> = (async () => {
-      try {
-        const questions = await generateQuestionsForChunk(
-          chunk,
-          target,
-          fileUri,
-          geminiApiKey,
-          [...globalStems]
-        );
-
-        allGenerated.push(...questions);
-        globalStems.push(...questions.map((q) => q.stem));
-        topicCoverage[chunk.chunk_index].generated = questions.length;
-        completedChunks++;
-
-        await supabase
-          .from("generation_jobs")
-          .update({
-            completed_chunks: completedChunks,
-            topic_coverage: topicCoverage,
-          })
-          .eq("id", jobId);
-      } catch (err) {
-        failedChunks++;
-        console.error(`Chunk ${chunk.chunk_index} generation failed:`, err instanceof Error ? err.message : "unknown");
-
-        await supabase
-          .from("generation_jobs")
-          .update({ failed_chunks: failedChunks })
-          .eq("id", jobId);
-      }
-    })();
-
-    inFlight.add(task);
-    task.finally(() => inFlight.delete(task));
-
-    if (i < sorted.length - 1) {
-      await sleep(CONFIG.STAGGER_MS);
-    }
+  if (jobError || !job) {
+    throw new Error(`Failed to create generation job: ${jobError?.message ?? "unknown"}`);
   }
 
-  // Wait for all remaining in-flight tasks
-  await Promise.all(inFlight);
+  const jobId = (job as { id: string }).id;
 
-  // Gap 5: Semantic dedup
-  const deduplicated = await deduplicateByEmbedding(allGenerated, geminiApiKey);
-  console.log(
-    `Generation complete: ${allGenerated.length} generated, ${allGenerated.length - deduplicated.length} duplicates removed`
-  );
+  return jsonResponse({ success: true, jobId, fileUri, chunks, totalQuestionsTarget }, corsHeaders);
+}
 
-  // Persist questions
-  await saveQuestions(supabase, materialId, deduplicated);
+// ─── Mode 2: Chunk ────────────────────────────────────────────────────────────
 
-  // Finalize job
-  const finalStatus = failedChunks === sorted.length && sorted.length > 0 ? "failed" : "completed";
+async function handleChunk(
+  jobId: string,
+  fileUri: string,
+  chunkIndex: number,
+  supabase: SupabaseClient,
+  geminiApiKey: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  // Load job
+  const { data: job, error: jobError } = await supabase
+    .from("generation_jobs")
+    .select("material_id, topic_coverage, completed_chunks")
+    .eq("id", jobId)
+    .single();
+
+  if (jobError || !job) {
+    return jsonResponse({ success: false, error: "Job not found" }, corsHeaders, 404);
+  }
+
+  const { material_id: materialId, topic_coverage: topicCoverage, completed_chunks: completedChunks } = job as {
+    material_id: string;
+    topic_coverage: Record<number, { target: number; generated: number }> | null;
+    completed_chunks: number;
+  };
+
+  // Look up target from topic_coverage stored during init
+  const target = topicCoverage?.[chunkIndex]?.target ?? 0;
+  if (target === 0) {
+    return jsonResponse({ success: true, questionsGenerated: 0 }, corsHeaders);
+  }
+
+  // Load analysis_json_v4 to get the chunk data
+  const { data: material, error: materialError } = await supabase
+    .from("course_materials")
+    .select("analysis_json_v4")
+    .eq("id", materialId)
+    .single();
+
+  if (materialError || !material?.analysis_json_v4) {
+    return jsonResponse({ success: false, error: "Material analysis not found" }, corsHeaders, 404);
+  }
+
+  const analysisV4 = material.analysis_json_v4 as MaterialAnalysisV4;
+  const chunk = analysisV4.question_ready_chunks.find((c) => c.chunk_index === chunkIndex);
+
+  if (!chunk) {
+    return jsonResponse(
+      { success: false, error: `Chunk ${chunkIndex} not found in analysis` },
+      corsHeaders, 404
+    );
+  }
+
+  // Load recent stems to guide Gemini away from near-duplicates
+  const { data: existingQs } = await supabase
+    .from("questions")
+    .select("prompt")
+    .eq("source_material_id", materialId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+
+  const existingStems = (existingQs ?? []).map((q: { prompt: string }) => q.prompt);
+
+  // Generate + save immediately
+  let questionsGenerated = 0;
+  let chunkFailed = false;
+
+  try {
+    const questions = await generateQuestionsForChunk(chunk, target, fileUri, geminiApiKey, existingStems);
+    await saveQuestions(supabase, materialId, questions);
+    questionsGenerated = questions.length;
+    console.log(`Chunk ${chunkIndex}: saved ${questionsGenerated}/${target}`);
+  } catch (err) {
+    console.error(`Chunk ${chunkIndex} failed:`, err instanceof Error ? err.message : "unknown");
+    chunkFailed = true;
+  }
+
+  // Count total saved questions for this material (accurate even under concurrency)
+  const { count: savedCount } = await supabase
+    .from("questions")
+    .select("id", { count: "exact", head: true })
+    .eq("source_material_id", materialId)
+    .eq("source", "generated");
+
+  // Build update payload
+  const updateData: Record<string, unknown> = {
+    completed_chunks: (completedChunks ?? 0) + 1,
+    total_questions_generated: savedCount ?? 0,
+    current_chunk_summary: chunk.summary.slice(0, 200),
+  };
+
+  if (chunkFailed) {
+    // Read current failed_chunks to safely increment (minor race risk, cosmetic only)
+    const { data: currentJob } = await supabase
+      .from("generation_jobs")
+      .select("failed_chunks")
+      .eq("id", jobId)
+      .single();
+    updateData.failed_chunks = ((currentJob as { failed_chunks: number } | null)?.failed_chunks ?? 0) + 1;
+  }
+
+  await supabase.from("generation_jobs").update(updateData).eq("id", jobId);
+
+  return jsonResponse({ success: true, questionsGenerated }, corsHeaders);
+}
+
+// ─── Mode 3: Finalize ─────────────────────────────────────────────────────────
+
+async function handleFinalize(
+  jobId: string,
+  supabase: SupabaseClient,
+  geminiApiKey: string,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  // Load job
+  const { data: job, error: jobError } = await supabase
+    .from("generation_jobs")
+    .select("material_id, failed_chunks, total_chunks")
+    .eq("id", jobId)
+    .single();
+
+  if (jobError || !job) {
+    return jsonResponse({ success: false, error: "Job not found" }, corsHeaders, 404);
+  }
+
+  const { material_id: materialId, failed_chunks: failedChunks, total_chunks: totalChunks } = job as {
+    material_id: string;
+    failed_chunks: number;
+    total_chunks: number;
+  };
+
+  // Load all generated questions for this material
+  const { data: dbQuestions } = await supabase
+    .from("questions")
+    .select("id, prompt")
+    .eq("source_material_id", materialId)
+    .eq("source", "generated");
+
+  const questions = (dbQuestions ?? []) as { id: string; prompt: string }[];
+
+  let finalCount = questions.length;
+  let deduped = 0;
+
+  if (questions.length > 1) {
+    const toDelete = await deduplicateDbQuestions(questions, geminiApiKey);
+    if (toDelete.length > 0) {
+      await supabase.from("questions").delete().in("id", toDelete);
+      deduped = toDelete.length;
+      finalCount = questions.length - deduped;
+    }
+    console.log(`Finalize: ${questions.length} total → ${deduped} duplicates removed → ${finalCount} kept`);
+  }
+
+  // Mark job completed (failed only if every chunk failed)
+  const status = failedChunks > 0 && failedChunks >= totalChunks ? "failed" : "completed";
+
   await supabase
     .from("generation_jobs")
     .update({
-      status: finalStatus,
+      status,
       completed_at: new Date().toISOString(),
-      total_questions_generated: deduplicated.length,
-      topic_coverage: topicCoverage,
-      error_message:
-        failedChunks > 0 ? `${failedChunks} chunk(s) failed to generate questions` : null,
+      total_questions_generated: finalCount,
+      completed_chunks: totalChunks, // ensure 100% progress display
+      error_message: failedChunks > 0 ? `${failedChunks} chunk(s) failed to generate questions` : null,
     })
     .eq("id", jobId);
 
-  // Update material status
+  // Update material
   await supabase
     .from("course_materials")
-    .update({
-      questions_generated_count: deduplicated.length,
-      status: "ready",
-    })
+    .update({ questions_generated_count: finalCount, status: "ready" })
     .eq("id", materialId);
+
+  return jsonResponse({ success: true, finalCount, deduped }, corsHeaders);
 }
 
 // ─── HTTP Handler ─────────────────────────────────────────────────────────────
@@ -754,38 +878,25 @@ serve(async (req) => {
     const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
     if (!GEMINI_API_KEY) {
-      return new Response(
-        JSON.stringify({ success: false, error: "GEMINI_API_KEY is not configured" }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: false, error: "GEMINI_API_KEY is not configured" }, corsHeaders, 500);
     }
 
     // Auth check
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Missing Authorization header" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: false, error: "Missing Authorization header" }, corsHeaders, 401);
     }
 
     const userClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const {
-      data: { user },
-      error: authError,
-    } = await userClient.auth.getUser();
-
+    const { data: { user }, error: authError } = await userClient.auth.getUser();
     if (authError || !user) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized" }),
-        { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: false, error: "Unauthorized" }, corsHeaders, 401);
     }
 
-    // Admin check (using service role client for backend ops)
+    // Admin check
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
     const { data: roleData } = await supabase
@@ -796,148 +907,39 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!roleData) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Admin access required" }),
-        { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
+      return jsonResponse({ success: false, error: "Admin access required" }, corsHeaders, 403);
     }
 
-    // Parse input
-    const body = await req.json();
-    const { materialId } = body as { materialId?: string };
+    // Dispatch by body shape
+    const body = await req.json() as Record<string, unknown>;
 
-    if (!materialId) {
-      return new Response(
-        JSON.stringify({ success: false, error: "materialId is required" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    if (typeof body.materialId === "string" && !("jobId" in body)) {
+      // ── Mode 1: Init ──
+      return await handleInit(body.materialId, supabase, user.id, GEMINI_API_KEY, corsHeaders);
 
-    // Load material + analysis_json_v4
-    const { data: material, error: materialError } = await supabase
-      .from("course_materials")
-      .select("storage_path, title, analysis_json_v4")
-      .eq("id", materialId)
-      .single();
+    } else if (typeof body.jobId === "string" && typeof body.chunkIndex === "number") {
+      // ── Mode 2: Chunk ──
+      if (typeof body.fileUri !== "string") {
+        return jsonResponse({ success: false, error: "fileUri is required for chunk mode" }, corsHeaders, 400);
+      }
+      return await handleChunk(body.jobId, body.fileUri, body.chunkIndex, supabase, GEMINI_API_KEY, corsHeaders);
 
-    if (materialError || !material) {
-      return new Response(
-        JSON.stringify({ success: false, error: `Material not found: ${materialError?.message ?? "unknown"}` }),
-        { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
+    } else if (typeof body.jobId === "string" && body.finalize === true) {
+      // ── Mode 3: Finalize ──
+      return await handleFinalize(body.jobId, supabase, GEMINI_API_KEY, corsHeaders);
 
-    const analysisV4 = material.analysis_json_v4 as MaterialAnalysisV4 | null;
-
-    if (
-      !analysisV4 ||
-      analysisV4.schema_version !== 4 ||
-      !Array.isArray(analysisV4.question_ready_chunks) ||
-      analysisV4.question_ready_chunks.length === 0
-    ) {
-      return new Response(
-        JSON.stringify({
-          success: false,
-          error: "Material has no analysis_json_v4 with question_ready_chunks. Run the V4 analysis pipeline first.",
-        }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    if (!material.storage_path) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Material has no storage path" }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Download PDF
-    const { data: pdfData, error: downloadError } = await supabase.storage
-      .from("course-materials")
-      .download(material.storage_path);
-
-    if (downloadError || !pdfData) {
-      return new Response(
-        JSON.stringify({ success: false, error: `Failed to download PDF: ${downloadError?.message ?? "unknown"}` }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    const arrayBuffer = await pdfData.arrayBuffer();
-    if (arrayBuffer.byteLength > 15 * 1024 * 1024) {
-      return new Response(
-        JSON.stringify({ success: false, error: "PDF too large (>15MB). Please upload a smaller file." }),
-        { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
-    // Upload PDF once to Gemini Files API — all generation calls reuse the URI
-    const uint8Array = new Uint8Array(arrayBuffer);
-    const fileUri = await uploadPdfToGemini(uint8Array, GEMINI_API_KEY);
-
-    // Compute totals for response
-    const chunks = analysisV4.question_ready_chunks;
-    const { count: existingCount } = await supabase
-      .from("questions")
-      .select("id", { count: "exact", head: true })
-      .eq("source_material_id", materialId);
-
-    const chunkTargets = computeAllTargets(
-      chunks,
-      existingCount ?? 0,
-      CONFIG.MAX_QUESTIONS_PER_MATERIAL
-    );
-    const totalQuestionsTarget = [...chunkTargets.values()].reduce((s, v) => s + v, 0);
-
-    // Create generation job row
-    const { data: job, error: jobError } = await supabase
-      .from("generation_jobs")
-      .insert({
-        material_id: materialId,
-        status: "pending",
-        total_chunks: chunks.length,
-        completed_chunks: 0,
-        failed_chunks: 0,
-        total_questions_target: totalQuestionsTarget,
-        total_questions_generated: 0,
-        created_by: user.id,
-      })
-      .select("id")
-      .single();
-
-    if (jobError || !job) {
-      throw new Error(`Failed to create generation job: ${jobError?.message ?? "unknown"}`);
-    }
-
-    const jobId = (job as { id: string }).id;
-
-    // Fire and forget — EdgeRuntime.waitUntil keeps function alive
-    // @ts-ignore EdgeRuntime available in Deno Deploy
-    if (typeof EdgeRuntime !== "undefined" && EdgeRuntime.waitUntil) {
-      // @ts-ignore
-      EdgeRuntime.waitUntil(
-        generateInBackground(supabase, jobId, materialId, fileUri, analysisV4, GEMINI_API_KEY)
-      );
     } else {
-      // Fallback for local dev
-      generateInBackground(supabase, jobId, materialId, fileUri, analysisV4, GEMINI_API_KEY);
+      return jsonResponse(
+        { success: false, error: "Invalid request body. Provide { materialId } | { jobId, fileUri, chunkIndex } | { jobId, finalize: true }" },
+        corsHeaders, 400
+      );
     }
 
-    return new Response(
-      JSON.stringify({
-        success: true,
-        jobId,
-        totalChunks: chunks.length,
-        totalQuestionsTarget,
-        message: "Batch generation started. Track progress via the generation_jobs table.",
-      }),
-      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-    );
   } catch (error) {
     console.error("generate-questions-batch error:", error);
-    return new Response(
-      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+    return jsonResponse(
+      { success: false, error: error instanceof Error ? error.message : "Unknown error" },
+      corsHeaders, 500
     );
   }
 });

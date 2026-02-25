@@ -9,12 +9,19 @@ import type {
 
 // ─── Batch generation types ───────────────────────────────────────────────────
 
-interface BatchGenerateStartResponse {
+interface ChunkInfo {
+  chunkIndex: number;
+  target: number;
+  summary: string;
+}
+
+/** Response from init mode: { materialId } */
+interface InitResponse {
   success: true;
   jobId: string;
-  totalChunks: number;
+  fileUri: string;
+  chunks: ChunkInfo[];
   totalQuestionsTarget: number;
-  message: string;
 }
 
 interface BatchGenerateStartError {
@@ -345,17 +352,59 @@ export function useGenerateAndSaveQuestions() {
   };
 }
 
+// ─── Client-driven chunk loop ─────────────────────────────────────────────────
+
+/**
+ * Processes all chunks with concurrency=2, then calls the finalize mode.
+ * Runs as a fire-and-forget promise from startJob — browser must stay open.
+ */
+async function runChunkLoop(
+  jobId: string,
+  fileUri: string,
+  chunks: ChunkInfo[]
+): Promise<void> {
+  const CONCURRENCY = 2;
+  const queue = [...chunks];
+
+  // Each worker pulls from the shared queue until empty
+  const worker = async (): Promise<void> => {
+    while (queue.length > 0) {
+      const chunk = queue.shift();
+      if (!chunk) break;
+      try {
+        await invokeEdgeFunction("generate-questions-batch", {
+          body: { jobId, fileUri, chunkIndex: chunk.chunkIndex },
+        });
+      } catch (err) {
+        console.warn(`[batch-gen] chunk ${chunk.chunkIndex} failed:`, err instanceof Error ? err.message : err);
+        // Continue with the next chunk rather than aborting the whole run
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+
+  // Finalize: dedup all saved questions and mark job completed
+  try {
+    await invokeEdgeFunction("generate-questions-batch", {
+      body: { jobId, finalize: true },
+    });
+  } catch (err) {
+    console.error("[batch-gen] finalize failed:", err instanceof Error ? err.message : err);
+  }
+}
+
 /**
  * Hook for starting a parallel batch generation job for an entire material.
  *
- * Calls the `generate-questions-batch` edge function which:
- * - Uses cached QuestionReadyChunk data (no raw PDF scan)
- * - Auto-computes per-chunk question targets
- * - Runs generation in parallel (concurrency 4) with progressive retry
- * - Runs semantic dedup via embeddings before saving
+ * Architecture (client-driven):
+ * - Phase 1 (init): uploads PDF to Gemini, creates job row, returns chunk list
+ * - Phase 2 (chunks): client loops with concurrency=2; each call generates one
+ *   chunk and saves immediately (~5-10s per call, no waitUntil timeout risk)
+ * - Phase 3 (finalize): dedup all saved questions, mark job completed
  *
- * Returns immediately with a jobId. Consumers can subscribe to progress via
- * Supabase Realtime on the `generation_jobs` table, or poll via a useEffect interval.
+ * Returns as soon as the init call completes. The chunk loop runs in the
+ * background. Consumers poll progress via `useGenerationJobStatus`.
  *
  * @example
  * ```tsx
@@ -381,24 +430,29 @@ export function useBatchGenerateFromMaterial(): {
       setError(null);
 
       try {
+        // Phase 1: Init — upload PDF, create job row, get chunk list
         const { data, error: fnError } = await invokeEdgeFunction<
-          BatchGenerateStartResponse | BatchGenerateStartError
+          InitResponse | BatchGenerateStartError
         >("generate-questions-batch", { body: { materialId } });
 
         if (fnError) {
           throw new Error(`Function invocation failed: ${fnError.message}`);
         }
-
         if (!data) {
           throw new Error("No response from generate-questions-batch function");
         }
-
         if (!data.success) {
           throw new Error((data as BatchGenerateStartError).error);
         }
 
-        const result = data as BatchGenerateStartResponse;
-        return { jobId: result.jobId, totalQuestionsTarget: result.totalQuestionsTarget };
+        const { jobId, fileUri, chunks, totalQuestionsTarget } = data as InitResponse;
+
+        // Phase 2 + 3: chunk loop + finalize — fire-and-forget so UI returns immediately
+        runChunkLoop(jobId, fileUri, chunks).catch((err) => {
+          console.error("[batch-gen] unhandled chunk loop error:", err instanceof Error ? err.message : err);
+        });
+
+        return { jobId, totalQuestionsTarget };
       } catch (err) {
         const wrapped = err instanceof Error ? err : new Error("Unknown error");
         setError(wrapped);
