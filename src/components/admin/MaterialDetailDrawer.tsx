@@ -230,7 +230,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                         0,
                         activeJob.total_questions_generated - (activeJob.pre_run_count ?? 0)
                       );
-                      const examPath = `/admin/questions/${coursePackId}/${encodeURIComponent(`Generated — ${material.title}`)}`;
+                      const examPath = `/admin/questions/${coursePackId}/${encodeURIComponent(`Generated — ${material.title.trim()}`)}`;
                       return (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm text-green-600">

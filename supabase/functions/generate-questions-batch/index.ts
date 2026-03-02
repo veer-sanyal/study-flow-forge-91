@@ -546,7 +546,7 @@ async function saveQuestions(
   materialTitle: string,
   questions: EnhancedQuestion[]
 ): Promise<void> {
-  const sourceExam = `Generated — ${materialTitle}`;
+  const sourceExam = `Generated — ${materialTitle.trim()}`;
   for (const q of questions) {
     const { error } = await supabase.from("questions").insert({
       prompt: q.stem,

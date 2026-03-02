@@ -802,7 +802,7 @@ function AllMaterialCard({
                   onClick={(e) => {
                     e.stopPropagation();
                     navigate(
-                      `/admin/questions/${material.course_pack_id}/${encodeURIComponent(`Generated — ${material.title}`)}`
+                      `/admin/questions/${material.course_pack_id}/${encodeURIComponent(`Generated — ${material.title.trim()}`)}`
                     );
                   }}
                 >
