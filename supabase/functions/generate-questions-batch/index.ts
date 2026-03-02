@@ -347,8 +347,8 @@ async function callGeminiGenerateBatch(
 
     if (!response.ok) {
       clearTimeout(timeoutId);
-      console.error(`Gemini API error: ${response.status}`);
-      return [];
+      const errText = await response.text().catch(() => "");
+      throw new Error(`Gemini API error: ${response.status}${errText ? ` — ${errText.slice(0, 200)}` : ""}`);
     }
 
     const result = await response.json();
@@ -444,6 +444,9 @@ async function generateQuestionsForChunk(
       if (err instanceof Error && err.message === "RATE_LIMITED") {
         console.warn(`Chunk ${chunk.chunk_index}: rate limited, waiting 30s...`);
         await sleep(30_000);
+      } else {
+        // Non-rate-limit errors (e.g. invalid model, API auth) surface immediately
+        throw err;
       }
     }
     if (attempt < 2) await sleep(CONFIG.RETRY_DELAY_MS);
@@ -539,8 +542,11 @@ async function deduplicateDbQuestions(
 async function saveQuestions(
   supabase: SupabaseClient,
   materialId: string,
+  coursePackId: string,
+  materialTitle: string,
   questions: EnhancedQuestion[]
 ): Promise<void> {
+  const sourceExam = `Generated — ${materialTitle}`;
   for (const q of questions) {
     const { error } = await supabase.from("questions").insert({
       prompt: q.stem,
@@ -556,9 +562,10 @@ async function saveQuestions(
       difficulty: q.difficulty,
       source: "generated",
       source_material_id: materialId,
-      status: "draft",
-      is_published: false,
-      needs_review: true,
+      course_pack_id: coursePackId,
+      source_exam: sourceExam,
+      status: "approved",
+      is_published: true,
     } as Record<string, unknown>);
 
     if (error) console.error("Failed to save question:", error.message);
@@ -577,7 +584,7 @@ async function handleInit(
   // Load material + analysis
   const { data: material, error: materialError } = await supabase
     .from("course_materials")
-    .select("storage_path, title, analysis_json_v4")
+    .select("storage_path, title, analysis_json_v4, course_pack_id")
     .eq("id", materialId)
     .single();
 
@@ -626,6 +633,15 @@ async function handleInit(
   const uint8Array = new Uint8Array(arrayBuffer);
   const fileUri = await uploadPdfToGemini(uint8Array, geminiApiKey);
 
+  // Cancel any pre-existing running/pending jobs (Bug 5 + Bug 6):
+  // Abandoned browser sessions leave jobs stuck in "running" forever.
+  // Supersede them so the new run starts from a clean state.
+  await supabase
+    .from("generation_jobs")
+    .update({ status: "failed", error_message: "Superseded by new generation run", completed_at: new Date().toISOString() })
+    .eq("material_id", materialId)
+    .in("status", ["running", "pending"]);
+
   // Compute chunk targets
   const sorted = [...analysisV4.question_ready_chunks].sort(
     (a, b) => potentialRank(b) - potentialRank(a)
@@ -669,6 +685,7 @@ async function handleInit(
       failed_chunks: 0,
       total_questions_target: totalQuestionsTarget,
       total_questions_generated: 0,
+      pre_run_count: existingCount ?? 0,
       created_by: userId,
       topic_coverage: topicCoverage,
     })
@@ -717,10 +734,10 @@ async function handleChunk(
     return jsonResponse({ success: true, questionsGenerated: 0 }, corsHeaders);
   }
 
-  // Load analysis_json_v4 to get the chunk data
+  // Load analysis_json_v4, course_pack_id, and title for question saving
   const { data: material, error: materialError } = await supabase
     .from("course_materials")
-    .select("analysis_json_v4")
+    .select("analysis_json_v4, course_pack_id, title")
     .eq("id", materialId)
     .single();
 
@@ -729,6 +746,8 @@ async function handleChunk(
   }
 
   const analysisV4 = material.analysis_json_v4 as MaterialAnalysisV4;
+  const coursePackId = (material as unknown as { course_pack_id: string }).course_pack_id ?? "";
+  const materialTitle = (material as unknown as { title: string }).title ?? "";
   const chunk = analysisV4.question_ready_chunks.find((c) => c.chunk_index === chunkIndex);
 
   if (!chunk) {
@@ -754,7 +773,7 @@ async function handleChunk(
 
   try {
     const questions = await generateQuestionsForChunk(chunk, target, fileUri, geminiApiKey, existingStems);
-    await saveQuestions(supabase, materialId, questions);
+    await saveQuestions(supabase, materialId, coursePackId, materialTitle, questions);
     questionsGenerated = questions.length;
     console.log(`Chunk ${chunkIndex}: saved ${questionsGenerated}/${target}`);
   } catch (err) {
@@ -802,7 +821,7 @@ async function handleFinalize(
   // Load job
   const { data: job, error: jobError } = await supabase
     .from("generation_jobs")
-    .select("material_id, failed_chunks, total_chunks")
+    .select("material_id, failed_chunks, total_chunks, pre_run_count")
     .eq("id", jobId)
     .single();
 
@@ -810,10 +829,11 @@ async function handleFinalize(
     return jsonResponse({ success: false, error: "Job not found" }, corsHeaders, 404);
   }
 
-  const { material_id: materialId, failed_chunks: failedChunks, total_chunks: totalChunks } = job as {
+  const { material_id: materialId, failed_chunks: failedChunks, total_chunks: totalChunks, pre_run_count: preRunCount } = job as {
     material_id: string;
     failed_chunks: number;
     total_chunks: number;
+    pre_run_count: number;
   };
 
   // Load all generated questions for this material
@@ -858,7 +878,8 @@ async function handleFinalize(
     .update({ questions_generated_count: finalCount, status: "ready" })
     .eq("id", materialId);
 
-  return jsonResponse({ success: true, finalCount, deduped }, corsHeaders);
+  const newlyGenerated = Math.max(0, finalCount - (preRunCount ?? 0));
+  return jsonResponse({ success: true, finalCount, deduped, newlyGenerated }, corsHeaders);
 }
 
 // ─── HTTP Handler ─────────────────────────────────────────────────────────────

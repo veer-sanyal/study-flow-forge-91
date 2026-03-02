@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useClea
 import { useBatchGenerateFromMaterial, useGenerationJobStatus } from "@/hooks/use-generate-one-question";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
-import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2, RotateCcw } from "lucide-react";
+import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2, RotateCcw, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
 
 interface MaterialDetailDrawerProps {
@@ -25,6 +26,7 @@ interface MaterialDetailDrawerProps {
 }
 
 export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDrawerProps) {
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: material, isLoading } = useMaterialById(materialId);
   const updateMaterial = useUpdateMaterial();
@@ -210,15 +212,44 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                 <CardContent className="space-y-3">
                   {(() => {
                     const hasV4 = !!(material as unknown as { analysis_json_v4?: unknown }).analysis_json_v4;
+                    const coursePackId = (material as unknown as { course_pack_id?: string }).course_pack_id ?? "";
+
+                    // Optimistic "Starting…" state — shown immediately on button click (Bug 7)
+                    if (isStarting && !activeJobId) {
+                      return (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                          <span>Starting generation…</span>
+                        </div>
+                      );
+                    }
 
                     // Job in terminal state
                     if (activeJob?.status === "completed") {
+                      const newlyGenerated = Math.max(
+                        0,
+                        activeJob.total_questions_generated - (activeJob.pre_run_count ?? 0)
+                      );
+                      const examPath = `/admin/questions/${coursePackId}/${encodeURIComponent(`Generated — ${material.title}`)}`;
                       return (
-                        <div className="flex items-center gap-2 text-sm text-green-600">
-                          <CheckCircle2 className="h-4 w-4 shrink-0" />
-                          <span>
-                            {activeJob.total_questions_generated} question{activeJob.total_questions_generated !== 1 ? "s" : ""} generated successfully.
-                          </span>
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2 text-sm text-green-600">
+                            <CheckCircle2 className="h-4 w-4 shrink-0" />
+                            <span>
+                              {newlyGenerated > 0
+                                ? `${newlyGenerated} new question${newlyGenerated !== 1 ? "s" : ""} generated (${activeJob.total_questions_generated} total).`
+                                : `${activeJob.total_questions_generated} question${activeJob.total_questions_generated !== 1 ? "s" : ""} — no new questions this run.`}
+                            </span>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full"
+                            onClick={() => navigate(examPath)}
+                          >
+                            <ExternalLink className="h-3.5 w-3.5 mr-2" />
+                            View Questions
+                          </Button>
                         </div>
                       );
                     }

@@ -128,7 +128,7 @@ function useCoursesWithStats() {
           (q) =>
             q.course_pack_id === c.id &&
             q.is_published !== false &&
-            (q.status === "approved" || !q.status)
+            (q.status === "approved" || q.status === "draft" || !q.status)
         );
         const uniqueExams = new Set(
           courseQuestions.map((q) => q.source_exam).filter(Boolean)

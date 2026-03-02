@@ -488,6 +488,7 @@ export function useGenerationJobStatus(jobId: string | null): {
     failed_chunks: number;
     total_questions_target: number;
     total_questions_generated: number;
+    pre_run_count: number;
     current_chunk_summary: string | null;
     error_message: string | null;
   } | null;
@@ -501,6 +502,7 @@ export function useGenerationJobStatus(jobId: string | null): {
     failed_chunks: number;
     total_questions_target: number;
     total_questions_generated: number;
+    pre_run_count: number;
     current_chunk_summary: string | null;
     error_message: string | null;
   } | null>(null);
@@ -513,7 +515,7 @@ export function useGenerationJobStatus(jobId: string | null): {
       const { data } = await supabase
         .from("generation_jobs")
         .select(
-          "id, status, total_chunks, completed_chunks, failed_chunks, total_questions_target, total_questions_generated, current_chunk_summary, error_message"
+          "id, status, total_chunks, completed_chunks, failed_chunks, total_questions_target, total_questions_generated, pre_run_count, current_chunk_summary, error_message"
         )
         .eq("id", jobId)
         .single();

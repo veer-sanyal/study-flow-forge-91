@@ -759,6 +759,7 @@ function AllMaterialCard({
   onEdit: (id: string) => void;
   onDelete: (id: string, title: string, storagePath: string) => void;
 }) {
+  const navigate = useNavigate();
   const [isHovered, setIsHovered] = useState(false);
   const canHover = useCanHover();
   const showActions = !canHover || isHovered;
@@ -793,6 +794,21 @@ function AllMaterialCard({
         <div className="flex items-center gap-2">
           {showActions && (
             <>
+              {qCount > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs h-7 px-2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigate(
+                      `/admin/questions/${material.course_pack_id}/${encodeURIComponent(`Generated — ${material.title}`)}`
+                    );
+                  }}
+                >
+                  View Questions
+                </Button>
+              )}
               <Button
                 variant="ghost"
                 size="icon"
