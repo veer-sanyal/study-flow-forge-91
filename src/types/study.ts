@@ -42,6 +42,12 @@ export interface StudySubpart {
   keyTakeaway?: string | null;
 }
 
+// Distractor rationale from V2 generation
+export interface DistractorRationale {
+  id: string;
+  misconception: string;
+}
+
 // Question category from build_daily_plan
 export type QuestionCategory = 'review' | 'current' | 'bridge' | 'stretch';
 
@@ -66,6 +72,10 @@ export interface StudyQuestion {
   // Multi-part question support
   questionFormat: QuestionFormat;
   subparts: StudySubpart[] | null;
+  // V2 generation metadata
+  distractorRationales: DistractorRationale[] | null;
+  sourcePages: number[] | null;
+  fullSolution: string | null;
   // Course info
   coursePackId: string | null;
   courseName: string | null;
@@ -113,6 +123,13 @@ export function mapDbQuestionToStudy(
     guideMeSteps: dbQuestion.guide_me_steps as unknown as GuideMe | null,
     questionFormat: (dbQuestion.question_format || 'multiple_choice') as QuestionFormat,
     subparts,
+    distractorRationales: Array.isArray((dbQuestion as Record<string, unknown>).distractor_rationales)
+      ? ((dbQuestion as Record<string, unknown>).distractor_rationales as unknown as DistractorRationale[])
+      : null,
+    sourcePages: Array.isArray((dbQuestion as Record<string, unknown>).source_pages)
+      ? ((dbQuestion as Record<string, unknown>).source_pages as number[])
+      : null,
+    fullSolution: (dbQuestion.full_solution as string) || null,
     coursePackId: dbQuestion.course_pack_id || null,
     courseName: null,
   };

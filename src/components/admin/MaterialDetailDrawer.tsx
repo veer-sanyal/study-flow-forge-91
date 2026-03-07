@@ -13,8 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage, useAnalyzeLecturePdf } from "@/hooks/use-materials";
-import { useBatchGenerateFromMaterial, useGenerationJobStatus } from "@/hooks/use-generate-one-question";
+import { useMaterialById, useUpdateMaterial, useDeleteMaterialQuestions, useCleanupMaterialStorage } from "@/hooks/use-materials";
+import { useAnalyzeMaterial, useGenerateQuestions, useGenerationJobRealtime } from "@/hooks/use-question-generation";
 import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } from "@/types/materials";
 import { useToast } from "@/hooks/use-toast";
 import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2, RotateCcw, ExternalLink } from "lucide-react";
@@ -32,10 +32,10 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const updateMaterial = useUpdateMaterial();
   const deleteMaterialQuestions = useDeleteMaterialQuestions();
   const cleanupStorage = useCleanupMaterialStorage();
-  const { startJob, isStarting } = useBatchGenerateFromMaterial();
-  const analyzeLecturePdf = useAnalyzeLecturePdf();
+  const { generate, isPending: isStarting } = useGenerateQuestions();
+  const analyzeMaterial = useAnalyzeMaterial();
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const { job: activeJob } = useGenerationJobStatus(activeJobId);
+  const { job: activeJob } = useGenerationJobRealtime(activeJobId);
   const [analysisPollCount, setAnalysisPollCount] = useState(0);
   const { toast } = useToast();
 
@@ -116,10 +116,10 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     }
   };
 
-  const handleAnalyzeV4 = async () => {
+  const handleAnalyze = async () => {
     if (!materialId) return;
     try {
-      await analyzeLecturePdf.mutateAsync(materialId);
+      await analyzeMaterial.mutateAsync(materialId);
       toast({
         title: "Analysis started — processing in background",
         description: "The material status will update to 'analyzed' when complete.",
@@ -137,11 +137,11 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     if (!materialId) return;
 
     try {
-      const { jobId, totalQuestionsTarget } = await startJob(materialId);
+      const jobId = await generate(materialId);
       setActiveJobId(jobId);
       toast({
         title: "Generation started",
-        description: `Targeting up to ${totalQuestionsTarget} questions — auto-computed from content analysis.`,
+        description: "Questions are being generated server-side. Progress updates via Realtime.",
       });
     } catch (error) {
       toast({
@@ -211,7 +211,9 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {(() => {
-                    const hasV4 = !!(material as unknown as { analysis_json_v4?: unknown }).analysis_json_v4;
+                    const analysisJson = (material as unknown as { analysis_json?: { schema_version?: number } }).analysis_json;
+                    const hasAnalysis = !!analysisJson && (analysisJson.schema_version ?? 0) >= 2;
+                    const courseType = (material as unknown as { course_type?: string }).course_type;
                     const coursePackId = (material as unknown as { course_pack_id?: string }).course_pack_id ?? "";
 
                     // Optimistic "Starting…" state — shown immediately on button click (Bug 7)
@@ -267,23 +269,14 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                     if (activeJob?.status === "running" || activeJob?.status === "pending") {
                       return (
                         <div className="space-y-2">
-                          <div className="flex justify-between text-xs text-muted-foreground">
-                            <span>
-                              {activeJob.current_chunk_summary
-                                ? `Processing: ${activeJob.current_chunk_summary.slice(0, 50)}…`
-                                : "Starting…"}
-                            </span>
-                            <span>{activeJob.completed_chunks} / {activeJob.total_chunks} chunks</span>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                            <span>Generating questions server-side…</span>
                           </div>
-                          <Progress
-                            value={activeJob.total_chunks > 0
-                              ? (activeJob.completed_chunks / activeJob.total_chunks) * 100
-                              : 0}
-                            className="h-2"
-                          />
+                          <Progress value={undefined} className="h-2" />
                           <div className="flex items-center justify-between">
                             <p className="text-xs text-muted-foreground">
-                              Targeting {activeJob.total_questions_target} questions — running in background
+                              Targeting {activeJob.total_questions_target} questions — browser can be closed safely
                             </p>
                             <Button
                               variant="ghost"
@@ -299,8 +292,8 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                       );
                     }
 
-                    // No V4 analysis yet — show Analyze step
-                    if (!hasV4) {
+                    // No analysis yet — show Analyze step
+                    if (!hasAnalysis) {
                       const isStuck = material.status === "analyzing" && analysisPollCount >= MAX_ANALYSIS_POLLS;
                       return (
                         <div className="space-y-2">
@@ -309,30 +302,43 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                               <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
                               <span>Analysis appears stuck — no response after 10 min. Re-trigger below.</span>
                             </div>
+                          ) : material.status === "analyzing" ? (
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                              <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                              <span>Analyzing material…</span>
+                            </div>
                           ) : (
                             <p className="text-xs text-muted-foreground">
-                              Step 1 of 2: Extract question-ready facts from the PDF before generating questions.
+                              Step 1 of 2: Analyze the PDF to extract topics, misconceptions, and course type.
                             </p>
                           )}
                           <Button
-                            onClick={handleAnalyzeV4}
-                            disabled={analyzeLecturePdf.isPending}
+                            onClick={handleAnalyze}
+                            disabled={analyzeMaterial.isPending || material.status === "analyzing"}
                             variant="outline"
                             className="w-full"
                           >
-                            {analyzeLecturePdf.isPending ? (
-                              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Analyzing PDF…</>
+                            {analyzeMaterial.isPending ? (
+                              <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Starting analysis…</>
                             ) : (
-                              <><Sparkles className="h-4 w-4 mr-2" />Analyze PDF (V4)</>
+                              <><Sparkles className="h-4 w-4 mr-2" />Analyze Material</>
                             )}
                           </Button>
                         </div>
                       );
                     }
 
-                    // V4 ready — show Generate step
+                    // Analysis ready — show course type + Generate step
                     return (
                       <div className="space-y-2">
+                        {courseType && (
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>Course type:</span>
+                            <Badge variant="outline" className="text-xs">
+                              {courseType.replace(/_/g, " ")}
+                            </Badge>
+                          </div>
+                        )}
                         <p className="text-xs text-muted-foreground">
                           Step 2 of 2: Question count is auto-determined from the content analysis.
                         </p>

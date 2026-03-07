@@ -187,6 +187,9 @@ export function QuestionPlayer({
             selectedAnswer={selectedChoice}
             solutionRevealed={solutionRevealed}
             solution={question.solutionSteps}
+            distractorRationales={question.distractorRationales}
+            fullSolution={question.fullSolution}
+            sourcePages={question.sourcePages}
           />
         )}
       </AnimatePresence>

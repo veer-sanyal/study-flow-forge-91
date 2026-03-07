@@ -112,6 +112,11 @@ interface Question {
   status?: string | null;
   is_published?: boolean | null;
   source?: string | null;
+  // V2 quality/metadata fields
+  quality_score?: number | null;
+  quality_flags?: string[] | null;
+  cognitive_level?: string | null;
+  construct_claim?: string | null;
 }
 
 // Hooks
@@ -664,12 +669,31 @@ function QuestionCard({
                     Unpublished
                   </Badge>
                 )}
+                {question.status === 'needs_review' && (
+                  <Badge variant="secondary" className="gap-1 bg-orange-500/20 text-orange-700 dark:text-orange-300">
+                    <AlertCircle className="h-3 w-3" />
+                    Needs Review
+                  </Badge>
+                )}
+                {question.quality_score != null && (
+                  <Badge
+                    variant="outline"
+                    className={question.quality_score < 70 ? "gap-1 bg-red-500/10 text-red-700 dark:text-red-300" : "gap-1"}
+                  >
+                    Q: {question.quality_score}
+                  </Badge>
+                )}
+                {question.cognitive_level && (
+                  <Badge variant="outline" className="gap-1 text-xs">
+                    {question.cognitive_level}
+                  </Badge>
+                )}
               </div>
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0">
-              {/* Approve/Reject buttons for draft questions */}
-              {question.status === 'draft' && (
+              {/* Approve/Reject buttons for draft or needs_review questions */}
+              {(question.status === 'draft' || question.status === 'needs_review') && (
                 <>
                   <Button
                     variant="default"
@@ -753,6 +777,24 @@ function QuestionCard({
               </Button>
             </div>
           </div>
+
+          {/* Construct claim */}
+          {question.construct_claim && (
+            <div className="text-xs text-muted-foreground italic border-l-2 border-primary/30 pl-2">
+              Measures: {question.construct_claim}
+            </div>
+          )}
+
+          {/* Quality flags */}
+          {question.quality_flags && question.quality_flags.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {question.quality_flags.map((flag, i) => (
+                <Badge key={i} variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                  {flag}
+                </Badge>
+              ))}
+            </div>
+          )}
 
           {/* Question Prompt */}
           <div className="prose prose-sm dark:prose-invert max-w-none text-base">
@@ -1476,6 +1518,16 @@ export default function AdminQuestionsEditor() {
 
   const needsAnalysisCount = questions?.filter((q) => !q.correct_answer || !q.guide_me_steps).length || 0;
   const analyzedCount = (questions?.length || 0) - needsAnalysisCount;
+  const needsReviewCount = questions?.filter((q) => q.status === "needs_review").length || 0;
+  const [sortBy, setSortBy] = useState<"order" | "quality_score">("order");
+
+  const sortedQuestions = useMemo(() => {
+    if (!questions) return [];
+    if (sortBy === "quality_score") {
+      return [...questions].sort((a, b) => (a.quality_score ?? 100) - (b.quality_score ?? 100));
+    }
+    return questions;
+  }, [questions, sortBy]);
 
   return (
     <PageTransition>
@@ -1516,12 +1568,17 @@ export default function AdminQuestionsEditor() {
                   <h1 className="text-xl font-bold">{decodedExamName}</h1>
                   <p className="text-sm text-muted-foreground">
                     {questions?.length || 0} questions
+                    {needsReviewCount > 0 && (
+                      <span className="text-orange-600 ml-2">
+                        • {needsReviewCount} need review
+                      </span>
+                    )}
                     {needsAnalysisCount > 0 && (
                       <span className="text-amber-600 ml-2">
                         • {needsAnalysisCount} need analysis
                       </span>
                     )}
-                    {analyzedCount > 0 && needsAnalysisCount === 0 && (
+                    {analyzedCount > 0 && needsAnalysisCount === 0 && needsReviewCount === 0 && (
                       <span className="text-green-600 ml-2">
                         • All analyzed ✓
                       </span>
@@ -1531,6 +1588,16 @@ export default function AdminQuestionsEditor() {
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Sort dropdown */}
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as "order" | "quality_score")}>
+                  <SelectTrigger className="w-[150px] h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="order">Default order</SelectItem>
+                    <SelectItem value="quality_score">Quality score ↑</SelectItem>
+                  </SelectContent>
+                </Select>
                 {/* Analyze All / Re-analyze All button */}
                 {needsAnalysisCount > 0 ? (
                   <Button
@@ -1613,7 +1680,7 @@ export default function AdminQuestionsEditor() {
               animate="animate"
               className="space-y-6"
             >
-              {questions?.map((question, index) => (
+              {sortedQuestions.map((question, index) => (
                 <QuestionCard
                   key={question.id}
                   question={question}

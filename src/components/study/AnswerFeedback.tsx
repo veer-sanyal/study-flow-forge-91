@@ -1,9 +1,10 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, XCircle } from "lucide-react";
+import { CheckCircle2, XCircle, BookOpen } from "lucide-react";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { MathRenderer } from "./MathRenderer";
+import type { DistractorRationale } from "@/types/study";
 
 interface AnswerFeedbackProps {
   isCorrect: boolean;
@@ -11,6 +12,9 @@ interface AnswerFeedbackProps {
   selectedAnswer: string;
   solutionRevealed: boolean;
   solution: string[] | null;
+  distractorRationales?: DistractorRationale[] | null;
+  fullSolution?: string | null;
+  sourcePages?: number[] | null;
 }
 
 export function AnswerFeedback({
@@ -19,8 +23,16 @@ export function AnswerFeedback({
   selectedAnswer,
   solutionRevealed,
   solution,
+  distractorRationales,
+  fullSolution,
+  sourcePages,
 }: AnswerFeedbackProps) {
   const prefersReducedMotion = useReducedMotion();
+
+  // Find misconception for the selected wrong answer
+  const selectedMisconception = !isCorrect && distractorRationales
+    ? distractorRationales.find(r => r.id === selectedAnswer)?.misconception
+    : null;
 
   const content = (
     <div className="space-y-4">
@@ -45,8 +57,28 @@ export function AnswerFeedback({
         </div>
       </div>
 
-      {/* Solution steps */}
-      {solutionRevealed && solution && solution.length > 0 && (
+      {/* Misconception-specific feedback for wrong answers */}
+      {selectedMisconception && (
+        <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
+          <p className="text-sm">
+            <span className="font-medium text-destructive">Why {selectedAnswer} is incorrect: </span>
+            <MathRenderer content={selectedMisconception} />
+          </p>
+        </div>
+      )}
+
+      {/* Full solution explanation */}
+      {fullSolution && (
+        <div className="p-4 rounded-lg bg-muted/50 border border-border">
+          <h4 className="font-semibold mb-2">Explanation</h4>
+          <div className="text-sm text-muted-foreground">
+            <MathRenderer content={fullSolution} />
+          </div>
+        </div>
+      )}
+
+      {/* Solution steps (legacy) */}
+      {solutionRevealed && solution && solution.length > 0 && !fullSolution && (
         <div className="p-4 rounded-lg bg-muted/50 border border-border">
           <h4 className="font-semibold mb-3">Solution</h4>
           <ol className="list-decimal list-inside space-y-2 text-sm text-muted-foreground">
@@ -56,6 +88,14 @@ export function AnswerFeedback({
               </li>
             ))}
           </ol>
+        </div>
+      )}
+
+      {/* Source page reference */}
+      {sourcePages && sourcePages.length > 0 && (
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <BookOpen className="h-3.5 w-3.5" />
+          <span>Review: page{sourcePages.length > 1 ? "s" : ""} {sourcePages.join(", ")} of the material</span>
         </div>
       )}
     </div>
