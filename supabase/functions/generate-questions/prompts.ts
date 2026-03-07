@@ -79,6 +79,7 @@ BACKWARD DESIGN PROCESS — For each question, work in this order:
 5. Write distractors mapped to specific misconceptions
 
 STEM RULES:
+- Every question must be FULLY SELF-CONTAINED. Never reference "the previous question," "the scenario above," "continuing from...," or any other question in the batch. Each question may be displayed independently, in any order, or weeks apart in spaced repetition. If two questions share a scenario, REPEAT the full scenario in each stem with all values and definitions restated.
 - The stem must contain ALL information needed to answer. Options must never introduce new facts, context, or conditions. If a student covers the options and reads only the stem, they should know exactly what is being asked.
 - Use a focused lead-in that specifies the cognitive task: "Which best explains...", "What is the most likely outcome if...", "Which is the most appropriate next step..."
 - Avoid vague lead-ins like "Which is true?" or "Which statement is correct?"
@@ -126,6 +127,7 @@ ANTI-PATTERN CHECKLIST (verify each question against these before outputting):
 □ No overlapping or subset options (where one option contains another)
 □ No "trick" difficulty — complexity comes from the reasoning, not from confusing wording or double negatives
 □ All math is properly formatted using the LaTeX rules above
+□ No duplicate or near-duplicate questions — each question must test a meaningfully different concept, scenario, or skill even if drawn from the same topic
 
 === OUTPUT FORMAT ===
 

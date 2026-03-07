@@ -120,9 +120,15 @@ export function scoreQuality(q: GeneratedQuestion): QualityResult {
   }
 
   // Vague lead-in
-  if (/which (of the following )?(is|are) (true|correct|false)/i.test(q.stem)) {
-    flags.push('vague_leadin: "which is true/correct" is unfocused');
+  if (/which (of the following )?((?:values? |conditions? |statements? )?(?:is|are|must be|would be|must hold)) ?(true|correct|false|valid|satisfied)?/i.test(q.stem)) {
+    flags.push("vague_leadin: unfocused stem phrasing — rewrite with a specific cognitive task");
     score -= 10;
+  }
+
+  // Cross-reference detection
+  if (/\b(previous|prior|above|earlier|continuing from|from the (last|prior|previous))\b/i.test(q.stem)) {
+    flags.push("cross_reference: stem references another question — must be self-contained");
+    score -= 30;
   }
 
   // Stem too short (likely missing context)
@@ -159,4 +165,91 @@ export function scoreQuality(q: GeneratedQuestion): QualityResult {
   }
 
   return { score: Math.max(0, score), flags };
+}
+
+// ─── Duplicate Detection ───────────────────────────────────────────────────
+
+function tokenize(text: string): Set<string> {
+  return new Set(
+    text.toLowerCase().replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(Boolean)
+  );
+}
+
+function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
+  let intersection = 0;
+  for (const w of a) {
+    if (b.has(w)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
+
+export function detectDuplicates(
+  questions: GeneratedQuestion[],
+  threshold = 0.6,
+): [number, number, number][] {
+  const tokens = questions.map(q => tokenize(q.stem));
+  const pairs: [number, number, number][] = [];
+
+  for (let i = 0; i < questions.length; i++) {
+    for (let j = i + 1; j < questions.length; j++) {
+      const sim = jaccardSimilarity(tokens[i], tokens[j]);
+      if (sim >= threshold) {
+        pairs.push([i, j, sim]);
+      }
+    }
+  }
+
+  return pairs;
+}
+
+// ─── Answer Position Rebalancing ─────────────────────────────────────────────
+
+export function rebalanceAnswerPositions(
+  questions: GeneratedQuestion[],
+): GeneratedQuestion[] {
+  if (questions.length < 3) return questions;
+
+  const maxPerPosition = Math.ceil(questions.length * 0.4);
+  const positionIds = ["A", "B", "C"];
+
+  // Count current correct-answer positions
+  const counts: Record<string, number> = { A: 0, B: 0, C: 0 };
+  for (const q of questions) {
+    const correct = q.options.find(o => o.is_correct);
+    if (correct && correct.id in counts) {
+      counts[correct.id]++;
+    }
+  }
+
+  // Find overrepresented positions and swap with least-used
+  for (const q of questions) {
+    const correct = q.options.find(o => o.is_correct);
+    if (!correct || !(correct.id in counts)) continue;
+
+    if (counts[correct.id] > maxPerPosition) {
+      // Find least-used position that has a corresponding option in this question
+      const leastUsed = positionIds
+        .filter(id => q.options.some(o => o.id === id))
+        .sort((a, b) => counts[a] - counts[b])[0];
+
+      if (leastUsed && leastUsed !== correct.id) {
+        const swapOption = q.options.find(o => o.id === leastUsed);
+        if (swapOption) {
+          // Swap the ids and is_correct flags
+          const correctId = correct.id;
+          correct.id = leastUsed;
+          swapOption.id = correctId;
+
+          // Re-sort options by id
+          q.options.sort((a, b) => a.id.localeCompare(b.id));
+
+          counts[correctId]--;
+          counts[leastUsed]++;
+        }
+      }
+    }
+  }
+
+  return questions;
 }

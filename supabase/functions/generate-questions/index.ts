@@ -24,7 +24,7 @@ import {
   getExternalAnonKey,
 } from "../_shared/external-db.ts";
 import { buildPrompt, GENERATE_QUESTIONS_SCHEMA, type MaterialAnalysis } from "./prompts.ts";
-import { validateStructure, scoreQuality, type GeneratedQuestion } from "./validation.ts";
+import { validateStructure, scoreQuality, detectDuplicates, rebalanceAnswerPositions, type GeneratedQuestion } from "./validation.ts";
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
 
@@ -226,10 +226,32 @@ async function runGeneration(
     });
     console.log(`[generate-questions] After dedup: ${deduped.length} unique questions`);
 
+    // Semantic duplicate detection (word-overlap Jaccard ≥ 0.6)
+    const dupPairs = detectDuplicates(deduped);
+    const dropIndices = new Set<number>();
+    for (const [idxA, idxB] of dupPairs) {
+      // Keep the higher-scored question
+      const drop = deduped[idxA].quality_score >= deduped[idxB].quality_score ? idxB : idxA;
+      dropIndices.add(drop);
+    }
+    const afterDupRemoval = deduped.filter((_, i) => !dropIndices.has(i));
+    if (dupPairs.length > 0) {
+      console.log(`[generate-questions] Removed ${dropIndices.size} near-duplicate questions`);
+    }
+
+    // Filter out rejected questions (score < 70)
+    const qualityFiltered = afterDupRemoval.filter(q => q.quality_score >= 70);
+    if (afterDupRemoval.length !== qualityFiltered.length) {
+      console.log(`[generate-questions] Rejected ${afterDupRemoval.length - qualityFiltered.length} low-quality questions (score < 70)`);
+    }
+
+    // Answer position rebalancing
+    rebalanceAnswerPositions(qualityFiltered);
+
     // Batch insert
-    if (deduped.length > 0) {
+    if (qualityFiltered.length > 0) {
       const sourceExam = `Generated — ${material.title.trim()}`;
-      const rows = deduped.map(q => ({
+      const rows = qualityFiltered.map(q => ({
         prompt: q.stem,
         choices: q.options.map(o => ({ text: o.text, id: o.id, isCorrect: o.is_correct })),
         correct_answer: q.options.find(o => o.is_correct)?.id || "A",
@@ -248,8 +270,8 @@ async function runGeneration(
         source_material_id: materialId,
         course_pack_id: material.course_pack_id,
         source: "generated",
-        status: q.quality_score >= 70 ? "approved" : "needs_review",
-        is_published: q.quality_score >= 70,
+        status: q.quality_score >= 90 ? "approved" : "needs_review",
+        is_published: q.quality_score >= 90,
       }));
 
       const { error: insertErr } = await supabase.from("questions").insert(rows);
@@ -263,7 +285,7 @@ async function runGeneration(
       .from("generation_jobs")
       .update({
         status: "completed",
-        total_questions_generated: preRunCount + deduped.length,
+        total_questions_generated: preRunCount + qualityFiltered.length,
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
@@ -272,11 +294,11 @@ async function runGeneration(
       .from("course_materials")
       .update({
         status: "ready",
-        questions_generated_count: preRunCount + deduped.length,
+        questions_generated_count: preRunCount + qualityFiltered.length,
       })
       .eq("id", materialId);
 
-    console.log(`[generate-questions] ${material.title} — done: ${deduped.length} new questions inserted`);
+    console.log(`[generate-questions] ${material.title} — done: ${qualityFiltered.length} new questions inserted`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "unknown";
     console.error("[generate-questions] runGeneration error:", msg);
