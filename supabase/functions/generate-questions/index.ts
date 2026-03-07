@@ -242,7 +242,7 @@ async function runGeneration(
         distractor_rationales: q.options
           .filter(o => !o.is_correct)
           .map(o => ({ id: o.id, misconception: o.misconception || "" })),
-        topic: q.topic,
+        unmapped_topic_suggestions: [q.topic],
         source_pages: q.source_pages,
         source_exam: sourceExam,
         source_material_id: materialId,
