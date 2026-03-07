@@ -270,8 +270,8 @@ async function runGeneration(
         source_material_id: materialId,
         course_pack_id: material.course_pack_id,
         source: "generated",
-        status: q.quality_score >= 90 ? "approved" : "needs_review",
-        is_published: q.quality_score >= 90,
+        status: q.quality_score >= 70 ? "approved" : "draft",
+        is_published: q.quality_score >= 70,
       }));
 
       const { error: insertErr } = await supabase.from("questions").insert(rows);
