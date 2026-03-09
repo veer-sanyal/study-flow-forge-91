@@ -1083,13 +1083,13 @@ function AddExamDialog({
                     isDraggingAnswerKey
                       ? "border-primary bg-primary/5"
                       : answerKeyFile
-                        ? "border-green-500/50 bg-green-500/5"
+                        ? "border-success/50 bg-success/5"
                         : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/50"
                   )}
                 >
                   {answerKeyFile ? (
                     <div className="flex items-center gap-2">
-                      <Check className="h-5 w-5 text-green-600" />
+                      <Check className="h-5 w-5 text-success" />
                       <span className="font-medium text-sm">{answerKeyFile.name}</span>
                       <Button
                         variant="ghost"
@@ -1125,8 +1125,8 @@ function AddExamDialog({
             <div className="space-y-4">
               <div className="flex items-center gap-3">
                 {uploadProgress.stage === "complete" ? (
-                  <div className="h-10 w-10 rounded-full bg-green-500/10 flex items-center justify-center">
-                    <FileText className="h-5 w-5 text-green-600" />
+                  <div className="h-10 w-10 rounded-full bg-success/10 flex items-center justify-center">
+                    <FileText className="h-5 w-5 text-success" />
                   </div>
                 ) : (
                   <Loader2 className="h-10 w-10 text-primary animate-spin" />

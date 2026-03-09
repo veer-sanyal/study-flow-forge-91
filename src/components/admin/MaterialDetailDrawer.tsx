@@ -19,6 +19,7 @@ import { MATERIAL_STATUS_CONFIG, MATERIAL_TYPE_LABELS, type MaterialStatus } fro
 import { useToast } from "@/hooks/use-toast";
 import { Sparkles, FileText, AlertCircle, Save, Trash2, Loader2, CheckCircle2, RotateCcw, ExternalLink } from "lucide-react";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 interface MaterialDetailDrawerProps {
   materialId: string | null;
@@ -165,7 +166,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const getStatusBadge = (status: MaterialStatus) => {
     const config = MATERIAL_STATUS_CONFIG[status];
     return (
-      <Badge variant="secondary" className={`${config.color} text-white`}>
+      <Badge variant="secondary" className={config.color}>
         {config.label}
       </Badge>
     );
@@ -202,7 +203,17 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
           <ScrollArea className="flex-1 -mx-6 px-6">
             <div className="space-y-6 py-4">
               {/* Generate Questions Section */}
-              <Card className="border-primary/20 bg-primary/5">
+              <Card className="rounded-xl overflow-hidden shadow-surface">
+                {(() => {
+                  const analysisJson = (material as unknown as { analysis_json?: { schema_version?: number } }).analysis_json;
+                  const hasAnalysis = !!analysisJson && (analysisJson.schema_version ?? 0) >= 2;
+                  const stripColor =
+                    activeJob?.status === "completed" ? "bg-success" :
+                    activeJob?.status === "failed" ? "bg-destructive" :
+                    (activeJob?.status === "running" || activeJob?.status === "pending" || isStarting || material?.status === "analyzing") ? "bg-primary" :
+                    hasAnalysis ? "bg-muted" : "bg-border";
+                  return <div className={cn("h-1 shrink-0", stripColor)} />;
+                })()}
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm flex items-center gap-2">
                     <Sparkles className="h-4 w-4 text-primary" />
@@ -235,7 +246,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                       const examPath = `/admin/questions/${coursePackId}/${encodeURIComponent(`Generated — ${material.title.trim()}`)}`;
                       return (
                         <div className="space-y-2">
-                          <div className="flex items-center gap-2 text-sm text-green-600">
+                          <div className="flex items-center gap-2 text-sm text-success">
                             <CheckCircle2 className="h-4 w-4 shrink-0" />
                             <span>
                               {newlyGenerated > 0
@@ -273,10 +284,15 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                             <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
                             <span>Generating questions server-side…</span>
                           </div>
-                          <Progress value={undefined} className="h-2" />
+                          <Progress
+                            value={activeJob.total_questions_target > 0
+                              ? (activeJob.total_questions_generated / activeJob.total_questions_target) * 100
+                              : undefined}
+                            className="h-2"
+                          />
                           <div className="flex items-center justify-between">
                             <p className="text-xs text-muted-foreground">
-                              Targeting {activeJob.total_questions_target} questions — browser can be closed safely
+                              {activeJob.total_questions_generated} of {activeJob.total_questions_target} generated — browser can be closed safely
                             </p>
                             <Button
                               variant="ghost"
@@ -361,7 +377,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
 
               {/* Error Message */}
               {material.error_message && (
-                <Card className="border-destructive">
+                <Card className="rounded-xl overflow-hidden shadow-surface border-destructive">
                   <CardContent className="pt-4">
                     <div className="flex items-start gap-2 text-destructive">
                       <AlertCircle className="h-5 w-5 mt-0.5" />
@@ -375,7 +391,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
               )}
 
               {/* Editable Metadata */}
-              <Card>
+              <Card className="rounded-xl overflow-hidden shadow-surface">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">Edit Material</CardTitle>
                 </CardHeader>
@@ -441,7 +457,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
               <Separator />
 
               {/* Metadata */}
-              <Card>
+              <Card className="rounded-xl overflow-hidden shadow-surface">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm">File Information</CardTitle>
                 </CardHeader>

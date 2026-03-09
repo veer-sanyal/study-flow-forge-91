@@ -377,7 +377,7 @@ function GuideMeStepCard({
               <div
                 key={choice.id}
                 className={`flex items-center gap-2 text-sm p-2 rounded ${choice.isCorrect
-                    ? 'bg-green-500/15 text-green-700 dark:text-green-400 border border-green-500/30'
+                    ? 'bg-success/15 text-success border border-success/30'
                     : 'bg-background text-muted-foreground border border-transparent'
                   }`}
               >
@@ -392,10 +392,10 @@ function GuideMeStepCard({
       )}
 
       {totalHints > 0 && (
-        <div className="p-4 border-b bg-blue-500/5">
+        <div className="p-4 border-b bg-primary/5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
-              <Lightbulb className="h-4 w-4 text-blue-500" />
+              <Lightbulb className="h-4 w-4 text-primary" />
               <span className="text-xs font-medium text-blue-700 dark:text-blue-400">
                 Hints {revealedHints > 0 && `(${revealedHints}/${totalHints})`}
               </span>
@@ -404,7 +404,7 @@ function GuideMeStepCard({
               <Button
                 variant="outline"
                 size="sm"
-                className="h-7 text-xs gap-1 border-blue-500/30 text-blue-600 hover:bg-blue-500/10"
+                className="h-7 text-xs gap-1 border-primary/30 text-primary hover:bg-primary/10"
                 onClick={() => setRevealedHints(prev => prev + 1)}
               >
                 <Eye className="h-3 w-3" />
@@ -415,8 +415,8 @@ function GuideMeStepCard({
           {revealedHints > 0 && (
             <div className="space-y-2">
               {step.hints?.slice(0, revealedHints).map((hint, idx) => (
-                <div key={idx} className="p-3 rounded bg-blue-500/10 border border-blue-500/20">
-                  <Badge variant="outline" className="text-xs border-blue-500/30 text-blue-600 dark:text-blue-400 mb-1">
+                <div key={idx} className="p-3 rounded bg-primary/10 border border-primary/20">
+                  <Badge variant="outline" className="text-xs border-primary/30 text-primary mb-1">
                     Tier {hint.tier}
                   </Badge>
                   <div className="text-sm prose prose-sm dark:prose-invert">
@@ -430,16 +430,16 @@ function GuideMeStepCard({
       )}
 
       {step.explanation && (
-        <div className="p-4 border-b bg-amber-500/5">
+        <div className="p-4 border-b bg-warning/5">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <MessageSquare className="h-4 w-4 text-amber-600" />
-              <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Explanation</span>
+              <MessageSquare className="h-4 w-4 text-warning" />
+              <span className="text-xs font-medium text-warning">Explanation</span>
             </div>
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs gap-1 border-amber-500/30 text-amber-600 hover:bg-amber-500/10"
+              className="h-7 text-xs gap-1 border-warning/30 text-warning hover:bg-warning/10"
               onClick={() => setShowExplanation(!showExplanation)}
             >
               {showExplanation ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -447,7 +447,7 @@ function GuideMeStepCard({
             </Button>
           </div>
           {showExplanation && (
-            <div className="p-3 rounded bg-amber-500/10 border border-amber-500/20 text-sm prose prose-sm dark:prose-invert">
+            <div className="p-3 rounded bg-warning/10 border border-warning/20 text-sm prose prose-sm dark:prose-invert">
               <MathRenderer content={step.explanation} />
             </div>
           )}
@@ -455,16 +455,16 @@ function GuideMeStepCard({
       )}
 
       {step.keyTakeaway && (
-        <div className="p-4 bg-green-500/5">
+        <div className="p-4 bg-success/5">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <BookOpen className="h-4 w-4 text-green-600" />
-              <span className="text-xs font-medium text-green-700 dark:text-green-400">Key Takeaway</span>
+              <BookOpen className="h-4 w-4 text-success" />
+              <span className="text-xs font-medium text-success">Key Takeaway</span>
             </div>
             <Button
               variant="outline"
               size="sm"
-              className="h-7 text-xs gap-1 border-green-500/30 text-green-600 hover:bg-green-500/10"
+              className="h-7 text-xs gap-1 border-success/30 text-success hover:bg-success/10"
               onClick={() => setShowKeyTakeaway(!showKeyTakeaway)}
             >
               {showKeyTakeaway ? <EyeOff className="h-3 w-3" /> : <Eye className="h-3 w-3" />}
@@ -472,7 +472,7 @@ function GuideMeStepCard({
             </Button>
           </div>
           {showKeyTakeaway && (
-            <div className="p-3 rounded bg-green-500/10 border border-green-500/20 text-sm prose prose-sm dark:prose-invert">
+            <div className="p-3 rounded bg-success/10 border border-success/20 text-sm prose prose-sm dark:prose-invert">
               <MathRenderer content={step.keyTakeaway} />
             </div>
           )}
@@ -584,8 +584,8 @@ function QuestionCard({
         className={`relative transition-all ${isDragging
             ? 'border-primary border-2 bg-primary/5'
             : needsAnalysis
-              ? 'border-amber-500/50 bg-amber-500/5'
-              : 'border-green-500/30 bg-green-500/5'
+              ? 'border-warning/50 bg-warning/5'
+              : 'border-success/30 bg-success/5'
           }`}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
@@ -631,7 +631,7 @@ function QuestionCard({
                   </Badge>
                 )}
                 {needsAnalysis && !question.answer_mismatch && (
-                  <Badge variant="secondary" className="gap-1 bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                  <Badge variant="secondary" className="gap-1 bg-warning/20 text-warning">
                     <AlertCircle className="h-3 w-3" />
                     Needs Analysis
                   </Badge>
@@ -639,7 +639,7 @@ function QuestionCard({
                 {question.needs_review && question.needs_review_reason && (
                   <Badge
                     variant="secondary"
-                    className="gap-1 bg-red-500/20 text-red-700 dark:text-red-300"
+                    className="gap-1 bg-destructive/20 text-destructive"
                     title={question.needs_review_reason}
                   >
                     <AlertCircle className="h-3 w-3" />
@@ -648,13 +648,13 @@ function QuestionCard({
                 )}
                 {/* Status badges for generated questions */}
                 {question.source === 'generated' && (
-                  <Badge variant="outline" className="gap-1 bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                  <Badge variant="outline" className="gap-1 bg-muted text-muted-foreground">
                     <Sparkles className="h-3 w-3" />
                     Generated
                   </Badge>
                 )}
                 {question.status === 'draft' && (
-                  <Badge variant="secondary" className="gap-1 bg-yellow-500/20 text-yellow-700 dark:text-yellow-300">
+                  <Badge variant="secondary" className="gap-1 bg-warning/20 text-warning">
                     Draft
                   </Badge>
                 )}
@@ -670,7 +670,7 @@ function QuestionCard({
                   </Badge>
                 )}
                 {question.status === 'needs_review' && (
-                  <Badge variant="secondary" className="gap-1 bg-orange-500/20 text-orange-700 dark:text-orange-300">
+                  <Badge variant="secondary" className="gap-1 bg-warning/20 text-warning">
                     <AlertCircle className="h-3 w-3" />
                     Needs Review
                   </Badge>
@@ -678,7 +678,7 @@ function QuestionCard({
                 {question.quality_score != null && (
                   <Badge
                     variant="outline"
-                    className={question.quality_score < 70 ? "gap-1 bg-red-500/10 text-red-700 dark:text-red-300" : "gap-1"}
+                    className={question.quality_score < 70 ? "gap-1 bg-destructive/10 text-destructive" : "gap-1"}
                   >
                     Q: {question.quality_score}
                   </Badge>
@@ -698,7 +698,7 @@ function QuestionCard({
                   <Button
                     variant="default"
                     size="sm"
-                    className="gap-1 bg-green-600 hover:bg-green-700"
+                    className="gap-1 bg-success hover:bg-success/90 text-success-foreground"
                     onClick={onApprove}
                   >
                     <Check className="h-4 w-4" />
@@ -789,7 +789,7 @@ function QuestionCard({
           {question.quality_flags && question.quality_flags.length > 0 && (
             <div className="flex flex-wrap gap-1">
               {question.quality_flags.map((flag, i) => (
-                <Badge key={i} variant="outline" className="text-xs bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                <Badge key={i} variant="outline" className="text-xs bg-warning/10 text-warning">
                   {flag}
                 </Badge>
               ))}
@@ -826,12 +826,12 @@ function QuestionCard({
                 <div
                   key={choice.id}
                   className={`flex items-start gap-3 p-4 rounded-lg border ${choice.isCorrect
-                      ? 'bg-green-500/10 border-green-500/50'
+                      ? 'bg-success/10 border-success/50'
                       : 'bg-muted/30 border-border'
                     }`}
                 >
                   <div className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium flex-shrink-0 ${choice.isCorrect
-                      ? 'bg-green-500 text-white'
+                      ? 'bg-success text-success-foreground'
                       : 'bg-muted text-muted-foreground'
                     }`}>
                     {choice.isCorrect ? <Check className="h-4 w-4" /> : choice.id.toUpperCase()}
@@ -878,7 +878,7 @@ function QuestionCard({
                           Has Answer
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        <Badge variant="secondary" className="bg-warning/20 text-warning">
                           Needs Answer
                         </Badge>
                       )}
@@ -971,10 +971,10 @@ function QuestionCard({
                       ))}
                     </ul>
                     {guideData.methodSummary.proTip && (
-                      <div className="mt-3 p-3 rounded bg-amber-500/10 border border-amber-500/20">
+                      <div className="mt-3 p-3 rounded bg-warning/10 border border-warning/20">
                         <div className="flex items-center gap-2 mb-1">
-                          <Lightbulb className="h-4 w-4 text-amber-600" />
-                          <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Pro Tip</span>
+                          <Lightbulb className="h-4 w-4 text-warning" />
+                          <span className="text-xs font-medium text-warning">Pro Tip</span>
                         </div>
                         <div className="text-sm prose prose-sm dark:prose-invert">
                           <MathRenderer content={guideData.methodSummary.proTip} />
@@ -1574,12 +1574,12 @@ export default function AdminQuestionsEditor() {
                       </span>
                     )}
                     {needsAnalysisCount > 0 && (
-                      <span className="text-amber-600 ml-2">
+                      <span className="text-warning ml-2">
                         • {needsAnalysisCount} need analysis
                       </span>
                     )}
                     {analyzedCount > 0 && needsAnalysisCount === 0 && needsReviewCount === 0 && (
-                      <span className="text-green-600 ml-2">
+                      <span className="text-success ml-2">
                         • All analyzed ✓
                       </span>
                     )}

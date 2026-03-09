@@ -121,7 +121,7 @@ export default function AdminMaterials() {
   const getStatusBadge = (status: MaterialStatus) => {
     const config = MATERIAL_STATUS_CONFIG[status];
     return (
-      <Badge variant="secondary" className={`${config.color} text-white`}>
+      <Badge variant="secondary" className={config.color}>
         {config.label}
       </Badge>
     );

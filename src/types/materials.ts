@@ -367,13 +367,13 @@ export type AnyQualityFlags = QualityFlags | QualityFlagsV4;
 
 // Material status display helpers
 export const MATERIAL_STATUS_CONFIG: Record<MaterialStatus, { label: string; color: string }> = {
-  uploaded: { label: 'Uploaded', color: 'bg-gray-500' },
-  analyzing: { label: 'Analyzing...', color: 'bg-yellow-500' },
-  analyzed: { label: 'Analyzed', color: 'bg-blue-500' },
-  generating_questions: { label: 'Generating...', color: 'bg-purple-500' },
-  ready: { label: 'Ready', color: 'bg-green-500' },
-  published: { label: 'Published', color: 'bg-emerald-600' },
-  failed: { label: 'Failed', color: 'bg-red-500' },
+  uploaded: { label: 'Uploaded', color: 'bg-muted-foreground/10 text-muted-foreground border border-muted-foreground/20' },
+  analyzing: { label: 'Analyzing...', color: 'bg-warning/10 text-warning border border-warning/20' },
+  analyzed: { label: 'Analyzed', color: 'bg-primary/10 text-primary border border-primary/20' },
+  generating_questions: { label: 'Generating...', color: 'bg-primary/10 text-primary border border-primary/20' },
+  ready: { label: 'Ready', color: 'bg-success/10 text-success border border-success/20' },
+  published: { label: 'Published', color: 'bg-success/10 text-success border border-success/20' },
+  failed: { label: 'Failed', color: 'bg-destructive/10 text-destructive border border-destructive/20' },
 };
 
 export const MATERIAL_TYPE_LABELS: Record<MaterialType, string> = {
