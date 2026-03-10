@@ -2,10 +2,11 @@
  * prompts.ts — Research-backed, course-aware MCQ generation prompts
  *
  * Base template + 5 course-type modifiers + Gemini function calling schema.
- * See question-generation-complete-architecture.md sections 5 and 8.
+ * V3: DOK 1-5 difficulty, structured distractor feedback, discipline-specific
+ *     solution templates, analysis context injection.
  */
 
-// ─── Analysis types (matches analyze-material output) ─────────────────────────
+// ─── Analysis types (matches analyze-material output v2 + v3) ───────────────
 
 interface AnalysisTopic {
   name: string;
@@ -21,6 +22,30 @@ interface WorkedExample {
   page: number;
 }
 
+// V3 structured construct claim (ECD format)
+interface ConstructClaim {
+  claim: string;
+  conditions: string;
+  evidence: string;
+}
+
+// V3 test specification
+interface TestSpec {
+  objective_weights: Array<{ topic: string; weight: number }>;
+  target_dok_distribution: {
+    dok_1: number;
+    dok_2: number;
+    dok_3: number;
+    dok_4: number;
+    dok_5: number;
+  };
+  misconception_distractor_map?: Array<{
+    misconception: string;
+    topic: string;
+    suggested_distractor_strategy: string;
+  }>;
+}
+
 export interface MaterialAnalysis {
   schema_version: number;
   course_type: string;
@@ -30,19 +55,116 @@ export interface MaterialAnalysis {
   key_formulas: string[];
   key_terms: string[];
   worked_examples: WorkedExample[];
-  construct_map: string[];
+  // v2: string[], v3: ConstructClaim[]
+  construct_map: string[] | ConstructClaim[];
+  // v3 only
+  test_spec?: TestSpec;
+}
+
+// ─── Helper: format construct map for prompt ────────────────────────────────
+
+function formatConstructMap(constructMap: string[] | ConstructClaim[] | undefined): string {
+  if (!constructMap || constructMap.length === 0) return "Infer from material content";
+
+  // v3 structured format
+  if (typeof constructMap[0] === "object" && "claim" in constructMap[0]) {
+    return (constructMap as ConstructClaim[])
+      .map(c => `- Claim: ${c.claim}\n  Conditions: ${c.conditions}\n  Evidence: ${c.evidence}`)
+      .join("\n");
+  }
+
+  // v2 string format
+  return (constructMap as string[]).map(c => `- ${c}`).join("\n");
+}
+
+// ─── Helper: format DOK distribution for prompt ─────────────────────────────
+
+function formatDokDistribution(testSpec: TestSpec | undefined): string {
+  if (testSpec?.target_dok_distribution) {
+    const d = testSpec.target_dok_distribution;
+    return `Target DOK distribution from analysis:
+- DOK 1 (Recall): ${Math.round(d.dok_1 * 100)}%
+- DOK 2 (Routine application): ${Math.round(d.dok_2 * 100)}%
+- DOK 3 (Multi-step reasoning): ${Math.round(d.dok_3 * 100)}%
+- DOK 4 (Strategic reasoning): ${Math.round(d.dok_4 * 100)}%
+- DOK 5 (Extended reasoning): ${Math.round(d.dok_5 * 100)}%
+Follow this distribution as closely as possible.`;
+  }
+  // Fallback for v2 analysis
+  return `Default DOK distribution (no test_spec available):
+- DOK 1 (Recall): ~20%
+- DOK 2 (Routine application): ~35%
+- DOK 3 (Multi-step reasoning): ~25%
+- DOK 4 (Strategic reasoning): ~15%
+- DOK 5 (Extended reasoning): ~5%`;
+}
+
+// ─── Helper: build evidence context chunks per topic ────────────────────────
+
+function buildEvidenceContext(analysis: MaterialAnalysis): string {
+  const chunks: string[] = [];
+
+  for (const topic of analysis.topics) {
+    const parts: string[] = [`Topic: ${topic.name}`];
+
+    // Key terms relevant to this topic (include all — they're lightweight)
+    const topicTerms = (analysis.key_terms || []).slice(0, 15);
+    if (topicTerms.length > 0) {
+      parts.push(`Key terms: ${topicTerms.join(", ")}`);
+    }
+
+    // Misconceptions for this topic
+    if (topic.common_misconceptions?.length > 0) {
+      parts.push(`Known misconceptions:\n${topic.common_misconceptions.map(m => `  - ${m}`).join("\n")}`);
+    }
+
+    // Procedural errors
+    if (topic.procedural_errors?.length > 0) {
+      parts.push(`Procedural errors:\n${topic.procedural_errors.map(e => `  - ${e}`).join("\n")}`);
+    }
+
+    // Relevant worked examples
+    const relevantExamples = (analysis.worked_examples || [])
+      .filter(ex => {
+        const desc = ex.description.toLowerCase();
+        return topic.name.toLowerCase().split(/\s+/).some(word =>
+          word.length > 3 && desc.includes(word)
+        );
+      })
+      .slice(0, 3);
+    if (relevantExamples.length > 0) {
+      parts.push(`Worked examples:\n${relevantExamples.map(ex => `  - ${ex.description} (p.${ex.page})`).join("\n")}`);
+    }
+
+    // Misconception-distractor mappings from test_spec (v3)
+    if (analysis.test_spec?.misconception_distractor_map) {
+      const relevant = analysis.test_spec.misconception_distractor_map
+        .filter(m => m.topic.toLowerCase() === topic.name.toLowerCase())
+        .slice(0, 5);
+      if (relevant.length > 0) {
+        parts.push(`Distractor strategies:\n${relevant.map(m => `  - "${m.misconception}" → ${m.suggested_distractor_strategy}`).join("\n")}`);
+      }
+    }
+
+    chunks.push(parts.join("\n"));
+  }
+
+  return chunks.join("\n\n");
 }
 
 // ─── Base Template ────────────────────────────────────────────────────────────
 
 const BASE_TEMPLATE = `You are an expert item writer creating high-quality multiple-choice questions for a university course. You follow evidence-based item construction principles.
 
+=== EVIDENCE CONTEXT (from material analysis) ===
+{evidence_context}
+
 === MATERIAL CONTEXT ===
 Course type: {course_type}
 Topics: {topics_summary}
 Key terms: {key_terms}
-Construct claims (what mastery looks like): {construct_map}
-Known student misconceptions: {misconceptions_summary}
+Construct claims (what mastery looks like):
+{construct_map}
 
 === FORMATTING RULES (apply to ALL text output) ===
 
@@ -96,7 +218,9 @@ OPTION RULES:
 
 DISTRACTOR RULES (most important quality driver):
 - Every distractor MUST map to a specific, documentable misconception or error.
-- For each distractor, you must be able to complete this sentence: "A student would choose this if they believed ___ because ___"
+- For each wrong option, write feedback in this format:
+  [Diagnosis] You likely thought... [Fix] To correct this, notice that... [Check] Ask yourself:...
+  This is the REQUIRED format for the misconception field on each incorrect option.
 - Types of good distractors:
   * Misconception-based: reflects a known wrong mental model
   * Procedural error: right approach but common execution mistake (sign error, unit error, forgot a step)
@@ -105,11 +229,14 @@ DISTRACTOR RULES (most important quality driver):
 - NEVER use joke answers, obviously wrong options, or implausible distractors. Every option should look reasonable to a student who studied but has gaps.
 - NEVER use a distractor that simply restates a number from the problem (e.g., if the problem says "4 books," do not use "4" as a distractor for a permutations question). Every distractor must represent a plausible computational error or conceptual mistake.
 
-DIFFICULTY LEVELS (use cognitive demand, not trick wording):
-- Level 1 — RECALL: Recognizing or identifying facts, definitions, or relationships directly stated in the material.
-- Level 2 — APPLICATION: Using a concept, formula, or framework in a new scenario not directly worked in the material. Requires transfer.
-- Level 3 — ANALYSIS: Evaluating competing explanations, integrating multiple concepts, predicting outcomes of novel situations, or identifying the best approach among several valid-seeming options.
-- Target distribution: ~25% Level 1, ~50% Level 2, ~25% Level 3
+DOK-ANCHORED DIFFICULTY LEVELS 1-5 (use cognitive demand, not trick wording):
+- Level 1 — RECALL/IDENTIFY: Single cue, no reasoning chain. Recognizing facts, definitions, or relationships directly stated.
+- Level 2 — ROUTINE APPLICATION: One principle, straightforward evidence. Using a concept or formula in a new scenario.
+- Level 3 — MULTI-STEP REASONING: Integrate 2+ ideas. Requires chaining concepts or evaluating competing explanations.
+- Level 4 — STRATEGIC REASONING: Select approach, justify, handle alternatives. Analyzing which method applies and why.
+- Level 5 — EXTENDED REASONING: Novel context, multiple sources, justify limitations. Synthesizing across topics with original analysis.
+
+{dok_distribution}
 
 EXPLANATION RULES (critical for learning — prevents "lure learning"):
 - For the correct answer: Explain WHY it is correct, citing the specific concept or principle from the material.
@@ -166,7 +293,14 @@ When testing formula knowledge, do NOT just ask "which formula is correct." Inst
 LATEX IN DISTRACTORS:
 When distractors are numeric values, format them consistently:
 - All options should use the same precision and units
-- Example: A. $24.5 \\text{ m/s}$  B. $-24.5 \\text{ m/s}$  C. $49.0 \\text{ m/s}$`;
+- Example: A. $24.5 \\text{ m/s}$  B. $-24.5 \\text{ m/s}$  C. $49.0 \\text{ m/s}$
+
+SOLUTION FORMAT — Plan → Work → Check:
+Write full_solution using this structure:
+**Plan**: State the approach in 1 sentence.
+**Work**: Step-by-step symbolic work with interpretations.
+  Each step: 1 English sentence → $$math$$ → 1 interpretation sentence.
+**Check**: Verify reasonableness (sign, units, magnitude).`;
 
 const STEM_CONCEPT_MODIFIER = `
 === STEM CONCEPTUAL ADDITIONS ===
@@ -182,7 +316,13 @@ Known misconceptions for this material: {misconceptions}
 Every question should target at least one of these. If a misconception is especially common or dangerous, create multiple questions approaching it from different angles.
 
 SCIENTIFIC NOTATION:
-Use LaTeX for all scientific notation, chemical formulas, and biological terms with subscripts/superscripts: $CO_2$, $H_2O$, $6.02 \\times 10^{23}$.`;
+Use LaTeX for all scientific notation, chemical formulas, and biological terms with subscripts/superscripts: $CO_2$, $H_2O$, $6.02 \\times 10^{23}$.
+
+SOLUTION FORMAT — Claim → Evidence → Reasoning (CER):
+Write full_solution using this structure:
+**Claim**: State the correct answer and what it demonstrates.
+**Evidence**: Cite the specific biological/scientific principle from the material.
+**Reasoning**: Explain the causal chain connecting evidence to claim, addressing why each distractor fails.`;
 
 const HUMANITIES_MODIFIER = `
 === HUMANITIES ADDITIONS ===
@@ -193,7 +333,14 @@ QUESTION TYPES TO GENERATE:
 - Argument evaluation (~20%): "Which of the following would MOST weaken the argument that..." or "Which evidence best supports the claim that..."
 - Causation/significance (~15%): "What was the primary cause of..." or "Why is [event/concept] significant in the context of..." Distractors should offer secondary causes or related-but-distinct events.
 
-CRITICAL RULE: Avoid any question answerable by memorizing a single isolated fact. Every question should require understanding context, relationships, or arguments.`;
+CRITICAL RULE: Avoid any question answerable by memorizing a single isolated fact. Every question should require understanding context, relationships, or arguments.
+
+SOLUTION FORMAT — Claim → Evidence → Warrant → Counter:
+Write full_solution using this structure:
+**Identify claim**: State the interpretive claim being tested.
+**Locate evidence**: Quote or cite the specific textual/historical evidence.
+**Explain warrant**: Connect the evidence to the claim with explicit reasoning.
+**Address counter-reading**: Explain why the most tempting distractor represents a misreading.`;
 
 const SOCIAL_SCIENCE_MODIFIER = `
 === SOCIAL SCIENCE ADDITIONS ===
@@ -205,7 +352,14 @@ QUESTION TYPES TO GENERATE:
 - Data interpretation (~20%): "Based on the table/description, which statement is supported?" For economics: use LaTeX for any equations, supply/demand notation, equilibrium expressions.
 
 SPECIAL DISTRACTOR GUIDANCE:
-In social science, the most dangerous misconceptions are statistical reasoning errors. Always include at least 2 questions where one distractor represents a correlation-causation confusion or a base rate neglect error.`;
+In social science, the most dangerous misconceptions are statistical reasoning errors. Always include at least 2 questions where one distractor represents a correlation-causation confusion or a base rate neglect error.
+
+SOLUTION FORMAT — Design → Variables → Threats → Limitations:
+Write full_solution using this structure:
+**Identify design**: Name the study design or theoretical framework.
+**Variables**: Identify key IV, DV, and confounds.
+**Inference threats**: Explain what validity threats the distractors represent.
+**Conclusion limitations**: State the boundaries of what can be concluded.`;
 
 const APPLIED_MODIFIER = `
 === APPLIED/PROFESSIONAL ADDITIONS ===
@@ -223,7 +377,14 @@ Every scenario-based question must follow this structure:
 3. Options are: concise parallel actions, never containing new information
 
 CS-SPECIFIC:
-For code-related questions, use fenced code blocks in the stem. Distractors for output-prediction questions should reflect real bugs: off-by-one errors, wrong operator precedence, scope confusion, null/undefined edge cases.`;
+For code-related questions, use fenced code blocks in the stem. Distractors for output-prediction questions should reflect real bugs: off-by-one errors, wrong operator precedence, scope confusion, null/undefined edge cases.
+
+SOLUTION FORMAT — Prioritize → Assess → Intervene → Evaluate:
+Write full_solution using this structure:
+**Prioritize**: Identify the most critical concern and why.
+**Assess**: Analyze the relevant data points from the scenario.
+**Intervene**: Explain why the correct action is appropriate.
+**Evaluate**: Describe how to verify the intervention worked, and why alternatives are suboptimal.`;
 
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
@@ -240,21 +401,26 @@ export function buildPrompt(analysis: MaterialAnalysis, count: number): string {
     .map(e => `- ${e.description} (page ${e.page})`)
     .join("\n");
 
-  const constructMap = (analysis.construct_map || [])
-    .map(c => `- ${c}`)
-    .join("\n");
+  const constructMapStr = formatConstructMap(analysis.construct_map);
 
   const misconceptionsSummary = [misconceptions, proceduralErrors]
     .filter(Boolean)
     .join("; ");
 
+  // Build evidence context chunks (Phase 2D: inject analysis context)
+  const evidenceContext = buildEvidenceContext(analysis);
+
+  // DOK distribution from test_spec or fallback
+  const dokDistribution = formatDokDistribution(analysis.test_spec);
+
   // Fill base template placeholders
   const base = BASE_TEMPLATE
+    .replace("{evidence_context}", evidenceContext)
     .replace("{course_type}", analysis.course_type)
     .replace("{topics_summary}", analysis.topics.map(t => t.name).join(", "))
     .replace("{key_terms}", analysis.key_terms?.join(", ") || "See material")
-    .replace("{construct_map}", constructMap || "Infer from material content")
-    .replace("{misconceptions_summary}", misconceptionsSummary || "Infer from material content")
+    .replace("{construct_map}", constructMapStr)
+    .replace("{dok_distribution}", dokDistribution)
     .replace("{count}", String(count));
 
   // Select and fill course type modifier
@@ -311,7 +477,7 @@ export const GENERATE_QUESTIONS_SCHEMA = {
                   is_correct: { type: "boolean" },
                   misconception: {
                     type: "string",
-                    description: "What error or misconception leads a student to choose this option (required for incorrect options)",
+                    description: "For wrong options, write feedback in this format: [Diagnosis] You likely thought... [Fix] To correct this, notice that... [Check] Ask yourself:...",
                   },
                 },
               },
@@ -330,7 +496,7 @@ export const GENERATE_QUESTIONS_SCHEMA = {
             difficulty: {
               type: "integer",
               minimum: 1,
-              maximum: 3,
+              maximum: 5,
             },
           },
         },

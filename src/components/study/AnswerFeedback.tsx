@@ -29,10 +29,13 @@ export function AnswerFeedback({
 }: AnswerFeedbackProps) {
   const prefersReducedMotion = useReducedMotion();
 
-  // Find misconception for the selected wrong answer
-  const selectedMisconception = !isCorrect && distractorRationales
-    ? distractorRationales.find(r => r.id === selectedAnswer)?.misconception
+  // Find rationale for the selected wrong answer
+  const selectedRationale = !isCorrect && distractorRationales
+    ? distractorRationales.find(r => r.id === selectedAnswer)
     : null;
+
+  // Check if we have parsed structured feedback
+  const hasParsedFeedback = selectedRationale && (selectedRationale.diagnosis || selectedRationale.fix);
 
   const content = (
     <div className="space-y-4">
@@ -57,13 +60,44 @@ export function AnswerFeedback({
         </div>
       </div>
 
-      {/* Misconception-specific feedback for wrong answers */}
-      {selectedMisconception && (
-        <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20">
-          <p className="text-sm">
-            <span className="font-medium text-destructive">Why {selectedAnswer} is incorrect: </span>
-            <MathRenderer content={selectedMisconception} />
-          </p>
+      {/* Enhanced misconception feedback for wrong answers */}
+      {selectedRationale && (
+        <div className="p-3 rounded-lg bg-destructive/5 border border-destructive/20 space-y-2">
+          {hasParsedFeedback ? (
+            <>
+              {/* Structured feedback: Diagnosis → Fix → Check */}
+              {selectedRationale.diagnosis && (
+                <div>
+                  <span className="text-xs font-semibold text-destructive uppercase tracking-wide">Diagnosis</span>
+                  <p className="text-sm mt-0.5">
+                    <MathRenderer content={selectedRationale.diagnosis} />
+                  </p>
+                </div>
+              )}
+              {selectedRationale.fix && (
+                <div>
+                  <span className="text-xs font-semibold text-amber-600 dark:text-amber-400 uppercase tracking-wide">How to fix</span>
+                  <p className="text-sm mt-0.5">
+                    <MathRenderer content={selectedRationale.fix} />
+                  </p>
+                </div>
+              )}
+              {selectedRationale.check && (
+                <div>
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Self-check</span>
+                  <p className="text-sm mt-0.5 italic text-muted-foreground">
+                    <MathRenderer content={selectedRationale.check} />
+                  </p>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Fallback: raw misconception string for old questions or unparseable */
+            <p className="text-sm">
+              <span className="font-medium text-destructive">Why {selectedAnswer} is incorrect: </span>
+              <MathRenderer content={selectedRationale.misconception} />
+            </p>
+          )}
         </div>
       )}
 

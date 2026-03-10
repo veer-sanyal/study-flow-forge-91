@@ -3,6 +3,7 @@
  *
  * validateStructure: gate — reject malformed questions before insertion
  * scoreQuality: score — flag weak questions for admin review (doesn't reject)
+ * parseMisconceptionFeedback: parse [Diagnosis]/[Fix]/[Check] from misconception strings
  */
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -30,6 +31,39 @@ export interface QualityResult {
   flags: string[];
 }
 
+// ─── Parsed distractor feedback ─────────────────────────────────────────────
+
+export interface ParsedMisconceptionFeedback {
+  diagnosis: string | null;
+  fix: string | null;
+  check: string | null;
+  raw: string;
+}
+
+/**
+ * Parse [Diagnosis]/[Fix]/[Check] markers from a misconception string.
+ * Returns structured fields when markers are found, raw string always preserved.
+ */
+export function parseMisconceptionFeedback(misconception: string): ParsedMisconceptionFeedback {
+  const result: ParsedMisconceptionFeedback = {
+    diagnosis: null,
+    fix: null,
+    check: null,
+    raw: misconception,
+  };
+
+  // Extract [Diagnosis] ... [Fix] ... [Check] ...
+  const diagMatch = misconception.match(/\[Diagnosis\]\s*(.*?)(?=\[Fix\]|\[Check\]|$)/is);
+  const fixMatch = misconception.match(/\[Fix\]\s*(.*?)(?=\[Check\]|\[Diagnosis\]|$)/is);
+  const checkMatch = misconception.match(/\[Check\]\s*(.*?)(?=\[Diagnosis\]|\[Fix\]|$)/is);
+
+  if (diagMatch) result.diagnosis = diagMatch[1].trim();
+  if (fixMatch) result.fix = fixMatch[1].trim();
+  if (checkMatch) result.check = checkMatch[1].trim();
+
+  return result;
+}
+
 // ─── Structural Validation ────────────────────────────────────────────────────
 
 export function validateStructure(q: unknown): q is GeneratedQuestion {
@@ -55,8 +89,9 @@ export function validateStructure(q: unknown): q is GeneratedQuestion {
     if (typeof o.id !== "string" || typeof o.text !== "string") return false;
   }
 
+  // DOK 1-5 difficulty range
   const difficulty = obj.difficulty;
-  if (typeof difficulty !== "number" || difficulty < 1 || difficulty > 3) return false;
+  if (typeof difficulty !== "number" || difficulty < 1 || difficulty > 5) return false;
 
   const explanation = obj.explanation;
   if (typeof explanation !== "string" || explanation.length < 50) return false;
@@ -142,6 +177,14 @@ export function scoreQuality(q: GeneratedQuestion): QualityResult {
     if (!opt.misconception || opt.misconception.length < 10) {
       flags.push(`weak_distractor: "${opt.id}" has no documented misconception`);
       score -= 15;
+    } else {
+      // Check for [Diagnosis]/[Fix] format compliance
+      const hasDiagnosis = /\[Diagnosis\]/i.test(opt.misconception);
+      const hasFix = /\[Fix\]/i.test(opt.misconception);
+      if (!hasDiagnosis || !hasFix) {
+        flags.push(`missing_feedback_format: "${opt.id}" misconception lacks [Diagnosis]/[Fix] markers`);
+        score -= 5;
+      }
     }
   }
 

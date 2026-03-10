@@ -2,9 +2,9 @@
  * analysis-schema.ts — Runtime validation for MaterialAnalysis at the
  * boundary between Phase 2 (analyze-material) and Phase 3 (generate-questions).
  *
+ * Validates both schema_version 2 (legacy) and schema_version 3 (two-call pipeline).
  * Ensures the analysis_json blob has the expected shape before we feed it
- * into prompt construction. Fails loudly with a descriptive error instead
- * of letting Gemini receive garbage silently.
+ * into prompt construction.
  */
 
 import type { MaterialAnalysis } from "./prompts.ts";
@@ -15,7 +15,7 @@ interface ValidationError {
 }
 
 /**
- * Validate an analysis_json blob against the expected schema_version: 2 shape.
+ * Validate an analysis_json blob against schema_version 2 or 3 shape.
  * Returns { valid: true, data } on success, { valid: false, errors } on failure.
  */
 export function validateAnalysisSchema(
@@ -73,6 +73,7 @@ export function validateAnalysisSchema(
       if (typeof topic.density !== "string") {
         errors.push({ path: `topics[${i}].density`, message: "density must be a string" });
       }
+      // cognitive_levels required for both v2 and v3
       if (!Array.isArray(topic.cognitive_levels)) {
         errors.push({ path: `topics[${i}].cognitive_levels`, message: "cognitive_levels must be an array" });
       }
@@ -116,9 +117,16 @@ export function validateAnalysisSchema(
     }
   }
 
-  // construct_map — array of strings (can be empty)
+  // construct_map — v2: array of strings, v3: array of {claim, conditions, evidence}
   if (obj.construct_map !== undefined && !Array.isArray(obj.construct_map)) {
     errors.push({ path: "construct_map", message: "construct_map must be an array if present" });
+  }
+
+  // v3-specific: test_spec (optional, only present in v3)
+  if (obj.schema_version === 3 && obj.test_spec !== undefined) {
+    if (typeof obj.test_spec !== "object" || obj.test_spec === null) {
+      errors.push({ path: "test_spec", message: "test_spec must be an object if present" });
+    }
   }
 
   if (errors.length > 0) {

@@ -24,8 +24,9 @@ import {
   getExternalAnonKey,
 } from "../_shared/external-db.ts";
 import { buildPrompt, GENERATE_QUESTIONS_SCHEMA, type MaterialAnalysis } from "./prompts.ts";
-import { validateStructure, scoreQuality, detectDuplicates, rebalanceAnswerPositions, type GeneratedQuestion } from "./validation.ts";
+import { validateStructure, scoreQuality, detectDuplicates, rebalanceAnswerPositions, parseMisconceptionFeedback, type GeneratedQuestion } from "./validation.ts";
 import { validateAnalysisSchema } from "./analysis-schema.ts";
+import { runSecondPassValidation } from "./second-pass-validator.ts";
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
 
@@ -260,6 +261,22 @@ async function runGeneration(
       console.log(`[generate-questions] Rejected ${afterDupRemoval.length - qualityFiltered.length} low-quality questions (score < 70)`);
     }
 
+    // Second-pass LLM validation (Phase 4)
+    let secondPassResults: Awaited<ReturnType<typeof runSecondPassValidation>> = [];
+    try {
+      secondPassResults = await runSecondPassValidation(
+        qualityFiltered,
+        analysis.course_type,
+        geminiApiKey,
+      );
+      const failCount = secondPassResults.filter(r => !r.passed).length;
+      if (failCount > 0) {
+        console.log(`[generate-questions] Second-pass flagged ${failCount}/${qualityFiltered.length} questions`);
+      }
+    } catch (err) {
+      console.warn("[generate-questions] Second-pass validation failed, continuing:", err instanceof Error ? err.message : "unknown");
+    }
+
     // Answer position rebalancing
     rebalanceAnswerPositions(qualityFiltered);
 
@@ -278,8 +295,20 @@ async function runGeneration(
     // Batch insert
     if (qualityFiltered.length > 0) {
       const sourceExam = `Generated — ${material.title.trim()}`;
-      const rows = qualityFiltered.map(q => {
+      // Build a map of second-pass results by question index
+      const secondPassMap = new Map<number, { passed: boolean; issues: string[] }>();
+      for (const r of secondPassResults) {
+        secondPassMap.set(r.questionIndex, { passed: r.passed, issues: r.issues });
+      }
+
+      const rows = qualityFiltered.map((q, idx) => {
         const matchedTopicId = resolveTopicId(q.topic, topicMap);
+        const spResult = secondPassMap.get(idx);
+        const spFlags = spResult && !spResult.passed
+          ? spResult.issues.map(issue => `second_pass: ${issue}`)
+          : [];
+        const allFlags = [...q.quality_flags, ...spFlags];
+        const needsReviewFromSP = spResult ? !spResult.passed : false;
         return {
         prompt: q.stem,
         choices: q.options.map(o => ({ text: o.text, id: o.id, isCorrect: o.is_correct })),
@@ -289,10 +318,20 @@ async function runGeneration(
         cognitive_level: q.cognitive_level,
         construct_claim: q.construct_claim,
         quality_score: q.quality_score,
-        quality_flags: q.quality_flags,
+        quality_flags: allFlags,
         distractor_rationales: q.options
           .filter(o => !o.is_correct)
-          .map(o => ({ id: o.id, misconception: o.misconception || "" })),
+          .map(o => {
+            const raw = o.misconception || "";
+            const parsed = parseMisconceptionFeedback(raw);
+            return {
+              id: o.id,
+              misconception: raw,
+              diagnosis: parsed.diagnosis,
+              fix: parsed.fix,
+              check: parsed.check,
+            };
+          }),
         unmapped_topic_suggestions: matchedTopicId ? [] : [q.topic],
         source_pages: q.source_pages,
         source_exam: sourceExam,
@@ -300,10 +339,10 @@ async function runGeneration(
         course_pack_id: material.course_pack_id,
         source: "generated",
         status: "approved",
-        is_published: q.quality_score >= 90 && !!matchedTopicId,
-        needs_review: q.quality_score < 90 || !matchedTopicId,
-        needs_review_reason: q.quality_score < 90 || !matchedTopicId
-          ? `quality_score:${q.quality_score}; flags:${q.quality_flags.join(", ")}${!matchedTopicId ? "; unmapped_topic" : ""}`
+        is_published: q.quality_score >= 90 && !!matchedTopicId && !needsReviewFromSP,
+        needs_review: q.quality_score < 90 || !matchedTopicId || needsReviewFromSP,
+        needs_review_reason: q.quality_score < 90 || !matchedTopicId || needsReviewFromSP
+          ? `quality_score:${q.quality_score}; flags:${allFlags.join(", ")}${!matchedTopicId ? "; unmapped_topic" : ""}${needsReviewFromSP ? "; second_pass_failed" : ""}`
           : null,
         topic_ids: matchedTopicId ? [matchedTopicId] : [],
       };

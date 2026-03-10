@@ -43,9 +43,13 @@ export interface StudySubpart {
 }
 
 // Distractor rationale from V2 generation
+// V3 adds optional parsed [Diagnosis]/[Fix]/[Check] fields
 export interface DistractorRationale {
   id: string;
   misconception: string;
+  diagnosis?: string | null;
+  fix?: string | null;
+  check?: string | null;
 }
 
 // Question category from build_daily_plan

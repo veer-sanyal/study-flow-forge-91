@@ -2,9 +2,20 @@
 // Teaches transferable reasoning, not just the answer
 
 export interface GuideHint {
-  tier: 1 | 2 | 3;
+  tier: 1 | 2 | 3 | 4;
+  label?: 'pump' | 'hint' | 'prompt' | 'bottom_out';
   text: string;
+  gated?: boolean;
 }
+
+export interface StructuredTakeaway {
+  principle: string;        // Abstract rule
+  applicability: string;    // "Use when..."
+  boundary: string;         // "Do NOT use when..."
+  selfCheck: string;        // "If ___ then you probably..."
+}
+
+export type KeyTakeaway = string | StructuredTakeaway;
 
 export interface ChoiceFeedback {
   choiceId: string;
@@ -24,10 +35,10 @@ export interface GuideStep {
   microGoal: string; // What the student will learn
   prompt: string; // Socratic question
   choices: GuideStepChoice[]; // 4 MC options with misconception-based distractors
-  hints: GuideHint[]; // 3 tiers: definition → math setup → one algebra step
+  hints: GuideHint[]; // 3-4 tiers of progressive hints
   choiceFeedback: ChoiceFeedback[]; // Per-option feedback
   explanation: string; // Full explanation after submission
-  keyTakeaway: string; // General rule reusable on similar problems
+  keyTakeaway: KeyTakeaway; // General rule reusable on similar problems
   isMisconceptionCheck?: boolean; // Step specifically tests common mistake
 }
 
@@ -41,9 +52,14 @@ export interface GuideMe {
   methodSummary: MethodSummary;
 }
 
-// Legacy function for backwards compatibility
-// This creates minimal placeholder steps when AI-generated guide isn't available
-// The steps encourage users to analyze the question rather than using meta-actions
+// ─── Type guards ─────────────────────────────────────────────────────────────
+
+export function isStructuredTakeaway(t: KeyTakeaway): t is StructuredTakeaway {
+  return typeof t === "object" && t !== null && "principle" in t;
+}
+
+// ─── Legacy function for backwards compatibility ─────────────────────────────
+// Creates minimal placeholder steps when AI-generated guide isn't available
 export function generateGuideStepsFromSolution(
   solutionSteps: string[] | null,
   questionPrompt: string
@@ -59,7 +75,7 @@ export function generateGuideStepsFromSolution(
     stepNumber: index + 1,
     stepTitle: `Step ${index + 1}`,
     microGoal: 'Work through this part of the solution',
-    prompt: index === 0 
+    prompt: index === 0
       ? `Let's break this down. Review the first step:`
       : `Now, review the next step:`,
     choices: [
@@ -69,9 +85,9 @@ export function generateGuideStepsFromSolution(
       { id: 'd', text: 'Alternative approach needed', isCorrect: false },
     ],
     hints: [
-      { tier: 1, text: `Consider what we need to find in this problem.` },
-      { tier: 2, text: `Look at the given information and identify key values.` },
-      { tier: 3, text: `Apply the relevant formula or method: ${step.substring(0, 80)}...` },
+      { tier: 1 as const, label: 'pump' as const, text: `Consider what we need to find in this problem.` },
+      { tier: 2 as const, label: 'hint' as const, text: `Look at the given information and identify key values.` },
+      { tier: 3 as const, label: 'prompt' as const, text: `Apply the relevant formula or method: ${step.substring(0, 80)}...` },
     ],
     choiceFeedback: [
       { choiceId: 'a', feedback: 'This is the correct approach for this step.' },

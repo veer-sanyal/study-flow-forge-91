@@ -1,25 +1,30 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { MathRenderer } from "./MathRenderer";
-import { 
-  Compass, 
-  Lightbulb, 
-  ChevronRight, 
-  Check, 
+import {
+  Compass,
+  Lightbulb,
+  ChevronRight,
+  Check,
   X,
   HelpCircle,
   BookOpen,
   Target,
   Sparkles,
-  AlertTriangle
+  AlertTriangle,
+  Lock
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
-import { GuideStep, GuideMe, MethodSummary } from "@/types/guide";
+import { GuideStep, GuideMe, GuideHint, MethodSummary, isStructuredTakeaway } from "@/types/guide";
+
+// ─── Configurable timers (easy to tune) ─────────────────────────────────────
+const MIN_TIME_BEFORE_HINT_MS = 5_000;  // 5s before first hint available
+const HINT_COOLDOWN_MS = 3_000;          // 3s between hint reveals
 
 interface GuideMeDrawerProps {
   open: boolean;
@@ -42,11 +47,31 @@ function normalizeGuideData(data: GuideStep[] | GuideMe): {
   };
 }
 
-export function GuideMeDrawer({ 
-  open, 
-  onOpenChange, 
+// Hint tier label
+function getHintLabel(hint: GuideHint): string {
+  if (hint.label) {
+    const labels: Record<string, string> = {
+      pump: "Think about it",
+      hint: "Concept hint",
+      prompt: "Guided step",
+      bottom_out: "Worked example",
+    };
+    return labels[hint.label] || `Hint ${hint.tier}`;
+  }
+  switch (hint.tier) {
+    case 1: return "Recall";
+    case 2: return "Setup";
+    case 3: return "Step";
+    case 4: return "Worked example";
+    default: return `Hint ${hint.tier}`;
+  }
+}
+
+export function GuideMeDrawer({
+  open,
+  onOpenChange,
   steps: rawSteps,
-  onComplete 
+  onComplete
 }: GuideMeDrawerProps) {
   const prefersReducedMotion = useReducedMotion();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
@@ -55,17 +80,41 @@ export function GuideMeDrawer({
   const [hintsRevealed, setHintsRevealed] = useState<number>(0);
   const [stepsCompleted, setStepsCompleted] = useState<Set<number>>(new Set());
   const [showSummary, setShowSummary] = useState(false);
+  const [hintAvailable, setHintAvailable] = useState(false);
+  const [hintCooldown, setHintCooldown] = useState(false);
+
+  const stepStartTime = useRef(Date.now());
 
   const { steps, methodSummary } = useMemo(() => normalizeGuideData(rawSteps), [rawSteps]);
-  
+
   const currentStep = steps[currentStepIndex];
   const progress = steps.length > 0 ? ((currentStepIndex + (isSubmitted ? 1 : 0)) / steps.length) * 100 : 0;
   const isLastStep = currentStepIndex === steps.length - 1;
+
+  // Available hints for current step
+  const availableHints: GuideHint[] = currentStep?.hints || [];
+  const hintsCount = availableHints.length;
+
+  // Gating logic
+  const nextHint = hintsRevealed < hintsCount ? availableHints[hintsRevealed] : null;
+  const isNextHintGated = nextHint?.gated === true || (nextHint?.tier === 4);
+  const tier3Viewed = hintsRevealed >= 3 || availableHints.slice(0, hintsRevealed).some(h => h.tier === 3);
+  const hasAttempted = isSubmitted;
+  const canRevealGatedHint = tier3Viewed && hasAttempted;
+
+  // Timer: hint availability per step
+  useEffect(() => {
+    setHintAvailable(false);
+    stepStartTime.current = Date.now();
+    const timer = setTimeout(() => setHintAvailable(true), MIN_TIME_BEFORE_HINT_MS);
+    return () => clearTimeout(timer);
+  }, [currentStepIndex]);
 
   const resetStep = useCallback(() => {
     setSelectedChoice(null);
     setIsSubmitted(false);
     setHintsRevealed(0);
+    setHintCooldown(false);
   }, []);
 
   const handleSelect = useCallback((choiceId: string) => {
@@ -110,10 +159,17 @@ export function GuideMeDrawer({
   }, [onComplete, onOpenChange, resetStep]);
 
   const handleRevealHint = useCallback(() => {
-    if (hintsRevealed < 3) {
-      setHintsRevealed(prev => prev + 1);
-    }
-  }, [hintsRevealed]);
+    if (hintsRevealed >= hintsCount) return;
+    if (!hintAvailable) return;
+    if (hintCooldown) return;
+    if (isNextHintGated && !canRevealGatedHint) return;
+
+    setHintsRevealed(prev => prev + 1);
+
+    // Start cooldown
+    setHintCooldown(true);
+    setTimeout(() => setHintCooldown(false), HINT_COOLDOWN_MS);
+  }, [hintsRevealed, hintsCount, hintAvailable, hintCooldown, isNextHintGated, canRevealGatedHint]);
 
   const handleClose = useCallback(() => {
     onOpenChange(false);
@@ -190,7 +246,6 @@ export function GuideMeDrawer({
               </motion.div>
             )}
 
-
             {/* Finish button */}
             <Button className="w-full gap-2" onClick={handleFinish}>
               Finish Guide
@@ -204,10 +259,44 @@ export function GuideMeDrawer({
 
   const correctChoice = currentStep.choices.find(c => c.isCorrect);
   const isCorrect = selectedChoice === correctChoice?.id;
-  const visibleHints = currentStep.hints?.slice(0, hintsRevealed) || [];
+  const visibleHints = availableHints.slice(0, hintsRevealed);
   const selectedFeedback = currentStep.choiceFeedback?.find(
     f => f.choiceId === selectedChoice
   );
+
+  // Render key takeaway (string or structured)
+  const renderTakeaway = (takeaway: GuideStep["keyTakeaway"]) => {
+    if (!takeaway) return null;
+
+    if (isStructuredTakeaway(takeaway)) {
+      return (
+        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+          <p className="text-xs font-medium text-primary mb-1 flex items-center gap-1">
+            <BookOpen className="h-3 w-3" />
+            Key Takeaway
+          </p>
+          <div className="text-sm space-y-1">
+            <p className="font-medium"><MathRenderer content={takeaway.principle} /></p>
+            <p className="text-muted-foreground text-xs"><span className="font-medium">Use when:</span> {takeaway.applicability}</p>
+            <p className="text-muted-foreground text-xs"><span className="font-medium">Not when:</span> {takeaway.boundary}</p>
+            <p className="text-muted-foreground text-xs italic">{takeaway.selfCheck}</p>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+        <p className="text-xs font-medium text-primary mb-1 flex items-center gap-1">
+          <BookOpen className="h-3 w-3" />
+          Key Takeaway
+        </p>
+        <div className="text-sm">
+          <MathRenderer content={takeaway} />
+        </div>
+      </div>
+    );
+  };
 
   return (
     <Drawer open={open} onOpenChange={handleClose}>
@@ -294,7 +383,6 @@ export function GuideMeDrawer({
                         ) : showIncorrect ? (
                           <X className="h-3 w-3" />
                         ) : (
-                          /* Extract just the first letter from IDs like "a_correct" or just "a" */
                           choice.id.charAt(0).toUpperCase()
                         )}
                       </span>
@@ -319,25 +407,35 @@ export function GuideMeDrawer({
                       <Lightbulb className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
                       <div className="text-xs text-amber-700 dark:text-amber-300">
                         <span className="font-medium">
-                          {hint.tier === 1 ? "Recall: " : hint.tier === 2 ? "Setup: " : "Step: "}
+                          {getHintLabel(hint)}:{" "}
                         </span>
                         <MathRenderer content={hint.text} />
                       </div>
                     </motion.div>
                   ))}
-                  
-                  {hintsRevealed < 3 && (
+
+                  {hintsRevealed < hintsCount && (
                     <Button
                       variant="ghost"
                       size="sm"
                       className="text-muted-foreground text-xs"
                       onClick={handleRevealHint}
+                      disabled={!hintAvailable || hintCooldown || (isNextHintGated && !canRevealGatedHint)}
                     >
-                      <HelpCircle className="h-3 w-3 mr-1" />
-                      {hintsRevealed === 0 ? "Need a hint?" : "Another hint?"}
-                      <span className="ml-1 text-muted-foreground/60">
-                        ({3 - hintsRevealed} left)
-                      </span>
+                      {isNextHintGated && !canRevealGatedHint ? (
+                        <>
+                          <Lock className="h-3 w-3 mr-1" />
+                          Answer first to unlock
+                        </>
+                      ) : (
+                        <>
+                          <HelpCircle className="h-3 w-3 mr-1" />
+                          {hintsRevealed === 0 ? "Need a hint?" : "Another hint?"}
+                          <span className="ml-1 text-muted-foreground/60">
+                            ({hintsCount - hintsRevealed} left)
+                          </span>
+                        </>
+                      )}
                     </Button>
                   )}
                 </div>
@@ -354,8 +452,8 @@ export function GuideMeDrawer({
                   {selectedFeedback && (
                     <div className={cn(
                       "p-3 rounded-lg border",
-                      isCorrect 
-                        ? "bg-green-500/10 border-green-500/20" 
+                      isCorrect
+                        ? "bg-green-500/10 border-green-500/20"
                         : "bg-amber-500/10 border-amber-500/20"
                     )}>
                       <p className={cn(
@@ -379,17 +477,7 @@ export function GuideMeDrawer({
                   </div>
 
                   {/* Key takeaway */}
-                  {currentStep.keyTakeaway && (
-                    <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
-                      <p className="text-xs font-medium text-primary mb-1 flex items-center gap-1">
-                        <BookOpen className="h-3 w-3" />
-                        Key Takeaway
-                      </p>
-                      <div className="text-sm">
-                        <MathRenderer content={currentStep.keyTakeaway} />
-                      </div>
-                    </div>
-                  )}
+                  {currentStep.keyTakeaway && renderTakeaway(currentStep.keyTakeaway)}
                 </motion.div>
               )}
             </motion.div>
@@ -398,16 +486,16 @@ export function GuideMeDrawer({
           {/* Action buttons */}
           <div className="flex gap-2 pt-2">
             {!isSubmitted ? (
-              <Button 
-                className="flex-1" 
+              <Button
+                className="flex-1"
                 onClick={handleSubmit}
                 disabled={!selectedChoice}
               >
                 Check Answer
               </Button>
             ) : (
-              <Button 
-                className="flex-1 gap-2" 
+              <Button
+                className="flex-1 gap-2"
                 onClick={handleNext}
               >
                 {isLastStep ? (methodSummary?.bullets?.length ? "View Summary" : "Finish") : "Next Step"}

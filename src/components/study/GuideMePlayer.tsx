@@ -1,13 +1,17 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, CheckCircle2, XCircle, Lightbulb, ArrowRight, Sparkles } from "lucide-react";
+import { ArrowLeft, CheckCircle2, XCircle, Lightbulb, ArrowRight, Sparkles, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { MathRenderer } from "./MathRenderer";
 import { useReducedMotion } from "@/hooks/use-reduced-motion";
 import { duration, easing } from "@/lib/motion";
-import { GuideMe, GuideStep } from "@/types/guide";
+import { GuideMe, GuideStep, GuideHint, isStructuredTakeaway } from "@/types/guide";
+
+// ─── Configurable timers (easy to tune) ─────────────────────────────────────
+const MIN_TIME_BEFORE_HINT_MS = 5_000;  // 5s before first hint available
+const HINT_COOLDOWN_MS = 3_000;          // 3s between hint reveals
 
 interface GuideMePlayerProps {
   guide: GuideMe;
@@ -29,33 +33,56 @@ export function GuideMePlayer({
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [hintsRevealed, setHintsRevealed] = useState(0);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
-  
+  const [hintAvailable, setHintAvailable] = useState(false);
+  const [hintCooldown, setHintCooldown] = useState(false);
+
+  const stepStartTime = useRef(Date.now());
+  const lastHintTime = useRef(0);
+
   const prefersReducedMotion = useReducedMotion();
-  
+
   const steps = guide.steps || [];
   const currentStep = steps[currentStepIndex] as GuideStep | undefined;
   const totalSteps = steps.length;
   const isLastStep = currentStepIndex === totalSteps - 1;
-  
+
   // Find correct choice for current step
   const correctChoice = useMemo(() => {
     if (!currentStep?.choices) return null;
     return currentStep.choices.find(c => c.isCorrect);
   }, [currentStep]);
-  
+
   const isCorrect = selectedChoice === correctChoice?.id;
-  
+
   // Get available hints for this step
-  const availableHints = currentStep?.hints || [];
+  const availableHints: GuideHint[] = currentStep?.hints || [];
   const hintsCount = availableHints.length;
-  const visibleHints = availableHints.slice(0, hintsRevealed);
-  
+
+  // Determine which hints can be shown (respecting gating)
+  const visibleHints = useMemo(() => {
+    return availableHints.slice(0, hintsRevealed);
+  }, [availableHints, hintsRevealed]);
+
+  // Check if next hint is gated (tier 4 requires tier 3 viewed + answer attempt)
+  const nextHint = hintsRevealed < hintsCount ? availableHints[hintsRevealed] : null;
+  const isNextHintGated = nextHint?.gated === true || (nextHint?.tier === 4);
+  const tier3Viewed = hintsRevealed >= 3 || availableHints.slice(0, hintsRevealed).some(h => h.tier === 3);
+  const hasAttempted = isSubmitted;
+  const canRevealGatedHint = tier3Viewed && hasAttempted;
+
+  // Timer: hint availability
+  useEffect(() => {
+    setHintAvailable(false);
+    const timer = setTimeout(() => setHintAvailable(true), MIN_TIME_BEFORE_HINT_MS);
+    return () => clearTimeout(timer);
+  }, [currentStepIndex]);
+
   const handleSelect = useCallback((choiceId: string) => {
     if (!isSubmitted) {
       setSelectedChoice(choiceId);
     }
   }, [isSubmitted]);
-  
+
   const handleSubmit = useCallback(() => {
     if (selectedChoice) {
       setIsSubmitted(true);
@@ -64,7 +91,7 @@ export function GuideMePlayer({
       }
     }
   }, [selectedChoice, isCorrect, currentStepIndex]);
-  
+
   const handleNext = useCallback(() => {
     if (isLastStep) {
       onComplete();
@@ -73,15 +100,28 @@ export function GuideMePlayer({
       setSelectedChoice(null);
       setIsSubmitted(false);
       setHintsRevealed(0);
+      setHintCooldown(false);
+      stepStartTime.current = Date.now();
+      lastHintTime.current = 0;
     }
   }, [isLastStep, onComplete]);
-  
+
   const handleRevealHint = useCallback(() => {
-    if (hintsRevealed < hintsCount) {
-      setHintsRevealed(prev => prev + 1);
-    }
-  }, [hintsRevealed, hintsCount]);
-  
+    if (hintsRevealed >= hintsCount) return;
+    if (!hintAvailable) return;
+    if (hintCooldown) return;
+
+    // Check gating for tier 4
+    if (isNextHintGated && !canRevealGatedHint) return;
+
+    setHintsRevealed(prev => prev + 1);
+    lastHintTime.current = Date.now();
+
+    // Start cooldown
+    setHintCooldown(true);
+    setTimeout(() => setHintCooldown(false), HINT_COOLDOWN_MS);
+  }, [hintsRevealed, hintsCount, hintAvailable, hintCooldown, isNextHintGated, canRevealGatedHint]);
+
   if (!currentStep) {
     return (
       <div className="text-center py-12 text-muted-foreground">
@@ -93,30 +133,89 @@ export function GuideMePlayer({
       </div>
     );
   }
-  
+
   // Progress bar
   const progress = ((currentStepIndex + (isSubmitted && isCorrect ? 1 : 0)) / totalSteps) * 100;
-  
+
+  // Render key takeaway (string or structured)
+  const renderTakeaway = (takeaway: GuideStep["keyTakeaway"]) => {
+    if (!takeaway) return null;
+
+    if (isStructuredTakeaway(takeaway)) {
+      return (
+        <Card className="p-4 bg-accent/20 border-accent">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <span className="text-lg">💡</span>
+              <span className="font-semibold text-accent-foreground text-sm uppercase tracking-wide">Key Takeaway</span>
+            </div>
+            <div className="pl-7 space-y-1.5 text-sm">
+              <p className="font-medium"><MathRenderer content={takeaway.principle} /></p>
+              <p className="text-muted-foreground"><span className="font-medium">Use when:</span> {takeaway.applicability}</p>
+              <p className="text-muted-foreground"><span className="font-medium">Not when:</span> {takeaway.boundary}</p>
+              <p className="text-muted-foreground italic">{takeaway.selfCheck}</p>
+            </div>
+          </div>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="p-4 bg-accent/20 border-accent">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-lg">💡</span>
+            <span className="font-semibold text-accent-foreground text-sm uppercase tracking-wide">Key Takeaway</span>
+          </div>
+          <div className="text-base leading-relaxed text-foreground pl-7">
+            <MathRenderer content={takeaway} />
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  // Hint tier labels
+  const getHintLabel = (hint: GuideHint): string => {
+    if (hint.label) {
+      const labels: Record<string, string> = {
+        pump: "Think about it",
+        hint: "Concept hint",
+        prompt: "Guided step",
+        bottom_out: "Worked example",
+      };
+      return labels[hint.label] || `Hint ${hint.tier}`;
+    }
+    // Legacy label mapping
+    switch (hint.tier) {
+      case 1: return "Recall";
+      case 2: return "Setup";
+      case 3: return "Step";
+      case 4: return "Worked example";
+      default: return `Hint ${hint.tier}`;
+    }
+  };
+
   const stepContent = (
     <div className="space-y-6">
       {/* Header with back button and step indicator */}
       <div className="flex items-center justify-between">
-        <Button 
-          variant="ghost" 
-          size="sm" 
+        <Button
+          variant="ghost"
+          size="sm"
           onClick={onBackToQuestion}
           className="gap-2 text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to Question
         </Button>
-        
+
         <Badge variant="secondary" className="gap-1.5">
           <Sparkles className="h-3 w-3" />
           Guide Me · Step {currentStepIndex + 1}/{totalSteps}
         </Badge>
       </div>
-      
+
       {/* Progress bar */}
       <div className="h-1 bg-muted rounded-full overflow-hidden">
         <motion.div
@@ -126,7 +225,7 @@ export function GuideMePlayer({
           transition={{ duration: 0.3 }}
         />
       </div>
-      
+
       {/* Step title and micro goal */}
       <div className="space-y-2">
         <div className="flex items-center gap-2">
@@ -137,31 +236,31 @@ export function GuideMePlayer({
             {currentStep.stepTitle || `Step ${currentStepIndex + 1}`}
           </h2>
         </div>
-        
+
         {currentStep.microGoal && (
           <p className="text-sm text-muted-foreground pl-9">
             {currentStep.microGoal}
           </p>
         )}
       </div>
-      
+
       {/* Topic badge */}
       <div className="flex items-center gap-2 pl-9">
         <Badge variant="outline" className="text-xs">
           {topicName}
         </Badge>
       </div>
-      
+
       {/* Prompt / Socratic question */}
       <Card className="p-5 bg-card border-2 border-primary/20 shadow-sm">
         <div className="text-base leading-relaxed font-medium">
           <MathRenderer content={currentStep.prompt || ''} />
         </div>
       </Card>
-      
+
       {/* Separator between question and choices */}
       <div className="h-px bg-border" />
-      
+
       {/* Choices */}
       {currentStep.choices && currentStep.choices.length > 0 && (
         <div className="space-y-2">
@@ -169,10 +268,10 @@ export function GuideMePlayer({
             const isSelected = selectedChoice === choice.id;
             const isThisCorrect = choice.isCorrect;
             const showResult = isSubmitted;
-            
+
             let borderClass = "border-border hover:border-primary/50";
             let bgClass = "bg-card";
-            
+
             if (showResult) {
               if (isThisCorrect) {
                 borderClass = "border-success";
@@ -185,7 +284,7 @@ export function GuideMePlayer({
               borderClass = "border-primary";
               bgClass = "bg-primary/5";
             }
-            
+
             return (
               <button
                 key={choice.id}
@@ -199,7 +298,6 @@ export function GuideMePlayer({
                   <div className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-xs font-medium ${
                     isSelected ? 'border-primary bg-primary text-primary-foreground' : 'border-muted-foreground/30'
                   }`}>
-                    {/* Extract just the first letter from IDs like "a_correct" or just "a" */}
                     {choice.id.charAt(0).toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -217,7 +315,7 @@ export function GuideMePlayer({
           })}
         </div>
       )}
-      
+
       {/* Hints section */}
       <AnimatePresence>
         {visibleHints.length > 0 && (
@@ -232,7 +330,7 @@ export function GuideMePlayer({
                 <div className="flex items-start gap-2">
                   <Lightbulb className="h-4 w-4 text-primary flex-shrink-0 mt-0.5" />
                   <div className="text-sm">
-                    <span className="font-medium text-primary">Hint {index + 1}: </span>
+                    <span className="font-medium text-primary">{getHintLabel(hint)}: </span>
                     <MathRenderer content={hint.text} />
                   </div>
                 </div>
@@ -241,7 +339,7 @@ export function GuideMePlayer({
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Feedback after submission */}
       <AnimatePresence>
         {isSubmitted && (
@@ -265,7 +363,7 @@ export function GuideMePlayer({
                   </>
                 )}
               </div>
-              
+
               {/* Show explanation */}
               {currentStep.explanation && (
                 <div className="text-sm text-muted-foreground">
@@ -273,25 +371,13 @@ export function GuideMePlayer({
                 </div>
               )}
             </Card>
-            
-            {/* Key takeaway - improved readability */}
-            {currentStep.keyTakeaway && (
-              <Card className="p-4 bg-accent/20 border-accent">
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">💡</span>
-                    <span className="font-semibold text-accent-foreground text-sm uppercase tracking-wide">Key Takeaway</span>
-                  </div>
-                  <div className="text-base leading-relaxed text-foreground pl-7">
-                    <MathRenderer content={currentStep.keyTakeaway} />
-                  </div>
-                </div>
-              </Card>
-            )}
+
+            {/* Key takeaway */}
+            {currentStep.keyTakeaway && renderTakeaway(currentStep.keyTakeaway)}
           </motion.div>
         )}
       </AnimatePresence>
-      
+
       {/* Actions */}
       <div className="flex flex-col gap-3 pt-2">
         {/* Hint button - only show if not submitted and hints available */}
@@ -299,18 +385,28 @@ export function GuideMePlayer({
           <Button
             variant="outline"
             onClick={handleRevealHint}
+            disabled={!hintAvailable || hintCooldown || (isNextHintGated && !canRevealGatedHint)}
             className="w-full gap-2"
           >
-            <Lightbulb className="h-4 w-4" />
-            Need a hint? ({hintsCount - hintsRevealed} left)
+            {isNextHintGated && !canRevealGatedHint ? (
+              <>
+                <Lock className="h-4 w-4" />
+                Complete step first to unlock
+              </>
+            ) : (
+              <>
+                <Lightbulb className="h-4 w-4" />
+                Need a hint? ({hintsCount - hintsRevealed} left)
+              </>
+            )}
           </Button>
         )}
-        
+
         {/* Submit / Next button */}
         {!isSubmitted ? (
-          <Button 
-            size="lg" 
-            className="w-full gap-2" 
+          <Button
+            size="lg"
+            className="w-full gap-2"
             onClick={handleSubmit}
             disabled={!selectedChoice}
           >
@@ -325,11 +421,11 @@ export function GuideMePlayer({
       </div>
     </div>
   );
-  
+
   if (prefersReducedMotion) {
     return <div key={currentStepIndex}>{stepContent}</div>;
   }
-  
+
   return (
     <motion.div
       key={currentStepIndex}

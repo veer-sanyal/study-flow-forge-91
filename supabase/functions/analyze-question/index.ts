@@ -151,12 +151,27 @@ serve(async (req) => {
 
     console.log(`Analyzing question: ${questionId}`);
 
-    // Get question details
+    // Get question details (join course_materials for course_type)
     const { data: question, error: questionError } = await supabase
       .from("questions")
       .select("*, course_packs(title)")
       .eq("id", questionId)
       .single();
+
+    // Look up course_type from course_materials linked to same course pack
+    let courseType = "stem_quantitative"; // default fallback
+    if (question?.course_pack_id) {
+      const { data: materialData } = await supabase
+        .from("course_materials")
+        .select("course_type")
+        .eq("course_pack_id", question.course_pack_id)
+        .not("course_type", "is", null)
+        .limit(1)
+        .maybeSingle();
+      if (materialData?.course_type) {
+        courseType = materialData.course_type;
+      }
+    }
 
     // Check if this question comes from a final exam by looking up the ingestion job
     let isFinalExam = false;
@@ -295,7 +310,82 @@ serve(async (req) => {
     
     console.log(`Found ${choiceImages.length} choice images to include in analysis`);
 
-    const analysisPrompt = `You are an expert math tutor generating an analysis + a “Guide Me” learning scaffold for an exam question.
+    // Discipline-specific configuration
+    const DISCIPLINE_CONFIG: Record<string, {
+      role: string;
+      stepGrammar: string;
+      solutionTemplate: string;
+      hintDescriptions: string;
+    }> = {
+      stem_quantitative: {
+        role: “expert math and quantitative reasoning tutor”,
+        stepGrammar: “concept → setup → compute → interpret → choose”,
+        solutionTemplate: `**Plan**: State the approach in 1 sentence. No math.
+**Work**: Step-by-step. Each step: 1 English sentence → $$...$$ block → 1 interpretation sentence.
+**Final Check**: 1-2 lines verifying reasonableness (domain/sign/choice elimination).
+**Conclusion**: State the correct choice letter clearly.`,
+        hintDescriptions: `- Tier 1 (pump): Minimal elicitation — “What do you think the first step is?” (no math)
+- Tier 2 (hint): 1 sentence recall (definition/concept)
+- Tier 3 (prompt): 1 sentence to constrain next move + one display math line. NEVER reveals answer.
+- Tier 4 (bottom_out): Gated worked example — only shown after tier 3 viewed AND answer attempted. Shows the specific computation step.`,
+      },
+      stem_conceptual: {
+        role: “expert science tutor”,
+        stepGrammar: “identify claim → cite evidence → link reasoning (CER)”,
+        solutionTemplate: `**Claim**: State the correct answer and what it demonstrates.
+**Evidence**: Cite the specific scientific principle from the material.
+**Reasoning**: Explain the causal chain connecting evidence to claim, addressing why each distractor fails.
+**Conclusion**: State the correct choice letter clearly.`,
+        hintDescriptions: `- Tier 1 (pump): “What biological/physical principle is relevant here?”
+- Tier 2 (hint): Recall the specific mechanism or process name
+- Tier 3 (prompt): Constrain to the key evidence — “Given that X, what must follow?” NEVER reveals answer.
+- Tier 4 (bottom_out): Gated — walks through the CER chain step by step.`,
+      },
+      humanities: {
+        role: “expert humanities tutor”,
+        stepGrammar: “summarize → identify claim → locate evidence → assess warrant (Reciprocal Teaching)”,
+        solutionTemplate: `**Identify claim**: State the interpretive claim being tested.
+**Locate evidence**: Quote or cite the specific textual/historical evidence.
+**Explain warrant**: Connect the evidence to the claim with explicit reasoning.
+**Address counter-reading**: Explain why the most tempting distractor represents a misreading.
+**Conclusion**: State the correct choice letter clearly.`,
+        hintDescriptions: `- Tier 1 (pump): “What is the author/thinker's main argument?”
+- Tier 2 (hint): Summarize the relevant passage or context
+- Tier 3 (prompt): “What specific evidence supports or undermines this reading?” NEVER reveals answer.
+- Tier 4 (bottom_out): Gated — walks through the textual analysis step by step.`,
+      },
+      social_science: {
+        role: “expert social science tutor”,
+        stepGrammar: “identify design → variables → inference threats → conclusion limitations”,
+        solutionTemplate: `**Identify design**: Name the study design or theoretical framework.
+**Variables**: Identify key IV, DV, and confounds.
+**Inference threats**: Explain what validity threats the distractors represent.
+**Conclusion limitations**: State the boundaries of what can be concluded.
+**Conclusion**: State the correct choice letter clearly.`,
+        hintDescriptions: `- Tier 1 (pump): “What type of study or argument is this?”
+- Tier 2 (hint): Recall the relevant methodological principle
+- Tier 3 (prompt): “What alternative explanation or threat exists?” NEVER reveals answer.
+- Tier 4 (bottom_out): Gated — walks through the inferential chain step by step.`,
+      },
+      applied_professional: {
+        role: “expert professional practice tutor”,
+        stepGrammar: “prioritize → assess → intervene → evaluate”,
+        solutionTemplate: `**Prioritize**: Identify the most critical concern and why.
+**Assess**: Analyze the relevant data points from the scenario.
+**Intervene**: Explain why the correct action is appropriate.
+**Evaluate**: Describe how to verify the intervention worked, and why alternatives are suboptimal.
+**Conclusion**: State the correct choice letter clearly.`,
+        hintDescriptions: `- Tier 1 (pump): “What is the most urgent concern in this scenario?”
+- Tier 2 (hint): Recall the relevant clinical/professional guideline
+- Tier 3 (prompt): “Given the constraints, which action addresses the root cause?” NEVER reveals answer.
+- Tier 4 (bottom_out): Gated — walks through the decision framework step by step.`,
+      },
+    };
+
+    const discipline = DISCIPLINE_CONFIG[courseType] || DISCIPLINE_CONFIG.stem_quantitative;
+    console.log(`Using discipline config: ${courseType} (role: ${discipline.role})`);
+
+    const analysisPrompt = `You are an ${discipline.role} generating an analysis + a “Guide Me” learning scaffold for an exam question.
 
 PRIMARY GOAL:
 Teach the TRANSFERABLE REASONING PROCESS (reusable for similar problems), not just the answer.
@@ -411,24 +501,11 @@ Include these top-level fields:
 ========================
 DETAILED SOLUTION REQUIREMENTS
 ========================
-Write detailedSolution with these sections and constraints:
+Write detailedSolution following the discipline-appropriate template below:
 
-**Plan**
-- Exactly 1 sentence. No math.
+${discipline.solutionTemplate}
 
-**Work**
-- Step-by-step.
-- Every step MUST follow this exact 3-part pattern:
-  1) 1 plain-English sentence describing the idea (max 1 sentence)
-  2) then one $$...$$ block with exact math (max 3 lines; use aligned if long)
-  3) then 1 plain-English interpretation sentence (max 1 sentence)
-- Enforce the Visual Readability Rules above (blank lines around display math, etc.).
-
-**Final Check**
-- 1–2 lines verifying reasonableness (domain/sign/choice elimination).
-
-**Conclusion**
-- State the correct choice letter clearly.
+Enforce the Visual Readability Rules above (blank lines around display math, etc.).
 
 ========================
 GUIDE ME STEPS (3–6 steps, STRICT)
@@ -448,20 +525,17 @@ d) choices: EXACTLY 4 options (a–d)
    - Keep each choice <= 90 characters unless it is pure LaTeX.
    - Wrong choices must be realistic misconceptions.
 
-e) correctChoice: one of ["a","b","c","d"]
+e) correctChoice: one of [“a”,”b”,”c”,”d”]
 
 f) choiceFeedback: feedback for EACH option (<= 1 sentence each)
    - correct: why it’s right
    - wrong: why it’s tempting but wrong (name the misconception)
    - Keep feedback short and clear.
 
-g) hints: EXACTLY 3 tiers - ALL THREE ARE MANDATORY for every step
-   - Tier1 (tier: 1): 1 sentence recall (definition/concept) - the gentlest nudge
-   - Tier2 (tier: 2): 1 sentence translate to setup - more specific guidance  
-   - Tier3 (tier: 3): EXACTLY one helpful algebra move (ONE display math line) + 1 short sentence
-     * Tier3 MUST NOT finish the full problem or reveal the final answer early.
-     * Tier3 MUST obey blank lines around $$...$$.
-   - NEVER provide fewer than 3 hints. Each step MUST have exactly 3 hint tiers.
+g) hints: EXACTLY 4 tiers - ALL FOUR ARE MANDATORY for every step
+${discipline.hintDescriptions}
+   - NEVER provide fewer than 4 hints. Each step MUST have exactly 4 hint tiers.
+   - Tier 4 MUST include “gated”: true in the output.
 
 h) explanation: must ONLY justify this step’s microGoal and MUST be:
    - 1 sentence (idea)
@@ -472,15 +546,20 @@ h) explanation: must ONLY justify this step’s microGoal and MUST be:
    * Do NOT restate the entire problem.
    * Do NOT leak the final choice before the final step.
 
-i) keyTakeaway: 1 general rule reusable for similar problems (plain English)
+i) keyTakeaway: Either a plain string OR a structured object with:
+   - principle: Abstract rule
+   - applicability: “Use when...”
+   - boundary: “Do NOT use when...”
+   - selfCheck: “If ___ then you probably...”
+   Use structured format for complex steps; plain string for simple ones.
 
 j) isMisconceptionCheck: boolean (at least one step must be true)
 
-k) misconceptionType: one of ["definition","setup","algebra_sign"] (primary misconception tested)
+k) misconceptionType: one of [“definition”,”setup”,”algebra_sign”,”interpretation”,”inference”] (primary misconception tested)
 
 QUALITY RULES FOR GUIDE ME:
 - Do NOT reveal the final answer choice until the FINAL step.
-- Steps should progress concept → setup → compute → interpret → choose.
+- Steps should progress: ${discipline.stepGrammar}
 - Prefer conceptual checks before computation.
 - Include at least ONE step with isMisconceptionCheck=true.
 - If a faster conceptual criterion exists, do NOT use it to shortcut early steps.
@@ -644,15 +723,17 @@ Now generate the analysis and return using analyze_question.`;
                             hints: {
                               type: "array",
                               description:
-                                "EXACTLY 3 escalating hints required: Tier 1 (definition/concept) -> Tier 2 (math setup) -> Tier 3 (one algebra step). All 3 tiers are mandatory.",
-                              minItems: 3,
-                              maxItems: 3,
+                                "EXACTLY 4 escalating hints required: Tier 1 (pump/elicitation) -> Tier 2 (concept hint) -> Tier 3 (guided step, never reveals answer) -> Tier 4 (gated worked example). All 4 tiers are mandatory.",
+                              minItems: 4,
+                              maxItems: 4,
                               items: {
                                 type: "object",
                                 required: ["tier", "text"],
                                 properties: {
-                                  tier: { type: "number", description: "1, 2, or 3" },
+                                  tier: { type: "number", description: "1, 2, 3, or 4" },
+                                  label: { type: "string", enum: ["pump", "hint", "prompt", "bottom_out"], description: "Hint type label" },
                                   text: { type: "string", description: "Hint text with LaTeX if needed" },
+                                  gated: { type: "boolean", description: "True for tier 4 (requires tier 3 viewed + answer attempt)" },
                                 },
                               },
                             },
@@ -661,8 +742,7 @@ Now generate the analysis and return using analyze_question.`;
                               description: "Full explanation after answering (sentence + math block + interpretation)",
                             },
                             keyTakeaway: {
-                              type: "string",
-                              description: "ONE general rule reusable on similar problems",
+                              description: "Either a plain string OR a structured object with principle, applicability, boundary, selfCheck",
                             },
                             isMisconceptionCheck: { type: "boolean", description: "True if testing common mistake" },
                           },
