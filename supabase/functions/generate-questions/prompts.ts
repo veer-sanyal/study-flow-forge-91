@@ -103,6 +103,7 @@ DISTRACTOR RULES (most important quality driver):
   * Partial knowledge: correct for a related but different concept
   * Superficial match: uses key terms from the material but in wrong context
 - NEVER use joke answers, obviously wrong options, or implausible distractors. Every option should look reasonable to a student who studied but has gaps.
+- NEVER use a distractor that simply restates a number from the problem (e.g., if the problem says "4 books," do not use "4" as a distractor for a permutations question). Every distractor must represent a plausible computational error or conceptual mistake.
 
 DIFFICULTY LEVELS (use cognitive demand, not trick wording):
 - Level 1 — RECALL: Recognizing or identifying facts, definitions, or relationships directly stated in the material.

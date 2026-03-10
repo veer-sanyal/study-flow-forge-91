@@ -20,12 +20,9 @@ export interface CourseMaterial {
   storage_path: string;
   file_name: string;
   sha256: string;
-  content_fingerprint: string | null;
   status: MaterialStatus;
   analysis_json: MaterialAnalysis | unknown | null;
   error_message: string | null;
-  topics_extracted_count: number;
-  questions_generated_count: number;
   created_by: string | null;
   created_at: string;
   updated_at: string;
@@ -343,7 +340,8 @@ export interface GeneratedQuestion {
   correct_answer: string;
   full_solution: string;
   hints: string[];
-  common_mistakes: string[];
+  /** @deprecated Use distractor_rationales instead. Kept for backward compat with old pipeline data. */
+  common_mistakes?: string[];
   tags: string[];
   difficulty: number;
   why_this_question?: string;

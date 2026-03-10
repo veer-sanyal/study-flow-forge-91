@@ -134,7 +134,7 @@ export function scoreQuality(q: GeneratedQuestion): QualityResult {
   // Stem too short (likely missing context)
   if (q.stem.length < 40) {
     flags.push("short_stem: may lack sufficient context");
-    score -= 10;
+    score -= 15;
   }
 
   // --- Distractor quality ---
@@ -210,7 +210,7 @@ export function rebalanceAnswerPositions(
 ): GeneratedQuestion[] {
   if (questions.length < 3) return questions;
 
-  const maxPerPosition = Math.ceil(questions.length * 0.4);
+  const maxPerPosition = Math.ceil(questions.length / 3);
   const positionIds = ["A", "B", "C"];
 
   // Count current correct-answer positions

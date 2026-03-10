@@ -752,10 +752,12 @@ function groupMaterialsByMidterm(materials: CourseMaterial[]): MaterialGroupedBy
 
 function AllMaterialCard({
   material,
+  questionCount = 0,
   onEdit,
   onDelete,
 }: {
   material: CourseMaterial;
+  questionCount?: number;
   onEdit: (id: string) => void;
   onDelete: (id: string, title: string, storagePath: string) => void;
 }) {
@@ -764,7 +766,7 @@ function AllMaterialCard({
   const canHover = useCanHover();
   const showActions = !canHover || isHovered;
   const status = material.status;
-  const qCount = material.questions_generated_count || 0;
+  const qCount = questionCount;
 
   return (
     <Card
@@ -1181,6 +1183,28 @@ export default function AdminExamsList() {
   const yearGroups = examsData?.yearGroups;
   const materialGroups = examsData?.materialGroups || [];
   const { data: allMaterials, isLoading: materialsLoading } = useCourseMaterials(courseId!);
+
+  // Derive question counts per material (replaces dropped questions_generated_count column)
+  const { data: materialQuestionCounts } = useQuery({
+    queryKey: ["material-question-counts", courseId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("questions")
+        .select("source_material_id")
+        .eq("course_pack_id", courseId!)
+        .not("source_material_id", "is", null);
+      if (error) throw error;
+      const counts = new Map<string, number>();
+      for (const row of data ?? []) {
+        if (row.source_material_id) {
+          counts.set(row.source_material_id, (counts.get(row.source_material_id) ?? 0) + 1);
+        }
+      }
+      return counts;
+    },
+    enabled: !!courseId,
+  });
+
   const deleteExam = useDeleteExamQuestions();
   const deleteMaterial = useDeleteMaterial();
   const updateCourse = useUpdateCourseName();
@@ -1481,6 +1505,7 @@ export default function AdminExamsList() {
                         <AllMaterialCard
                           key={mat.id}
                           material={mat}
+                          questionCount={materialQuestionCounts?.get(mat.id) ?? 0}
                           onEdit={(id) => setMaterialDetailId(id)}
                           onDelete={(id, title, storagePath) => setMaterialToDelete({ id, title, storagePath })}
                         />

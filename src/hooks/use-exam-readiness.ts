@@ -63,11 +63,11 @@ export function useExamReadiness() {
 
       const { data: masteryData } = await supabase
         .from('topic_mastery')
-        .select('topic_id, mastery_0_1, retention_0_1')
+        .select('topic_id, mastery_0_1')
         .eq('user_id', user.id);
 
       const masteryMap = new Map(
-        masteryData?.map(m => [m.topic_id, { mastery: Number(m.mastery_0_1), retention: Number(m.retention_0_1) }]) || []
+        masteryData?.map(m => [m.topic_id, { mastery: Number(m.mastery_0_1), retention: Number(m.mastery_0_1) }]) || []
       );
 
       // Build readiness for each exam

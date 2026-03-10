@@ -25,6 +25,7 @@ import {
 } from "../_shared/external-db.ts";
 import { buildPrompt, GENERATE_QUESTIONS_SCHEMA, type MaterialAnalysis } from "./prompts.ts";
 import { validateStructure, scoreQuality, detectDuplicates, rebalanceAnswerPositions, type GeneratedQuestion } from "./validation.ts";
+import { validateAnalysisSchema } from "./analysis-schema.ts";
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
 
@@ -47,6 +48,20 @@ const getCorsHeaders = (origin: string): Record<string, string> => ({
 
 function normalize(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function resolveTopicId(
+  topicName: string,
+  topicMap: Map<string, string>,
+): string | null {
+  const normalized = topicName.toLowerCase().trim();
+  // Exact match
+  if (topicMap.has(normalized)) return topicMap.get(normalized)!;
+  // Substring match: topic name contains or is contained by existing topic
+  for (const [title, id] of topicMap) {
+    if (title.includes(normalized) || normalized.includes(title)) return id;
+  }
+  return null;
 }
 
 async function callGemini(
@@ -248,10 +263,24 @@ async function runGeneration(
     // Answer position rebalancing
     rebalanceAnswerPositions(qualityFiltered);
 
+    // Load existing topics for topic mapping
+    const { data: existingTopics } = await supabase
+      .from("topics")
+      .select("id, title")
+      .eq("course_pack_id", material.course_pack_id);
+
+    const topicMap = new Map<string, string>();
+    for (const t of existingTopics ?? []) {
+      topicMap.set(t.title.toLowerCase().trim(), t.id);
+    }
+    console.log(`[generate-questions] Loaded ${topicMap.size} existing topics for mapping`);
+
     // Batch insert
     if (qualityFiltered.length > 0) {
       const sourceExam = `Generated — ${material.title.trim()}`;
-      const rows = qualityFiltered.map(q => ({
+      const rows = qualityFiltered.map(q => {
+        const matchedTopicId = resolveTopicId(q.topic, topicMap);
+        return {
         prompt: q.stem,
         choices: q.options.map(o => ({ text: o.text, id: o.id, isCorrect: o.is_correct })),
         correct_answer: q.options.find(o => o.is_correct)?.id || "A",
@@ -264,15 +293,21 @@ async function runGeneration(
         distractor_rationales: q.options
           .filter(o => !o.is_correct)
           .map(o => ({ id: o.id, misconception: o.misconception || "" })),
-        unmapped_topic_suggestions: [q.topic],
+        unmapped_topic_suggestions: matchedTopicId ? [] : [q.topic],
         source_pages: q.source_pages,
         source_exam: sourceExam,
         source_material_id: materialId,
         course_pack_id: material.course_pack_id,
         source: "generated",
-        status: q.quality_score >= 70 ? "approved" : "draft",
-        is_published: q.quality_score >= 70,
-      }));
+        status: "approved",
+        is_published: q.quality_score >= 90 && !!matchedTopicId,
+        needs_review: q.quality_score < 90 || !matchedTopicId,
+        needs_review_reason: q.quality_score < 90 || !matchedTopicId
+          ? `quality_score:${q.quality_score}; flags:${q.quality_flags.join(", ")}${!matchedTopicId ? "; unmapped_topic" : ""}`
+          : null,
+        topic_ids: matchedTopicId ? [matchedTopicId] : [],
+      };
+      });
 
       const { error: insertErr } = await supabase.from("questions").insert(rows);
       if (insertErr) {
@@ -294,7 +329,6 @@ async function runGeneration(
       .from("course_materials")
       .update({
         status: "ready",
-        questions_generated_count: preRunCount + qualityFiltered.length,
       })
       .eq("id", materialId);
 
@@ -397,13 +431,20 @@ serve(async (req) => {
       );
     }
 
-    const analysis = material.analysis_json as MaterialAnalysis | null;
-    if (!analysis || analysis.schema_version < 2) {
+    // Validate analysis_json schema at boundary between Phase 2 → Phase 3
+    const analysisResult = validateAnalysisSchema(material.analysis_json);
+    if (!analysisResult.valid) {
+      const errorSummary = analysisResult.errors.map(e => `${e.path}: ${e.message}`).join("; ");
+      console.error("[generate-questions] Analysis schema validation failed:", errorSummary);
       return new Response(
-        JSON.stringify({ success: false, error: "Material must be analyzed first (schema_version >= 2)" }),
+        JSON.stringify({
+          success: false,
+          error: `Invalid analysis data: ${errorSummary}`,
+        }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
+    const analysis = analysisResult.data;
 
     const targetCount = count || analysis.recommended_question_count || 25;
 

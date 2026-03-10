@@ -235,17 +235,17 @@ export function useSubmitAttempt() {
         .maybeSingle();
 
       // 3. Build card from existing data or create new
-      // DB now has full FSRS columns: stability, difficulty, elapsed_days, scheduled_days, lapses, learning_steps, state
       const now = new Date();
+      const existingVersion = (existing as Record<string, unknown>)?.version as number ?? 0;
       const card = existing
         ? dbRowToCard({
           due_at: existing.due_at,
           last_reviewed_at: existing.last_reviewed_at,
           reps: existing.reps,
-          stability: (existing as any).stability ?? existing.interval_days ?? 1,
+          stability: (existing as any).stability ?? 1,
           difficulty: (existing as any).difficulty ?? 5,
           elapsed_days: (existing as any).elapsed_days ?? 0,
-          scheduled_days: (existing as any).scheduled_days ?? existing.interval_days ?? 0,
+          scheduled_days: (existing as any).scheduled_days ?? 0,
           lapses: (existing as any).lapses ?? 0,
           learning_steps: (existing as any).learning_steps ?? 0,
           state: (existing as any).state ?? (existing.reps > 0 ? 2 : 0),
@@ -257,32 +257,106 @@ export function useSubmitAttempt() {
       const updatedCard = result[rating].card;
       const dbRow = cardToDbRow(updatedCard);
 
-      // 5. Upsert SRS state with full FSRS fields
-      const { error: srsError } = await supabase
-        .from('srs_state')
-        .upsert({
-          user_id: user.id,
-          question_id: params.questionId,
-          due_at: dbRow.due_at,
-          last_reviewed_at: dbRow.last_reviewed_at,
-          reps: dbRow.reps,
-          interval_days: dbRow.scheduled_days, // Keep for backward compatibility
-          ease: 2.5 - (dbRow.difficulty - 5) * 0.08, // Keep for backward compatibility
-          // Full FSRS-6 fields
-          stability: dbRow.stability,
-          difficulty: dbRow.difficulty,
-          elapsed_days: dbRow.elapsed_days,
-          scheduled_days: dbRow.scheduled_days,
-          lapses: dbRow.lapses,
-          learning_steps: dbRow.learning_steps,
-          state: dbRow.state,
-        } as any, {
-          onConflict: 'user_id,question_id',
-        });
+      // 5. Upsert SRS state with full FSRS fields + optimistic locking
+      const newVersion = existingVersion + 1;
+      if (existing) {
+        // Optimistic lock: update only if version matches
+        const { data: updated, error: srsError } = await supabase
+          .from('srs_state')
+          .update({
+            due_at: dbRow.due_at,
+            last_reviewed_at: dbRow.last_reviewed_at,
+            reps: dbRow.reps,
+            stability: dbRow.stability,
+            difficulty: dbRow.difficulty,
+            elapsed_days: dbRow.elapsed_days,
+            scheduled_days: dbRow.scheduled_days,
+            lapses: dbRow.lapses,
+            learning_steps: dbRow.learning_steps,
+            state: dbRow.state,
+            version: newVersion,
+          } as any)
+          .eq('user_id', user.id)
+          .eq('question_id', params.questionId)
+          .eq('version' as any, existingVersion)
+          .select();
 
-      if (srsError) {
-        console.error('[useSubmitAttempt] Error upserting SRS state:', srsError);
-        throw srsError;
+        if (srsError) {
+          console.error('[useSubmitAttempt] Error updating SRS state:', srsError);
+          throw srsError;
+        }
+
+        // Optimistic lock conflict: version mismatch means concurrent update
+        if (!updated || updated.length === 0) {
+          console.warn('[useSubmitAttempt] Optimistic lock conflict — refetching and retrying');
+          // Refetch current state and recompute (single retry)
+          const { data: fresh } = await supabase
+            .from('srs_state')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('question_id', params.questionId)
+            .single();
+
+          if (fresh) {
+            const freshCard = dbRowToCard({
+              due_at: fresh.due_at,
+              last_reviewed_at: fresh.last_reviewed_at,
+              reps: fresh.reps,
+              stability: (fresh as any).stability ?? 1,
+              difficulty: (fresh as any).difficulty ?? 5,
+              elapsed_days: (fresh as any).elapsed_days ?? 0,
+              scheduled_days: (fresh as any).scheduled_days ?? 0,
+              lapses: (fresh as any).lapses ?? 0,
+              learning_steps: (fresh as any).learning_steps ?? 0,
+              state: (fresh as any).state ?? 0,
+            });
+            const retryResult = fsrsInstance.repeat(freshCard, now);
+            const retryRow = cardToDbRow(retryResult[rating].card);
+            const freshVersion = (fresh as Record<string, unknown>).version as number ?? 0;
+
+            await supabase
+              .from('srs_state')
+              .update({
+                due_at: retryRow.due_at,
+                last_reviewed_at: retryRow.last_reviewed_at,
+                reps: retryRow.reps,
+                stability: retryRow.stability,
+                difficulty: retryRow.difficulty,
+                elapsed_days: retryRow.elapsed_days,
+                scheduled_days: retryRow.scheduled_days,
+                lapses: retryRow.lapses,
+                learning_steps: retryRow.learning_steps,
+                state: retryRow.state,
+                version: freshVersion + 1,
+              } as any)
+              .eq('user_id', user.id)
+              .eq('question_id', params.questionId);
+          }
+        }
+      } else {
+        // New card — insert
+        const { error: srsError } = await supabase
+          .from('srs_state')
+          .insert({
+            user_id: user.id,
+            question_id: params.questionId,
+            due_at: dbRow.due_at,
+            last_reviewed_at: dbRow.last_reviewed_at,
+            reps: dbRow.reps,
+            stability: dbRow.stability,
+            difficulty: dbRow.difficulty,
+            elapsed_days: dbRow.elapsed_days,
+            scheduled_days: dbRow.scheduled_days,
+            lapses: dbRow.lapses,
+            learning_steps: dbRow.learning_steps,
+            state: dbRow.state,
+            version: 0,
+          } as any);
+
+        if (srsError) {
+          console.error('[useSubmitAttempt] Error inserting SRS state:', srsError);
+          throw srsError;
+        }
       }
 
       // 6. Insert attempt row (topic mastery handled by DB trigger)

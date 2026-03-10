@@ -1,6 +1,8 @@
 import { useState, useCallback } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useCoursePacks } from "@/hooks/use-admin";
 import { useAllCourseMaterials, useDeleteMaterial, useAnalyzeMaterial, useUploadMaterial, useCheckDuplicate, computeSha256 } from "@/hooks/use-materials";
+import { supabase } from "@/lib/supabase";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +26,25 @@ export default function AdminMaterials() {
   
   const { data: coursePacks, isLoading: loadingCourses } = useCoursePacks();
   const { data: materials, isLoading: loadingMaterials } = useAllCourseMaterials();
+
+  // Derive question counts per material (replaces dropped questions_generated_count column)
+  const { data: questionCounts } = useQuery({
+    queryKey: ["material-question-counts"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("questions")
+        .select("source_material_id")
+        .not("source_material_id", "is", null);
+      if (error) throw error;
+      const counts = new Map<string, number>();
+      for (const row of data ?? []) {
+        if (row.source_material_id) {
+          counts.set(row.source_material_id, (counts.get(row.source_material_id) ?? 0) + 1);
+        }
+      }
+      return counts;
+    },
+  });
   const deleteMaterial = useDeleteMaterial();
   const analyzeMaterial = useAnalyzeMaterial();
   const uploadMaterial = useUploadMaterial();
@@ -254,7 +275,7 @@ export default function AdminMaterials() {
                       {(material.analysis_json as any)?.topics?.length || 0}
                     </TableCell>
                     <TableCell>
-                      {material.questions_generated_count || 0}
+                      {questionCounts?.get(material.id) ?? 0}
                     </TableCell>
                     <TableCell>
                       {format(new Date(material.created_at), 'MMM d, yyyy')}

@@ -190,21 +190,15 @@ export function useUpdateMaterialStatus() {
       status,
       analysisJson,
       errorMessage,
-      topicsExtractedCount,
-      questionsGeneratedCount,
     }: {
       materialId: string;
       status: string;
       analysisJson?: object;
       errorMessage?: string;
-      topicsExtractedCount?: number;
-      questionsGeneratedCount?: number;
     }) => {
       const updates: Record<string, unknown> = { status };
       if (analysisJson !== undefined) updates.analysis_json = analysisJson;
       if (errorMessage !== undefined) updates.error_message = errorMessage;
-      if (topicsExtractedCount !== undefined) updates.topics_extracted_count = topicsExtractedCount;
-      if (questionsGeneratedCount !== undefined) updates.questions_generated_count = questionsGeneratedCount;
 
       const { data, error } = await supabase
         .from("course_materials")

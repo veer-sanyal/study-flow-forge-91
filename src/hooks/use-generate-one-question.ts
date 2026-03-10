@@ -310,20 +310,11 @@ export function useGenerateAndSaveQuestions() {
         }
       }
 
-      // Update material's questions_generated_count
+      // Update material status (questions_generated_count column was removed)
       if (materialId && savedCount > 0) {
-        const { data: material } = await supabase
-          .from("course_materials")
-          .select("questions_generated_count")
-          .eq("id", materialId)
-          .single();
-
-        const currentCount = (material?.questions_generated_count as number) || 0;
-
         await supabase
           .from("course_materials")
           .update({
-            questions_generated_count: currentCount + savedCount,
             status: "ready",
           })
           .eq("id", materialId);

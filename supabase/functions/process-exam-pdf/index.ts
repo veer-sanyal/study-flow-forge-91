@@ -620,7 +620,6 @@ Return your response using the extract_questions function.`;
       answer_format_enum: answerFormatEnum,
       answer_spec: q.answerSpec || null,
       grading_spec: q.gradingSpec || null,
-      source_locator: sourceLocator,
       extracted_raw_text: q.extractedRawText || null,
       choices: formattedChoices,
       subparts: formattedSubparts,

@@ -158,7 +158,6 @@ export function useSubmitDiagnostic() {
                 mastery_0_1: r.isCorrect ? 0.6 : 0.2,
                 questions_attempted: 1,
                 questions_correct: r.isCorrect ? 1 : 0,
-                // Optional: retention_0_1 initialization
             }));
 
             // We need to upsert. `topic_mastery` has (user_id, topic_id) unique constraint usually?

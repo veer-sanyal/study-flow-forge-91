@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,22 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: material, isLoading } = useMaterialById(materialId);
+
+  // Derive question count (replaces dropped questions_generated_count column)
+  const { data: questionCount } = useQuery({
+    queryKey: ["material-question-count", materialId],
+    queryFn: async () => {
+      if (!materialId) return 0;
+      const { count, error } = await supabase
+        .from("questions")
+        .select("*", { count: "exact", head: true })
+        .eq("source_material_id", materialId);
+      if (error) throw error;
+      return count ?? 0;
+    },
+    enabled: !!materialId,
+  });
+
   const updateMaterial = useUpdateMaterial();
   const deleteMaterialQuestions = useDeleteMaterialQuestions();
   const cleanupStorage = useCleanupMaterialStorage();
@@ -439,7 +456,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                       <Save className="h-3.5 w-3.5 mr-1" />
                       {updateMaterial.isPending ? "Saving..." : "Save"}
                     </Button>
-                    {material.questions_generated_count > 0 && (
+                    {(questionCount ?? 0) > 0 && (
                       <Button
                         size="sm"
                         variant="destructive"
@@ -478,7 +495,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                   </div>
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">Questions Generated</span>
-                    <span className="font-medium">{material.questions_generated_count}</span>
+                    <span className="font-medium">{questionCount ?? 0}</span>
                   </div>
                 </CardContent>
               </Card>
