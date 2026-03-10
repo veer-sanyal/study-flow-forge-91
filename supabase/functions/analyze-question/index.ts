@@ -90,6 +90,105 @@ interface AnalysisResult {
   subpartAnalysis?: SubpartAnalysis[];  // For multi-part short-answer questions
 }
 
+// ─── Discipline-specific configuration ──────────────────────────────────────
+
+interface DisciplineConfig {
+  role: string;
+  stepGrammar: string;
+  solutionTemplate: string;
+  hintDescriptions: string;
+}
+
+const DISCIPLINE_CONFIGS: Record<string, DisciplineConfig> = {
+  stem_quantitative: {
+    role: "expert math and quantitative reasoning tutor",
+    stepGrammar: "concept \u2192 setup \u2192 compute \u2192 interpret \u2192 choose",
+    solutionTemplate: [
+      "**Plan**: State the approach in 1 sentence. No math.",
+      "**Work**: Step-by-step. Each step: 1 English sentence \u2192 $$...$$ block \u2192 1 interpretation sentence.",
+      "**Final Check**: 1-2 lines verifying reasonableness (domain/sign/choice elimination).",
+      "**Conclusion**: State the correct choice letter clearly.",
+    ].join("\n"),
+    hintDescriptions: [
+      '- Tier 1 (pump): Minimal elicitation \u2014 "What do you think the first step is?" (no math)',
+      "- Tier 2 (hint): 1 sentence recall (definition/concept)",
+      "- Tier 3 (prompt): 1 sentence to constrain next move + one display math line. NEVER reveals answer.",
+      "- Tier 4 (bottom_out): Gated worked example \u2014 only shown after tier 3 viewed AND answer attempted. Shows the specific computation step.",
+    ].join("\n"),
+  },
+  stem_conceptual: {
+    role: "expert science tutor",
+    stepGrammar: "identify claim \u2192 cite evidence \u2192 link reasoning (CER)",
+    solutionTemplate: [
+      "**Claim**: State the correct answer and what it demonstrates.",
+      "**Evidence**: Cite the specific scientific principle from the material.",
+      "**Reasoning**: Explain the causal chain connecting evidence to claim, addressing why each distractor fails.",
+      "**Conclusion**: State the correct choice letter clearly.",
+    ].join("\n"),
+    hintDescriptions: [
+      '- Tier 1 (pump): "What biological/physical principle is relevant here?"',
+      "- Tier 2 (hint): Recall the specific mechanism or process name",
+      '- Tier 3 (prompt): Constrain to the key evidence \u2014 "Given that X, what must follow?" NEVER reveals answer.',
+      "- Tier 4 (bottom_out): Gated \u2014 walks through the CER chain step by step.",
+    ].join("\n"),
+  },
+  humanities: {
+    role: "expert humanities tutor",
+    stepGrammar: "summarize \u2192 identify claim \u2192 locate evidence \u2192 assess warrant (Reciprocal Teaching)",
+    solutionTemplate: [
+      "**Identify claim**: State the interpretive claim being tested.",
+      "**Locate evidence**: Quote or cite the specific textual/historical evidence.",
+      "**Explain warrant**: Connect the evidence to the claim with explicit reasoning.",
+      "**Address counter-reading**: Explain why the most tempting distractor represents a misreading.",
+      "**Conclusion**: State the correct choice letter clearly.",
+    ].join("\n"),
+    hintDescriptions: [
+      '- Tier 1 (pump): "What is the author/thinker\'s main argument?"',
+      "- Tier 2 (hint): Summarize the relevant passage or context",
+      '- Tier 3 (prompt): "What specific evidence supports or undermines this reading?" NEVER reveals answer.',
+      "- Tier 4 (bottom_out): Gated \u2014 walks through the textual analysis step by step.",
+    ].join("\n"),
+  },
+  social_science: {
+    role: "expert social science tutor",
+    stepGrammar: "identify design \u2192 variables \u2192 inference threats \u2192 conclusion limitations",
+    solutionTemplate: [
+      "**Identify design**: Name the study design or theoretical framework.",
+      "**Variables**: Identify key IV, DV, and confounds.",
+      "**Inference threats**: Explain what validity threats the distractors represent.",
+      "**Conclusion limitations**: State the boundaries of what can be concluded.",
+      "**Conclusion**: State the correct choice letter clearly.",
+    ].join("\n"),
+    hintDescriptions: [
+      '- Tier 1 (pump): "What type of study or argument is this?"',
+      "- Tier 2 (hint): Recall the relevant methodological principle",
+      '- Tier 3 (prompt): "What alternative explanation or threat exists?" NEVER reveals answer.',
+      "- Tier 4 (bottom_out): Gated \u2014 walks through the inferential chain step by step.",
+    ].join("\n"),
+  },
+  applied_professional: {
+    role: "expert professional practice tutor",
+    stepGrammar: "prioritize \u2192 assess \u2192 intervene \u2192 evaluate",
+    solutionTemplate: [
+      "**Prioritize**: Identify the most critical concern and why.",
+      "**Assess**: Analyze the relevant data points from the scenario.",
+      "**Intervene**: Explain why the correct action is appropriate.",
+      "**Evaluate**: Describe how to verify the intervention worked, and why alternatives are suboptimal.",
+      "**Conclusion**: State the correct choice letter clearly.",
+    ].join("\n"),
+    hintDescriptions: [
+      '- Tier 1 (pump): "What is the most urgent concern in this scenario?"',
+      "- Tier 2 (hint): Recall the relevant clinical/professional guideline",
+      '- Tier 3 (prompt): "Given the constraints, which action addresses the root cause?" NEVER reveals answer.',
+      "- Tier 4 (bottom_out): Gated \u2014 walks through the decision framework step by step.",
+    ].join("\n"),
+  },
+};
+
+function getDisciplineConfig(courseType: string): DisciplineConfig {
+  return DISCIPLINE_CONFIGS[courseType] || DISCIPLINE_CONFIGS.stem_quantitative;
+}
+
 serve(async (req) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -310,79 +409,7 @@ serve(async (req) => {
     
     console.log(`Found ${choiceImages.length} choice images to include in analysis`);
 
-    // Discipline-specific configuration
-    const DISCIPLINE_CONFIG: Record<string, {
-      role: string;
-      stepGrammar: string;
-      solutionTemplate: string;
-      hintDescriptions: string;
-    }> = {
-      stem_quantitative: {
-        role: “expert math and quantitative reasoning tutor”,
-        stepGrammar: “concept → setup → compute → interpret → choose”,
-        solutionTemplate: `**Plan**: State the approach in 1 sentence. No math.
-**Work**: Step-by-step. Each step: 1 English sentence → $$...$$ block → 1 interpretation sentence.
-**Final Check**: 1-2 lines verifying reasonableness (domain/sign/choice elimination).
-**Conclusion**: State the correct choice letter clearly.`,
-        hintDescriptions: `- Tier 1 (pump): Minimal elicitation — “What do you think the first step is?” (no math)
-- Tier 2 (hint): 1 sentence recall (definition/concept)
-- Tier 3 (prompt): 1 sentence to constrain next move + one display math line. NEVER reveals answer.
-- Tier 4 (bottom_out): Gated worked example — only shown after tier 3 viewed AND answer attempted. Shows the specific computation step.`,
-      },
-      stem_conceptual: {
-        role: “expert science tutor”,
-        stepGrammar: “identify claim → cite evidence → link reasoning (CER)”,
-        solutionTemplate: `**Claim**: State the correct answer and what it demonstrates.
-**Evidence**: Cite the specific scientific principle from the material.
-**Reasoning**: Explain the causal chain connecting evidence to claim, addressing why each distractor fails.
-**Conclusion**: State the correct choice letter clearly.`,
-        hintDescriptions: `- Tier 1 (pump): “What biological/physical principle is relevant here?”
-- Tier 2 (hint): Recall the specific mechanism or process name
-- Tier 3 (prompt): Constrain to the key evidence — “Given that X, what must follow?” NEVER reveals answer.
-- Tier 4 (bottom_out): Gated — walks through the CER chain step by step.`,
-      },
-      humanities: {
-        role: “expert humanities tutor”,
-        stepGrammar: “summarize → identify claim → locate evidence → assess warrant (Reciprocal Teaching)”,
-        solutionTemplate: `**Identify claim**: State the interpretive claim being tested.
-**Locate evidence**: Quote or cite the specific textual/historical evidence.
-**Explain warrant**: Connect the evidence to the claim with explicit reasoning.
-**Address counter-reading**: Explain why the most tempting distractor represents a misreading.
-**Conclusion**: State the correct choice letter clearly.`,
-        hintDescriptions: `- Tier 1 (pump): “What is the author/thinker's main argument?”
-- Tier 2 (hint): Summarize the relevant passage or context
-- Tier 3 (prompt): “What specific evidence supports or undermines this reading?” NEVER reveals answer.
-- Tier 4 (bottom_out): Gated — walks through the textual analysis step by step.`,
-      },
-      social_science: {
-        role: “expert social science tutor”,
-        stepGrammar: “identify design → variables → inference threats → conclusion limitations”,
-        solutionTemplate: `**Identify design**: Name the study design or theoretical framework.
-**Variables**: Identify key IV, DV, and confounds.
-**Inference threats**: Explain what validity threats the distractors represent.
-**Conclusion limitations**: State the boundaries of what can be concluded.
-**Conclusion**: State the correct choice letter clearly.`,
-        hintDescriptions: `- Tier 1 (pump): “What type of study or argument is this?”
-- Tier 2 (hint): Recall the relevant methodological principle
-- Tier 3 (prompt): “What alternative explanation or threat exists?” NEVER reveals answer.
-- Tier 4 (bottom_out): Gated — walks through the inferential chain step by step.`,
-      },
-      applied_professional: {
-        role: “expert professional practice tutor”,
-        stepGrammar: “prioritize → assess → intervene → evaluate”,
-        solutionTemplate: `**Prioritize**: Identify the most critical concern and why.
-**Assess**: Analyze the relevant data points from the scenario.
-**Intervene**: Explain why the correct action is appropriate.
-**Evaluate**: Describe how to verify the intervention worked, and why alternatives are suboptimal.
-**Conclusion**: State the correct choice letter clearly.`,
-        hintDescriptions: `- Tier 1 (pump): “What is the most urgent concern in this scenario?”
-- Tier 2 (hint): Recall the relevant clinical/professional guideline
-- Tier 3 (prompt): “Given the constraints, which action addresses the root cause?” NEVER reveals answer.
-- Tier 4 (bottom_out): Gated — walks through the decision framework step by step.`,
-      },
-    };
-
-    const discipline = DISCIPLINE_CONFIG[courseType] || DISCIPLINE_CONFIG.stem_quantitative;
+    const discipline = getDisciplineConfig(courseType);
     console.log(`Using discipline config: ${courseType} (role: ${discipline.role})`);
 
     const analysisPrompt = `You are an ${discipline.role} generating an analysis + a “Guide Me” learning scaffold for an exam question.
