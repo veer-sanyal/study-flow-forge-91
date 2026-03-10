@@ -258,7 +258,7 @@ export type Database = {
       course_materials: {
         Row: {
           analysis_json: Json | null
-          content_fingerprint: string | null
+
           course_pack_id: string
           created_at: string
           created_by: string | null
@@ -267,17 +267,17 @@ export type Database = {
           file_name: string
           id: string
           material_type: string
-          questions_generated_count: number | null
+
           sha256: string
           status: string
           storage_path: string
           title: string
-          topics_extracted_count: number | null
+
           updated_at: string
         }
         Insert: {
           analysis_json?: Json | null
-          content_fingerprint?: string | null
+
           course_pack_id: string
           created_at?: string
           created_by?: string | null
@@ -286,17 +286,17 @@ export type Database = {
           file_name: string
           id?: string
           material_type: string
-          questions_generated_count?: number | null
+
           sha256: string
           status?: string
           storage_path: string
           title: string
-          topics_extracted_count?: number | null
+
           updated_at?: string
         }
         Update: {
           analysis_json?: Json | null
-          content_fingerprint?: string | null
+
           course_pack_id?: string
           created_at?: string
           created_by?: string | null
@@ -305,12 +305,12 @@ export type Database = {
           file_name?: string
           id?: string
           material_type?: string
-          questions_generated_count?: number | null
+
           sha256?: string
           status?: string
           storage_path?: string
           title?: string
-          topics_extracted_count?: number | null
+
           updated_at?: string
         }
         Relationships: [
@@ -636,7 +636,6 @@ export type Database = {
           answer_mismatch: boolean | null
           answer_spec: Json | null
           choices: Json | null
-          common_mistakes: Json | null
           correct_answer: string | null
           corresponds_to_exam: string | null
           course_pack_id: string | null
@@ -645,6 +644,7 @@ export type Database = {
           edit_reason: string | null
           edited_at: string | null
           edited_by: string | null
+          empirical_difficulty: number | null
           extracted_raw_text: string | null
           full_solution: string | null
           grading_spec: Json | null
@@ -655,7 +655,6 @@ export type Database = {
           is_published: boolean | null
           midterm_number: number | null
           needs_review: boolean
-          objective_id: string | null
           parent_question_id: string | null
           prompt: string
           quality_flags: Json | null
@@ -667,7 +666,6 @@ export type Database = {
           solution_steps: Json | null
           source: string | null
           source_exam: string | null
-          source_locator: Json | null
           source_material_id: string | null
           status: string | null
           subparts: Json | null
@@ -683,7 +681,6 @@ export type Database = {
           answer_mismatch?: boolean | null
           answer_spec?: Json | null
           choices?: Json | null
-          common_mistakes?: Json | null
           correct_answer?: string | null
           corresponds_to_exam?: string | null
           course_pack_id?: string | null
@@ -692,6 +689,7 @@ export type Database = {
           edit_reason?: string | null
           edited_at?: string | null
           edited_by?: string | null
+          empirical_difficulty?: number | null
           extracted_raw_text?: string | null
           full_solution?: string | null
           grading_spec?: Json | null
@@ -702,7 +700,6 @@ export type Database = {
           is_published?: boolean | null
           midterm_number?: number | null
           needs_review?: boolean
-          objective_id?: string | null
           parent_question_id?: string | null
           prompt: string
           quality_flags?: Json | null
@@ -714,7 +711,6 @@ export type Database = {
           solution_steps?: Json | null
           source?: string | null
           source_exam?: string | null
-          source_locator?: Json | null
           source_material_id?: string | null
           status?: string | null
           subparts?: Json | null
@@ -730,7 +726,6 @@ export type Database = {
           answer_mismatch?: boolean | null
           answer_spec?: Json | null
           choices?: Json | null
-          common_mistakes?: Json | null
           correct_answer?: string | null
           corresponds_to_exam?: string | null
           course_pack_id?: string | null
@@ -739,6 +734,7 @@ export type Database = {
           edit_reason?: string | null
           edited_at?: string | null
           edited_by?: string | null
+          empirical_difficulty?: number | null
           extracted_raw_text?: string | null
           full_solution?: string | null
           grading_spec?: Json | null
@@ -749,7 +745,6 @@ export type Database = {
           is_published?: boolean | null
           midterm_number?: number | null
           needs_review?: boolean
-          objective_id?: string | null
           parent_question_id?: string | null
           prompt?: string
           quality_flags?: Json | null
@@ -761,7 +756,6 @@ export type Database = {
           solution_steps?: Json | null
           source?: string | null
           source_exam?: string | null
-          source_locator?: Json | null
           source_material_id?: string | null
           status?: string | null
           subparts?: Json | null
@@ -777,13 +771,6 @@ export type Database = {
             columns: ["course_pack_id"]
             isOneToOne: false
             referencedRelation: "course_packs"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "questions_objective_id_fkey"
-            columns: ["objective_id"]
-            isOneToOne: false
-            referencedRelation: "objectives"
             referencedColumns: ["id"]
           },
           {
@@ -814,10 +801,8 @@ export type Database = {
           created_at: string
           difficulty: number | null
           due_at: string
-          ease: number
           elapsed_days: number | null
           id: string
-          interval_days: number
           lapses: number | null
           last_reviewed_at: string | null
           learning_steps: number | null
@@ -828,15 +813,14 @@ export type Database = {
           state: number | null
           updated_at: string
           user_id: string
+          version: number
         }
         Insert: {
           created_at?: string
           difficulty?: number | null
           due_at?: string
-          ease?: number
           elapsed_days?: number | null
           id?: string
-          interval_days?: number
           lapses?: number | null
           last_reviewed_at?: string | null
           learning_steps?: number | null
@@ -847,15 +831,14 @@ export type Database = {
           state?: number | null
           updated_at?: string
           user_id: string
+          version?: number
         }
         Update: {
           created_at?: string
           difficulty?: number | null
           due_at?: string
-          ease?: number
           elapsed_days?: number | null
           id?: string
-          interval_days?: number
           lapses?: number | null
           last_reviewed_at?: string | null
           learning_steps?: number | null
@@ -866,6 +849,7 @@ export type Database = {
           state?: number | null
           updated_at?: string
           user_id?: string
+          version?: number
         }
         Relationships: [
           {
@@ -888,7 +872,7 @@ export type Database = {
           mastery_0_1: number
           questions_attempted: number
           questions_correct: number
-          retention_0_1: number
+
           retention_updated_at: string | null
           topic_id: string
           updated_at: string
@@ -904,7 +888,7 @@ export type Database = {
           mastery_0_1?: number
           questions_attempted?: number
           questions_correct?: number
-          retention_0_1?: number
+
           retention_updated_at?: string | null
           topic_id: string
           updated_at?: string
@@ -920,7 +904,7 @@ export type Database = {
           mastery_0_1?: number
           questions_attempted?: number
           questions_correct?: number
-          retention_0_1?: number
+
           retention_updated_at?: string | null
           topic_id?: string
           updated_at?: string
@@ -1096,66 +1080,39 @@ export type Database = {
         }
         Returns: number
       }
-      get_recommended_questions:
-        | {
-            Args: {
-              p_course_id?: string
-              p_current_week?: number
-              p_exam_name?: string
-              p_limit?: number
-              p_pace_offset?: number
-              p_question_type_id?: string
-              p_target_difficulty?: number
-              p_topic_ids?: string[]
-              p_user_id: string
-            }
-            Returns: {
-              choices: Json
-              correct_answer: string
-              difficulty: number
-              difficulty_match: number
-              due_urgency: number
-              hint: string
-              knowledge_gap: number
-              prompt: string
-              question_id: string
-              question_type_id: string
-              score: number
-              solution_steps: Json
-              source_exam: string
-              topic_ids: string[]
-            }[]
-          }
-        | {
-            Args: {
-              p_course_id?: string
-              p_current_week?: number
-              p_exam_name?: string
-              p_ignore_constraints?: boolean
-              p_limit?: number
-              p_pace_offset?: number
-              p_question_type_id?: string
-              p_target_difficulty?: number
-              p_topic_ids?: string[]
-              p_user_id: string
-            }
-            Returns: {
-              choices: Json
-              correct_answer: string
-              difficulty: number
-              difficulty_match: number
-              due_urgency: number
-              hint: string
-              knowledge_gap: number
-              prompt: string
-              question_id: string
-              question_type_id: string
-              score: number
-              solution_steps: Json
-              source_exam: string
-              topic_ids: string[]
-            }[]
-          }
+      get_recommended_questions: {
+        Args: {
+          p_course_id?: string
+          p_current_week?: number
+          p_enrolled_course_ids?: string[]
+          p_exam_name?: string
+          p_ignore_constraints?: boolean
+          p_limit?: number
+          p_pace_offset?: number
+          p_question_type_id?: string
+          p_target_difficulty?: number
+          p_topic_ids?: string[]
+          p_user_id: string
+        }
+        Returns: {
+          choices: Json
+          correct_answer: string
+          course_name: string
+          course_pack_id: string
+          difficulty: number
+          difficulty_match: number
+          due_urgency: number
+          hint: string
+          knowledge_gap: number
+          prompt: string
+          question_id: string
+          question_type_id: string
+          score: number
+          solution_steps: Json
+          source_exam: string
+          topic_ids: string[]
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -1164,6 +1121,8 @@ export type Database = {
         Returns: boolean
       }
       recalculate_fsrs_for_user: { Args: { p_user_id: string }; Returns: Json }
+      refresh_empirical_difficulty: { Args: Record<string, never>; Returns: number }
+      run_daily_fsrs_maintenance: { Args: Record<string, never>; Returns: Json }
     }
     Enums: {
       answer_format:
