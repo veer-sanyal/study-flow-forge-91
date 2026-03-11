@@ -78,7 +78,6 @@ import {
 import { useState, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { useCreateIngestionJob, useProcessJob } from "@/hooks/use-ingestion";
-import { useCanHover } from "@/hooks/use-can-hover";
 import { useAnalysisQueue, QueuedExam } from "@/hooks/use-analysis-queue";
 import { cn } from "@/lib/utils";
 import { useCourseMaterials, useUploadMaterial, useDeleteMaterial, useAnalyzeMaterial, useCheckDuplicate } from "@/hooks/use-materials";
@@ -550,20 +549,13 @@ function ExamCard({
     }
   };
 
-  const [isHovered, setIsHovered] = useState(false);
-  const canHover = useCanHover();
-  const showActions = !isSelectionMode && (!canHover || isHovered);
-
   return (
     <Card
       className={cn(
-        "transition-colors cursor-pointer",
-        isHovered && !isSelectionMode && "border-primary/50",
+        "rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised transition-shadow duration-200 cursor-pointer",
         isSelected && "border-primary bg-primary/5"
       )}
       onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -587,7 +579,7 @@ function ExamCard({
           )}
 
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium truncate">{displayLabel}</h3>
+            <h3 className="font-semibold text-sm leading-snug truncate">{displayLabel}</h3>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>{exam.questionCount} questions</span>
               {exam.needsReviewCount > 0 && (
@@ -601,35 +593,42 @@ function ExamCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {showActions && (
-            <>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit({
-                    sourceExam: exam.sourceExam,
-                    examYear: exam.examYear || null,
-                    examSemester: exam.examSemester || null,
-                    examType: exam.examType || null,
-                  });
-                }}
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(exam.sourceExam);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
+          {!isSelectionMode && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                <DropdownMenuItem
+                  onClick={() =>
+                    onEdit({
+                      sourceExam: exam.sourceExam,
+                      examYear: exam.examYear || null,
+                      examSemester: exam.examSemester || null,
+                      examType: exam.examType || null,
+                    })
+                  }
+                >
+                  <Pencil className="h-4 w-4 mr-2" />
+                  Edit
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                  onClick={() => onDelete(exam.sourceExam)}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           )}
           {!isSelectionMode && <ChevronRight className="h-5 w-5 text-muted-foreground" />}
         </div>
@@ -648,9 +647,6 @@ function MaterialCard({
   onDelete: (id: string, title: string, storagePath: string) => void;
 }) {
   const navigate = useNavigate();
-  const [isHovered, setIsHovered] = useState(false);
-  const canHover = useCanHover();
-  const showActions = !canHover || isHovered;
 
   const handleClick = () => {
     const encodedMaterial = encodeURIComponent(`material:${material.materialId}`);
@@ -659,13 +655,8 @@ function MaterialCard({
 
   return (
     <Card
-      className={cn(
-        "transition-colors cursor-pointer",
-        isHovered && "border-primary/50"
-      )}
+      className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised transition-shadow duration-200 cursor-pointer"
       onClick={handleClick}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -673,7 +664,7 @@ function MaterialCard({
             <BookOpen className="h-5 w-5 text-muted-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <h3 className="font-medium truncate">{material.title}</h3>
+            <h3 className="font-semibold text-sm leading-snug truncate">{material.title}</h3>
             <div className="flex items-center gap-3 text-sm text-muted-foreground">
               <span>{material.count} questions</span>
               {material.needsReview > 0 && (
@@ -687,19 +678,27 @@ function MaterialCard({
         </div>
 
         <div className="flex items-center gap-2">
-          {showActions && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="text-destructive hover:text-destructive hover:bg-destructive/10"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete(material.materialId, material.title, material.storagePath);
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                onClick={() => onDelete(material.materialId, material.title, material.storagePath)}
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </CardContent>
@@ -775,7 +774,7 @@ function AllMaterialCard({
 
   return (
     <Card
-      className="transition-colors cursor-pointer hover:border-primary/50"
+      className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised transition-shadow duration-200 cursor-pointer"
       onClick={() => onEdit(material.id)}
     >
       <CardContent className="p-4 flex items-center justify-between">
