@@ -53,9 +53,17 @@ import {
   Square,
   CheckSquare,
   BookOpen,
-  Tag
+  Tag,
+  MoreVertical
 } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   parseExamName,
   groupExamsByYearAndSemester,
@@ -762,21 +770,13 @@ function AllMaterialCard({
   onDelete: (id: string, title: string, storagePath: string) => void;
 }) {
   const navigate = useNavigate();
-  const [isHovered, setIsHovered] = useState(false);
-  const canHover = useCanHover();
-  const showActions = !canHover || isHovered;
   const status = material.status;
   const qCount = questionCount;
 
   return (
     <Card
-      className={cn(
-        "transition-colors cursor-pointer",
-        isHovered && "border-primary/50"
-      )}
+      className="transition-colors cursor-pointer hover:border-primary/50"
       onClick={() => onEdit(material.id)}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <CardContent className="p-4 flex items-center justify-between">
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -794,46 +794,46 @@ function AllMaterialCard({
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {showActions && (
-            <>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <MoreVertical className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+              <DropdownMenuItem onClick={() => onEdit(material.id)}>
+                <Pencil className="h-4 w-4 mr-2" />
+                Open
+              </DropdownMenuItem>
               {qCount > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-xs h-7 px-2"
-                  onClick={(e) => {
-                    e.stopPropagation();
+                <DropdownMenuItem
+                  onClick={() =>
                     navigate(
                       `/admin/questions/${material.course_pack_id}/${encodeURIComponent(`Generated — ${material.title.trim()}`)}`
-                    );
-                  }}
+                    )
+                  }
                 >
+                  <BookOpen className="h-4 w-4 mr-2" />
                   View Questions
-                </Button>
+                </DropdownMenuItem>
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onEdit(material.id);
-                }}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-destructive focus:text-destructive focus:bg-destructive/10"
+                onClick={() =>
+                  onDelete(material.id, material.title, material.storage_path)
+                }
               >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-destructive hover:text-destructive hover:bg-destructive/10"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(material.id, material.title, material.storage_path);
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </>
-          )}
+                <Trash2 className="h-4 w-4 mr-2" />
+                Delete
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </CardContent>
