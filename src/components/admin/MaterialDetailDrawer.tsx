@@ -72,13 +72,36 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     }
   }, [material]);
 
-  // Clear job tracking and poll count when drawer closes
+  // Restore active generation job when drawer opens (survives close/reopen)
   useEffect(() => {
     if (!materialId) {
       setActiveJobId(null);
       setAnalysisPollCount(0);
+      return;
     }
+    // Look for any running/pending generation job for this material
+    supabase
+      .from("generation_jobs")
+      .select("id, status")
+      .eq("material_id", materialId)
+      .in("status", ["running", "pending"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .then(({ data }) => {
+        if (data && data.length > 0) {
+          setActiveJobId(data[0].id);
+        }
+      });
   }, [materialId]);
+
+  // Invalidate queries when generation job completes or fails
+  useEffect(() => {
+    if (activeJob?.status === "completed" || activeJob?.status === "failed") {
+      queryClient.invalidateQueries({ queryKey: ["material-question-count", materialId] });
+      queryClient.invalidateQueries({ queryKey: ["course-material", materialId] });
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+    }
+  }, [activeJob?.status, materialId, queryClient]);
 
   // Poll single-material query every 3s while analysis is in progress.
   // Hard cap at 200 polls (~10 min) to prevent infinite polling on stuck jobs.
@@ -92,6 +115,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
     const id = setInterval(() => {
       setAnalysisPollCount((n) => n + 1);
       queryClient.invalidateQueries({ queryKey: ["course-material", materialId] });
+      queryClient.invalidateQueries({ queryKey: ["course-materials"] });
     }, 3000);
     return () => clearInterval(id);
   }, [material?.status, materialId, queryClient, analysisPollCount]);
