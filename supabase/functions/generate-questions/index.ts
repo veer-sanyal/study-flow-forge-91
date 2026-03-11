@@ -159,6 +159,11 @@ async function runGeneration(
   targetCount: number,
   preRunCount: number,
 ): Promise<void> {
+  const startTime = Date.now();
+  // Budget: skip optional work (second-pass QA) if elapsed exceeds this.
+  // Supabase free-tier waitUntil ≈ 150s; leave 40s headroom for insert + finalize.
+  const SECOND_PASS_BUDGET_MS = 110_000;
+
   try {
     // Download PDF
     const { data: blob, error: dlErr } = await supabase.storage
@@ -267,20 +272,25 @@ async function runGeneration(
       console.log(`[generate-questions] Rejected ${afterDupRemoval.length - qualityFiltered.length} low-quality questions (score < 70)`);
     }
 
-    // Second-pass LLM validation (Phase 4)
+    // Second-pass LLM validation (Phase 4) — skip if time budget exceeded
     let secondPassResults: Awaited<ReturnType<typeof runSecondPassValidation>> = [];
-    try {
-      secondPassResults = await runSecondPassValidation(
-        qualityFiltered,
-        analysis.course_type,
-        geminiApiKey,
-      );
-      const failCount = secondPassResults.filter(r => !r.passed).length;
-      if (failCount > 0) {
-        console.log(`[generate-questions] Second-pass flagged ${failCount}/${qualityFiltered.length} questions`);
+    const elapsedMs = Date.now() - startTime;
+    if (elapsedMs > SECOND_PASS_BUDGET_MS) {
+      console.warn(`[generate-questions] Skipping second-pass QA — elapsed ${Math.round(elapsedMs / 1000)}s exceeds budget`);
+    } else {
+      try {
+        secondPassResults = await runSecondPassValidation(
+          qualityFiltered,
+          analysis.course_type,
+          geminiApiKey,
+        );
+        const failCount = secondPassResults.filter(r => !r.passed).length;
+        if (failCount > 0) {
+          console.log(`[generate-questions] Second-pass flagged ${failCount}/${qualityFiltered.length} questions`);
+        }
+      } catch (err) {
+        console.warn("[generate-questions] Second-pass validation failed, continuing:", err instanceof Error ? err.message : "unknown");
       }
-    } catch (err) {
-      console.warn("[generate-questions] Second-pass validation failed, continuing:", err instanceof Error ? err.message : "unknown");
     }
 
     // Update progress with validated count (after dedup/quality filtering)
