@@ -223,21 +223,32 @@ export function useDeleteMaterial() {
 
   return useMutation({
     mutationFn: async ({ materialId, storagePath }: { materialId: string; storagePath: string }) => {
-      // Delete from storage only if path exists
-      if (storagePath) {
-        await supabase.storage.from('course-materials').remove([storagePath]);
-      }
+      // 1. Delete generation_jobs first (FK has no CASCADE, would block delete)
+      const { error: jobsError } = await supabase
+        .from("generation_jobs")
+        .delete()
+        .eq("material_id", materialId);
 
-      // Delete record
+      if (jobsError) throw jobsError;
+
+      // 2. Delete DB record (material_chunks CASCADE, questions/objectives SET NULL)
       const { error } = await supabase
         .from("course_materials")
         .delete()
         .eq("id", materialId);
 
       if (error) throw error;
+
+      // 3. Delete from storage last (only after DB succeeds, avoids orphaned rows)
+      if (storagePath) {
+        await supabase.storage.from('course-materials').remove([storagePath]);
+      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["course-materials"] });
+      queryClient.invalidateQueries({ queryKey: ["course-material"] });
+      queryClient.invalidateQueries({ queryKey: ["exams-for-course"] });
+      queryClient.invalidateQueries({ queryKey: ["courses-with-stats"] });
     },
   });
 }

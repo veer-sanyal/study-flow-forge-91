@@ -552,7 +552,7 @@ function ExamCard({
   return (
     <Card
       className={cn(
-        "rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised transition-shadow duration-200 cursor-pointer",
+        "rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised hover:border-primary/50 transition-all duration-200 cursor-pointer",
         isSelected && "border-primary bg-primary/5"
       )}
       onClick={handleClick}
@@ -655,7 +655,7 @@ function MaterialCard({
 
   return (
     <Card
-      className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised transition-shadow duration-200 cursor-pointer"
+      className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised hover:border-primary/50 transition-all duration-200 cursor-pointer"
       onClick={handleClick}
     >
       <CardContent className="p-4 flex items-center justify-between">
@@ -774,7 +774,7 @@ function AllMaterialCard({
 
   return (
     <Card
-      className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised transition-shadow duration-200 cursor-pointer"
+      className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface hover:shadow-raised hover:border-primary/50 transition-all duration-200 cursor-pointer"
       onClick={() => onEdit(material.id)}
     >
       <CardContent className="p-4 flex items-center justify-between">
