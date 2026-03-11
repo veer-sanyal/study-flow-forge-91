@@ -216,6 +216,12 @@ async function runGeneration(
 
       allQuestions.push(...questions);
 
+      // Update progress after each Gemini call so the UI progress bar advances
+      await supabase
+        .from("generation_jobs")
+        .update({ total_questions_generated: preRunCount + allQuestions.length })
+        .eq("id", jobId);
+
       // Append generated stems to dedup context for next call
       if (callCount > 1 && questions.length > 0) {
         dedupContext += "\n" + questions.map(q => `- ${q.stem}`).join("\n");
@@ -276,6 +282,12 @@ async function runGeneration(
     } catch (err) {
       console.warn("[generate-questions] Second-pass validation failed, continuing:", err instanceof Error ? err.message : "unknown");
     }
+
+    // Update progress with validated count (after dedup/quality filtering)
+    await supabase
+      .from("generation_jobs")
+      .update({ total_questions_generated: preRunCount + qualityFiltered.length })
+      .eq("id", jobId);
 
     // Answer position rebalancing
     rebalanceAnswerPositions(qualityFiltered);

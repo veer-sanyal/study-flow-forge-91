@@ -295,6 +295,7 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
 
                     // Job running
                     if (activeJob?.status === "running" || activeJob?.status === "pending") {
+                      const hasProgress = activeJob.total_questions_generated > 0 && activeJob.total_questions_target > 0;
                       return (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -302,14 +303,17 @@ export function MaterialDetailDrawer({ materialId, onClose }: MaterialDetailDraw
                             <span>Generating questions server-side…</span>
                           </div>
                           <Progress
-                            value={activeJob.total_questions_target > 0
+                            value={hasProgress
                               ? (activeJob.total_questions_generated / activeJob.total_questions_target) * 100
                               : undefined}
+                            indeterminate={!hasProgress}
                             className="h-2"
                           />
                           <div className="flex items-center justify-between">
                             <p className="text-xs text-muted-foreground">
-                              {activeJob.total_questions_generated} of {activeJob.total_questions_target} generated — browser can be closed safely
+                              {hasProgress
+                                ? `${activeJob.total_questions_generated} of ${activeJob.total_questions_target} generated — browser can be closed safely`
+                                : "Waiting for questions from AI — browser can be closed safely"}
                             </p>
                             <Button
                               variant="ghost"
