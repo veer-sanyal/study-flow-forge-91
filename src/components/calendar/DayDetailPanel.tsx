@@ -3,7 +3,9 @@ import { PlayCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getEventTypeColor } from '@/hooks/use-calendar';
+import { CalendarDayBreakdown } from './CalendarDayBreakdown';
 import type { CalendarDayReviewData } from '@/types/progress';
+import type { StudyPlanDaySummary } from '@/hooks/use-calendar-study-plan';
 import { cn } from '@/lib/utils';
 
 interface CalendarEvent {
@@ -18,6 +20,7 @@ interface DayDetailPanelProps {
   date: string; // YYYY-MM-DD
   events: CalendarEvent[];
   reviewData: CalendarDayReviewData | undefined;
+  studyPlan: StudyPlanDaySummary | undefined;
   onStartReviews: (topicIds: string[]) => void;
 }
 
@@ -25,6 +28,7 @@ export function DayDetailPanel({
   date,
   events,
   reviewData,
+  studyPlan,
   onStartReviews,
 }: DayDetailPanelProps): React.ReactElement {
   const dateObj = parseISO(date);
@@ -43,13 +47,16 @@ export function DayDetailPanel({
   const hasEvents = dayEvents.length > 0;
   const hasReviews = reviewData && reviewData.totalDue > 0;
   const hasNew = reviewData && reviewData.totalNew > 0;
+  const hasStudyPlan = studyPlan && studyPlan.totalQuestions > 0;
 
   const stripClass =
-    hasReviews || hasNew ? 'bg-primary' :
-    hasEvents ? 'bg-muted' :
-    'bg-border';
+    hasStudyPlan
+      ? studyPlan.totalQuestions > 35 ? 'bg-destructive' : studyPlan.totalQuestions > 20 ? 'bg-warning' : 'bg-success'
+      : hasReviews || hasNew ? 'bg-primary'
+      : hasEvents ? 'bg-muted'
+      : 'bg-border';
 
-  if (!hasEvents && !hasReviews && !hasNew) {
+  if (!hasEvents && !hasReviews && !hasNew && !hasStudyPlan) {
     return (
       <div className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden">
         <div className="h-1 bg-border" />
@@ -93,8 +100,15 @@ export function DayDetailPanel({
           </div>
         )}
 
-        {/* Study Plan */}
-        {(hasReviews || hasNew) && (
+        {/* Study Plan — enhanced with proactive breakdown */}
+        {hasStudyPlan && (
+          <div className={cn('', hasEvents && 'pt-3 border-t border-border')}>
+            <CalendarDayBreakdown plan={studyPlan} />
+          </div>
+        )}
+
+        {/* Legacy review section (shows when no study plan data but reviews exist) */}
+        {!hasStudyPlan && (hasReviews || hasNew) && (
           <div className={cn('space-y-3 text-sm', hasEvents && 'pt-3 border-t border-border')}>
             <div className="flex items-center justify-between">
               <h4 className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
@@ -133,15 +147,18 @@ export function DayDetailPanel({
                 </div>
               ))}
             </div>
-
-            <Button
-              className="w-full gap-2"
-              onClick={handleStartReviews}
-            >
-              <PlayCircle className="h-4 w-4" />
-              Start Session ({((reviewData?.totalDue || 0) + (reviewData?.totalNew || 0))} q)
-            </Button>
           </div>
+        )}
+
+        {/* Start Session button */}
+        {(hasReviews || hasNew || hasStudyPlan) && (
+          <Button
+            className="w-full gap-2"
+            onClick={handleStartReviews}
+          >
+            <PlayCircle className="h-4 w-4" />
+            Start Session ({hasStudyPlan ? `~${studyPlan.totalQuestions}` : ((reviewData?.totalDue || 0) + (reviewData?.totalNew || 0))} q)
+          </Button>
         )}
       </div>
     </div>

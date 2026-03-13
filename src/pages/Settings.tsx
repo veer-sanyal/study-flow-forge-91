@@ -12,15 +12,16 @@ import { useTheme } from "@/hooks/use-theme";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserSettings } from "@/hooks/use-settings";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  Moon, 
-  Sun, 
-  LogOut, 
-  User, 
-  Gauge, 
+import {
+  Moon,
+  Sun,
+  LogOut,
+  User,
+  Gauge,
   Target,
   Bell,
-  Loader2
+  Loader2,
+  Zap
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
@@ -60,6 +61,10 @@ export default function Settings() {
 
   const handleDailyGoalChange = (value: number[]) => {
     updateSettings({ daily_goal: value[0] });
+  };
+
+  const handleIntensityChange = (intensity: 'light' | 'moderate' | 'heavy') => {
+    updateSettings({ session_intensity: intensity });
   };
 
   const handlePaceOffsetChange = (value: number[]) => {
@@ -187,27 +192,40 @@ export default function Settings() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
-                {/* Daily Goal */}
+                {/* Session Intensity */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      <Target className="h-4 w-4 text-muted-foreground" />
-                      <Label className="text-sm font-medium">Daily Goal</Label>
+                      <Zap className="h-4 w-4 text-muted-foreground" />
+                      <Label className="text-sm font-medium">Session Intensity</Label>
                     </div>
-                    <span className="text-sm font-semibold text-primary">
-                      {settings.daily_goal} questions
-                    </span>
                   </div>
-                  <Slider
-                    value={[settings.daily_goal]}
-                    onValueCommit={handleDailyGoalChange}
-                    min={5}
-                    max={30}
-                    step={5}
-                    className="w-full"
-                  />
+                  <div className="grid grid-cols-3 gap-2">
+                    {(['light', 'moderate', 'heavy'] as const).map((level) => {
+                      const isActive = (settings.session_intensity || 'moderate') === level;
+                      const labels = {
+                        light: { title: 'Light', desc: 'Fewer questions, shorter sessions' },
+                        moderate: { title: 'Moderate', desc: 'Balanced study load' },
+                        heavy: { title: 'Heavy', desc: 'More questions, deeper practice' },
+                      };
+                      return (
+                        <button
+                          key={level}
+                          onClick={() => handleIntensityChange(level)}
+                          className={`flex flex-col items-center gap-1 p-3 rounded-lg border text-center transition-colors ${
+                            isActive
+                              ? 'border-primary bg-primary/5 text-primary'
+                              : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                          }`}
+                        >
+                          <span className="text-sm font-semibold">{labels[level].title}</span>
+                          <span className="text-[10px] text-muted-foreground leading-tight">{labels[level].desc}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
                   <p className="text-xs text-muted-foreground">
-                    Questions in your daily plan
+                    Controls how many questions are recommended per session
                   </p>
                 </div>
 

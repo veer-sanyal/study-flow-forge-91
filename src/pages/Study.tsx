@@ -26,18 +26,20 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useSidebar } from "@/hooks/use-sidebar";
 import { SubpartResult } from "@/types/study";
 import { useDiagnosticData, useSubmitDiagnostic } from "@/hooks/use-diagnostic";
+import { useSessionRecommendation } from "@/hooks/use-session-recommendation";
+import { useAdaptiveSequencer } from "@/hooks/use-adaptive-sequencer";
 import { Loader2 } from "lucide-react";
 
-type StudyPhase = "today_plan" | "keep_practicing" | "diagnostic";
-type StudyState = "home" | "playing" | "plan_complete" | "session_pause";
+type StudyPhase = "session" | "diagnostic";
+type StudyState = "home" | "playing" | "complete" | "keep_going_prompt";
 
-const KEEP_PRACTICING_BATCH = 5;
+const CONTINUATION_BATCH = 5;
 
 export default function Study() {
   const location = useLocation();
   const navigate = useNavigate();
   const [studyState, setStudyState] = useState<StudyState>("home");
-  const [studyPhase, setStudyPhase] = useState<StudyPhase>("today_plan");
+  const [studyPhase, setStudyPhase] = useState<StudyPhase>("session");
   const [currentIndex, setCurrentIndex] = useState(0);
   const [completedIndices, setCompletedIndices] = useState<number[]>([]);
   const [questionOutcomes, setQuestionOutcomes] = useState<Record<number, 'correct' | 'incorrect' | 'skipped'>>({});
@@ -45,17 +47,22 @@ export default function Study() {
     correct: number;
     total: number;
   }>({ correct: 0, total: 0 });
-  const [todayPlanResults, setTodayPlanResults] = useState<{
-    correct: number;
-    total: number;
-  } | null>(null);
   const questionStartTime = useRef<number>(Date.now());
+  // Track the recommended boundary for "Keep going?" prompt
+  const [recommendedBoundary, setRecommendedBoundary] = useState<number>(10);
+  const [hasPassedBoundary, setHasPassedBoundary] = useState(false);
 
   const { user } = useAuth();
   const { settings } = useUserSettings();
   const { enrollments, enrolledCourseIdsArray, isLoadingEnrollments } = useEnrollments();
   const queryClient = useQueryClient();
   const { collapse, expand } = useSidebar();
+
+  // Session recommendation (dynamic goals)
+  const { data: sessionRec } = useSessionRecommendation();
+
+  // Adaptive sequencer
+  const sequencer = useAdaptiveSequencer();
 
   // Focus system from context
   const {
@@ -68,14 +75,16 @@ export default function Study() {
   } = useFocusContext();
 
   // Unified dashboard data
-  const dailyGoal = settings.daily_goal || 10;
   const dailyPlanMode = settings.daily_plan_mode || 'single_course';
   const { data: dashboardData, isLoading: dashboardLoading } = useStudyDashboard();
+
+  // Use recommended session size or fall back to daily_goal
+  const effectiveSessionSize = sessionRec?.recommended_total || settings.daily_goal || 10;
 
   // Handle navigation state from StudyFocus page
   useEffect(() => {
     if (location.state?.startPractice) {
-      handleStartPractice();
+      handleStartSession();
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [location.state]);
@@ -90,44 +99,55 @@ export default function Study() {
   }, [studyState, collapse, expand]);
 
   // Convert focus filters to study query params
-  // Use enrolled courses as default if no specific course filter is set
   const studyQueryParams = useMemo(() => {
-    // Determine course filter: use focus filter if set, otherwise use first enrolled course
     const effectiveCourseId = filters.courseIds.length === 1
       ? filters.courseIds[0]
       : enrolledCourseIdsArray.length === 1
         ? enrolledCourseIdsArray[0]
         : null;
 
-    // Check if user has active custom focus filters
     const hasCustomFilters = filters.examNames.length > 0 ||
       filters.topicIds.length > 0 ||
       filters.questionTypeId !== null ||
       filters.midtermNumber !== null;
 
     return {
-      limit: studyPhase === "today_plan" ? dailyGoal : (hasCustomFilters ? 100 : KEEP_PRACTICING_BATCH),
+      limit: effectiveSessionSize,
       paceOffset: settings.pace_offset,
       courseId: effectiveCourseId,
       examName: filters.examNames.length === 1 ? filters.examNames[0] : null,
       topicIds: filters.topicIds,
       questionTypeId: filters.questionTypeId,
-      // Pass enrolled courses for broader filtering when no single course selected
       enrolledCourseIds: enrolledCourseIdsArray,
-      // Ignore topic coverage & difficulty constraints when custom filters are active
       ignoreConstraints: hasCustomFilters,
     };
-  }, [studyPhase, dailyGoal, settings.pace_offset, filters, enrolledCourseIdsArray]);
+  }, [effectiveSessionSize, settings.pace_offset, filters, enrolledCourseIdsArray]);
 
-  // Fetch questions based on current phase and filters
+  // Fetch questions
   const { data: questions, isLoading, error, refetch } = useStudyQuestions(studyQueryParams);
+
+  // Initialize sequencer when questions load
+  useEffect(() => {
+    if (questions && questions.length > 0 && studyState === "playing" && studyPhase === "session") {
+      const allTopicIds = [...new Set(questions.flatMap(q => q.topicIds))];
+      const excludeIds = questions.map(q => q.id);
+      sequencer.initQueue(questions, allTopicIds, excludeIds);
+    }
+  }, [questions, studyState, studyPhase]);
 
   // Diagnostic Data
   const { data: diagnosticData } = useDiagnosticData(enrolledCourseIdsArray[0] || null);
   const submitDiagnostic = useSubmitDiagnostic();
   const [diagnosticResults, setDiagnosticResults] = useState<Array<{ topicId: string, isCorrect: boolean }>>([]);
 
-  const activeQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : questions;
+  // Active questions: for session phase, use sequencer queue; for diagnostic, use diagnostic data
+  const activeQuestions = studyPhase === "diagnostic"
+    ? diagnosticData?.questions
+    : sequencer.queue.length > 0 ? sequencer.queue : questions;
+
+  const activeCurrentIndex = studyPhase === "diagnostic"
+    ? currentIndex
+    : sequencer.queue.length > 0 ? sequencer.currentIndex : currentIndex;
 
   const submitAttempt = useSubmitAttempt();
 
@@ -140,6 +160,7 @@ export default function Study() {
     setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
     setDiagnosticResults([]);
+    setHasPassedBoundary(false);
     questionStartTime.current = Date.now();
   }, [diagnosticData]);
 
@@ -152,21 +173,17 @@ export default function Study() {
       skipped: boolean;
       selectedChoiceId: string | null;
     }) => {
-      // Determine active questions based on phase
-      const currentQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : questions;
-
+      const currentQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : activeQuestions;
       if (!currentQuestions) return;
 
-      const currentQuestion = currentQuestions[currentIndex];
+      const effectiveIndex = studyPhase === "diagnostic" ? currentIndex : activeCurrentIndex;
+      const currentQuestion = currentQuestions[effectiveIndex];
+      if (!currentQuestion) return;
+
       const timeSpentMs = Date.now() - questionStartTime.current;
 
-      // Logic for standard study phase
+      // Submit attempt for non-diagnostic
       if (studyPhase !== "diagnostic" && !result.skipped) {
-        console.log('[Study] Submitting attempt for question:', currentQuestion.id, {
-          isCorrect: result.isCorrect,
-          selectedChoiceId: result.selectedChoiceId,
-          studyPhase,
-        });
         submitAttempt.mutate({
           questionId: currentQuestion.id,
           selectedChoiceId: result.selectedChoiceId,
@@ -178,7 +195,7 @@ export default function Study() {
         });
       }
 
-      // Logic for diagnostic phase results
+      // Diagnostic results
       if (studyPhase === "diagnostic") {
         const topicId = diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId;
         if (topicId) {
@@ -192,25 +209,47 @@ export default function Study() {
       };
       setSessionResults(newResults);
 
-      // Mark current question as completed and record outcome
       setCompletedIndices(prev =>
-        prev.includes(currentIndex) ? prev : [...prev, currentIndex]
+        prev.includes(effectiveIndex) ? prev : [...prev, effectiveIndex]
       );
       setQuestionOutcomes(prev => ({
         ...prev,
-        [currentIndex]: result.skipped ? 'skipped' : result.isCorrect ? 'correct' : 'incorrect',
+        [effectiveIndex]: result.skipped ? 'skipped' : result.isCorrect ? 'correct' : 'incorrect',
       }));
 
-      if (currentIndex < currentQuestions.length - 1) {
+      // Advance sequencer for session phase
+      if (studyPhase === "session") {
+        sequencer.advance({
+          isCorrect: result.isCorrect,
+          guideUsed: result.guideUsed,
+          confidence: result.confidence,
+          questionTopicIds: currentQuestion.topicIds || [],
+        });
+
+        // Check if we've hit the recommended boundary
+        const nextIndex = activeCurrentIndex + 1;
+        if (nextIndex >= recommendedBoundary && !hasPassedBoundary) {
+          setHasPassedBoundary(true);
+          setStudyState("keep_going_prompt");
+          return;
+        }
+
+        // Check if we've exhausted the queue
+        if (nextIndex >= sequencer.totalQuestions) {
+          setStudyState("complete");
+          return;
+        }
+
+        questionStartTime.current = Date.now();
+        return;
+      }
+
+      // Diagnostic / fallback linear progression
+      if (effectiveIndex < currentQuestions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
         questionStartTime.current = Date.now();
       } else {
-        // Session Complete
-        if (studyPhase === "today_plan") {
-          setTodayPlanResults(newResults);
-          setStudyState("plan_complete");
-        } else if (studyPhase === "diagnostic") {
-          // Submit diagnostic results
+        if (studyPhase === "diagnostic") {
           const finalResults = [
             ...diagnosticResults,
             ...(diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId
@@ -218,25 +257,25 @@ export default function Study() {
               : [])
           ];
           await submitDiagnostic.mutateAsync({ results: finalResults });
-          setStudyState("plan_complete");
-        } else {
-          setStudyState("session_pause");
         }
+        setStudyState("complete");
       }
     },
-    [currentIndex, questions, diagnosticData, submitAttempt, studyPhase, sessionResults, diagnosticResults, submitDiagnostic]
+    [currentIndex, activeCurrentIndex, activeQuestions, diagnosticData, submitAttempt, studyPhase, sessionResults, diagnosticResults, submitDiagnostic, sequencer, recommendedBoundary, hasPassedBoundary]
   );
 
   // Handle multi-part question completion
   const handleMultiPartComplete = useCallback(
     async (results: SubpartResult[]) => {
-      const currentQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : questions;
+      const currentQuestions = studyPhase === "diagnostic" ? diagnosticData?.questions : activeQuestions;
       if (!currentQuestions) return;
 
-      const currentQuestion = currentQuestions[currentIndex];
+      const effectiveIndex = studyPhase === "diagnostic" ? currentIndex : activeCurrentIndex;
+      const currentQuestion = currentQuestions[effectiveIndex];
+      if (!currentQuestion) return;
+
       const timeSpentMs = Date.now() - questionStartTime.current;
 
-      // Submit attempt for each subpart if NOT diagnostic
       if (studyPhase !== "diagnostic") {
         for (const result of results) {
           if (!result.skipped) {
@@ -254,8 +293,8 @@ export default function Study() {
         }
       }
 
-      // Calculate overall correctness
       const allCorrect = results.every(r => r.isCorrect);
+      const anyGuideUsed = results.some(r => r.guideUsed);
 
       if (studyPhase === "diagnostic") {
         const topicId = diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId;
@@ -270,15 +309,36 @@ export default function Study() {
       };
       setSessionResults(newResults);
 
-      if (currentIndex < currentQuestions.length - 1) {
+      // Advance sequencer for session phase
+      if (studyPhase === "session") {
+        sequencer.advance({
+          isCorrect: allCorrect,
+          guideUsed: anyGuideUsed,
+          confidence: null,
+          questionTopicIds: currentQuestion.topicIds || [],
+        });
+
+        const nextIndex = activeCurrentIndex + 1;
+        if (nextIndex >= recommendedBoundary && !hasPassedBoundary) {
+          setHasPassedBoundary(true);
+          setStudyState("keep_going_prompt");
+          return;
+        }
+
+        if (nextIndex >= sequencer.totalQuestions) {
+          setStudyState("complete");
+          return;
+        }
+
+        questionStartTime.current = Date.now();
+        return;
+      }
+
+      if (effectiveIndex < currentQuestions.length - 1) {
         setCurrentIndex((prev) => prev + 1);
         questionStartTime.current = Date.now();
       } else {
-        if (studyPhase === "today_plan") {
-          setTodayPlanResults(newResults);
-          setStudyState("plan_complete");
-        } else if (studyPhase === "diagnostic") {
-          // Submit diagnostic
+        if (studyPhase === "diagnostic") {
           const finalResults = [
             ...diagnosticResults,
             ...(diagnosticData?.topicDetails.find(d => d.question.id === currentQuestion.id)?.topicId
@@ -286,76 +346,55 @@ export default function Study() {
               : [])
           ];
           await submitDiagnostic.mutateAsync({ results: finalResults });
-          setStudyState("plan_complete");
-        } else {
-          setStudyState("session_pause");
         }
+        setStudyState("complete");
       }
     },
-    [currentIndex, questions, diagnosticData, submitAttempt, studyPhase, sessionResults, diagnosticResults, submitDiagnostic]
+    [currentIndex, activeCurrentIndex, activeQuestions, diagnosticData, submitAttempt, studyPhase, sessionResults, diagnosticResults, submitDiagnostic, sequencer, recommendedBoundary, hasPassedBoundary]
   );
 
-  const handleStartTodayPlan = useCallback(async () => {
-    setStudyState("playing");
-    setStudyPhase("today_plan");
-    await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
-    await refetch();
+  const resetSessionState = useCallback(() => {
     setCurrentIndex(0);
     setCompletedIndices([]);
     setQuestionOutcomes({});
     setSessionResults({ correct: 0, total: 0 });
+    setHasPassedBoundary(false);
     questionStartTime.current = Date.now();
-  }, [queryClient, refetch]);
+  }, []);
 
-  const handleStartPractice = useCallback(async (preset?: FocusPreset) => {
+  const handleStartSession = useCallback(async (preset?: FocusPreset) => {
     setStudyState("playing");
+    setStudyPhase("session");
     if (preset) {
       applyPreset(preset);
     }
-    setStudyPhase("keep_practicing");
+    setRecommendedBoundary(effectiveSessionSize);
     await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     await refetch();
-    setCurrentIndex(0);
-    setCompletedIndices([]);
-    setQuestionOutcomes({});
-    setSessionResults({ correct: 0, total: 0 });
-    questionStartTime.current = Date.now();
-  }, [queryClient, refetch, applyPreset]);
+    resetSessionState();
+  }, [queryClient, refetch, applyPreset, effectiveSessionSize, resetSessionState]);
 
-  const handleKeepPracticing = useCallback(async () => {
-    setStudyState("playing");
-    setStudyPhase("keep_practicing");
-    await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
-    await refetch();
-    setCurrentIndex(0);
-    setCompletedIndices([]);
-    setQuestionOutcomes({});
-    setSessionResults({ correct: 0, total: 0 });
-    questionStartTime.current = Date.now();
-  }, [queryClient, refetch]);
+  const handleStartTodayPlan = useCallback(async () => {
+    await handleStartSession();
+  }, [handleStartSession]);
 
-  const handleContinuePracticing = useCallback(async () => {
+  const handleKeepGoing = useCallback(() => {
+    // Continue past the recommended boundary — extend by CONTINUATION_BATCH
+    setRecommendedBoundary(prev => prev + CONTINUATION_BATCH);
     setStudyState("playing");
-    await queryClient.invalidateQueries({ queryKey: ['study-questions'] });
-    await refetch();
-    setCurrentIndex(0);
-    setCompletedIndices([]);
-    setQuestionOutcomes({});
-    setSessionResults({ correct: 0, total: 0 });
     questionStartTime.current = Date.now();
-  }, [queryClient, refetch]);
+  }, []);
 
   const handleGoHome = useCallback(() => {
     setStudyState("home");
-    setStudyPhase("today_plan");
-    setCurrentIndex(0);
-    setCompletedIndices([]);
-    setQuestionOutcomes({});
-    setSessionResults({ correct: 0, total: 0 });
+    setStudyPhase("session");
+    resetSessionState();
     clearFilters();
     queryClient.invalidateQueries({ queryKey: ['study-questions'] });
     queryClient.invalidateQueries({ queryKey: ['today-plan-stats'] });
-  }, [queryClient, clearFilters]);
+    queryClient.invalidateQueries({ queryKey: ['session-recommendation'] });
+    queryClient.invalidateQueries({ queryKey: ['study-dashboard'] });
+  }, [queryClient, clearFilters, resetSessionState]);
 
   // Navigate to specific question index
   const handleNavigateQuestion = useCallback((index: number) => {
@@ -382,12 +421,11 @@ export default function Study() {
         icon: 'arrow',
         onClick: () => {
           setCourseIds([next.id]);
-          handleKeepPracticing();
+          handleStartSession();
         },
       });
     }
 
-    // Use practice recommendations for weak topics
     const weakRec = dashboardData?.practiceRecommendations.find(r => r.type === 'weak_topic');
     if (weakRec) {
       suggestions.push({
@@ -399,38 +437,34 @@ export default function Study() {
           if (weakRec.filters.topicIds) {
             setTopicIds(weakRec.filters.topicIds);
           }
-          handleKeepPracticing();
+          handleStartSession();
         },
       });
     }
 
-    // Use practice recommendations for overdue reviews
     const overdueRec = dashboardData?.practiceRecommendations.find(r => r.type === 'overdue_review');
     if (overdueRec) {
       suggestions.push({
         id: 'overdue',
         label: overdueRec.label,
         icon: 'refresh',
-        onClick: handleKeepPracticing,
+        onClick: () => handleStartSession(),
       });
     }
 
     return suggestions;
-  }, [dashboardData, setCourseIds, setTopicIds, handleKeepPracticing]);
+  }, [dashboardData, setCourseIds, setTopicIds, handleStartSession]);
 
-  // Handle continue session
   const handleContinueSession = useCallback(() => {
-    // Resume practice with same focus
-    handleStartPractice();
-  }, [handleStartPractice]);
+    handleStartSession();
+  }, [handleStartSession]);
 
-  // Handle starting a recommendation
   const handleStartRecommendation = useCallback((rec: PracticeRecommendation) => {
     if (rec.filters.topicIds) {
       setTopicIds(rec.filters.topicIds);
     }
-    handleStartPractice();
-  }, [setTopicIds, handleStartPractice]);
+    handleStartSession();
+  }, [setTopicIds, handleStartSession]);
 
   // HOME state — enrollment gate
   const hasEnrollments = enrollments.length > 0;
@@ -449,14 +483,27 @@ export default function Study() {
 
   // HOME state
   if (studyState === "home") {
+    const recTotal = sessionRec?.recommended_total || effectiveSessionSize;
+    const recMinutes = sessionRec?.estimated_minutes || Math.round(recTotal * 1.5);
+
     const todayPlan = dashboardData?.todayPlan || {
-      totalQuestions: dailyGoal,
+      totalQuestions: recTotal,
       completedQuestions: 0,
       correctCount: 0,
-      estimatedMinutes: Math.round(dailyGoal * 1.5),
+      estimatedMinutes: recMinutes,
       primaryCourse: null,
       alsoDueCourses: [],
       progressPercent: 0,
+    };
+
+    // Override totalQuestions with recommendation
+    const enhancedPlan = {
+      ...todayPlan,
+      totalQuestions: recTotal,
+      estimatedMinutes: Math.round(Math.max(0, recTotal - todayPlan.completedQuestions) * 1.5),
+      progressPercent: recTotal > 0
+        ? Math.round((todayPlan.completedQuestions / recTotal) * 100)
+        : 0,
     };
 
     const stats = dashboardData?.stats || {
@@ -468,7 +515,6 @@ export default function Study() {
 
     return (
       <PageTransition className="min-h-full">
-        {/* Background: subtle paper panel effect */}
         <div className="min-h-full bg-background">
           <div className="p-4 sm:p-6 lg:p-8 max-w-6xl mx-auto space-y-5">
             {/* Page header */}
@@ -477,7 +523,7 @@ export default function Study() {
                 <h1 className="text-h1 font-semibold tracking-tight">Study</h1>
                 <p className="text-meta text-muted-foreground">
                   {todayPlan.completedQuestions > 0
-                    ? `${todayPlan.completedQuestions} of ${dailyGoal} completed today`
+                    ? `${todayPlan.completedQuestions} of ~${recTotal} completed today`
                     : 'Ready to learn something new?'
                   }
                 </p>
@@ -505,7 +551,7 @@ export default function Study() {
               overdueCount={stats.reviewsDue}
             />
 
-            {/* Stats strip - full width */}
+            {/* Stats strip */}
             <StatsStrip
               streak={stats.streak}
               weeklyAccuracy={stats.weeklyAccuracy}
@@ -513,11 +559,10 @@ export default function Study() {
               questionsToday={stats.questionsToday}
             />
 
-            {/* Single column layout - stacked */}
             <div className="space-y-5">
-              {/* Today's Plan Card - Hero treatment */}
+              {/* Today's Plan Card — uses recommended count */}
               <TodayPlanCard
-                stats={todayPlan}
+                stats={enhancedPlan}
                 isLoading={dashboardLoading}
                 onStart={handleStartTodayPlan}
                 onCustomize={() => navigate('/study/focus')}
@@ -529,13 +574,12 @@ export default function Study() {
                   session={dashboardData.lastSession}
                   onContinue={handleContinueSession}
                   onReviewMistakes={() => {
-                    // TODO: Implement review mistakes functionality
                     handleContinueSession();
                   }}
                 />
               )}
 
-              {/* Practice Recommendations - below main cards */}
+              {/* Practice Recommendations */}
               <RecommendationCards
                 recommendations={dashboardData?.practiceRecommendations || []}
                 onStartRecommendation={handleStartRecommendation}
@@ -548,7 +592,7 @@ export default function Study() {
     );
   }
 
-  // Loading state for PLAYING — animated loading screen
+  // Loading state for PLAYING
   if (isLoading && studyState === "playing") {
     return (
       <div className="flex flex-col h-full">
@@ -613,25 +657,60 @@ export default function Study() {
     );
   }
 
+  // KEEP_GOING_PROMPT — inline prompt at recommendation boundary
+  if (studyState === "keep_going_prompt") {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="px-4 py-3 border-b bg-card/50 flex items-center gap-3">
+          <Button variant="ghost" size="icon" onClick={handleGoHome}>
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+        </div>
+        <PageTransition className="flex-1 flex items-center justify-center p-4">
+          <div className="max-w-sm mx-auto text-center space-y-6">
+            <div className="space-y-2">
+              <h2 className="text-xl font-bold">Recommended session complete!</h2>
+              <p className="text-muted-foreground">
+                You've completed {sessionResults.correct}/{sessionResults.total} correctly.
+                Want to keep going?
+              </p>
+            </div>
+
+            {/* Session progress dots */}
+            <SessionProgressDots
+              totalQuestions={activeQuestions?.length || 0}
+              currentIndex={-1}
+              outcomes={questionOutcomes}
+            />
+
+            <div className="flex flex-col gap-2">
+              <Button onClick={handleKeepGoing} className="w-full">
+                Keep Going ({CONTINUATION_BATCH} more)
+              </Button>
+              <Button variant="ghost" onClick={handleGoHome} className="w-full text-muted-foreground">
+                Done for Now
+              </Button>
+            </div>
+          </div>
+        </PageTransition>
+      </div>
+    );
+  }
+
   // PLAYING state
   if (studyState === "playing" && activeQuestions && activeQuestions.length > 0) {
-    const currentQuestion = activeQuestions[currentIndex];
-    const showTotalProgress = studyPhase === "today_plan";
-    const hasSubparts = currentQuestion.subparts && Array.isArray(currentQuestion.subparts) && currentQuestion.subparts.length > 0;
+    const effectiveIndex = studyPhase === "diagnostic" ? currentIndex : activeCurrentIndex;
+    const currentQuestion = activeQuestions[effectiveIndex];
+    if (!currentQuestion) return null;
 
-    console.log('[Study] Current question:', {
-      id: currentQuestion.id,
-      format: currentQuestion.questionFormat,
-      hasSubparts,
-      subpartCount: currentQuestion.subparts?.length || 0,
-    });
+    const hasSubparts = currentQuestion.subparts && Array.isArray(currentQuestion.subparts) && currentQuestion.subparts.length > 0;
 
     return (
       <div className="flex flex-col h-full">
         {/* Focus Bar - persistent context header */}
         <FocusBar
-          showProgress={showTotalProgress}
-          questionsCompleted={currentIndex}
+          showProgress={true}
+          questionsCompleted={effectiveIndex}
           questionsTotal={activeQuestions.length}
         />
 
@@ -642,32 +721,34 @@ export default function Study() {
             <span className="text-meta">Exit</span>
           </Button>
           <span className="text-meta text-muted-foreground">
-            {studyPhase === "diagnostic" ? "Diagnostic Quiz" : `Question ${currentIndex + 1}`}
-            {showTotalProgress ? ` of ${activeQuestions.length}` : ""}
+            {studyPhase === "diagnostic" ? "Diagnostic Quiz" : `Question ${effectiveIndex + 1}`}
+            {` of ${activeQuestions.length}`}
           </span>
         </div>
 
-        {/* Session progress dots — navigate + outcome at a glance */}
+        {/* Session progress dots */}
         {activeQuestions.length > 1 && (
           <div className="border-b">
             <SessionProgressDots
               totalQuestions={activeQuestions.length}
-              currentIndex={currentIndex}
+              currentIndex={effectiveIndex}
               outcomes={questionOutcomes}
-              onNavigate={handleNavigateQuestion}
+              onNavigate={studyPhase === "diagnostic" ? handleNavigateQuestion : undefined}
+              insertedIndices={studyPhase === "session" ? new Set(
+                Array.from({ length: activeQuestions.length }, (_, i) => i).filter(i => sequencer.isInserted(i))
+              ) : undefined}
             />
           </div>
         )}
 
         <PageTransition className="flex-1 space-y-6 p-4">
           <AnimatePresence mode="wait">
-            {/* Route to MultiPartQuestionPlayer for questions with subparts */}
             {hasSubparts ? (
               <MultiPartQuestionPlayer
                 key={`multi-${currentQuestion.id}`}
                 question={currentQuestion}
-                questionNumber={currentIndex + 1}
-                totalQuestions={showTotalProgress ? activeQuestions.length : undefined}
+                questionNumber={effectiveIndex + 1}
+                totalQuestions={activeQuestions.length}
                 onComplete={handleMultiPartComplete}
                 onSimilar={handleSimilar}
               />
@@ -675,8 +756,8 @@ export default function Study() {
               <QuestionPlayer
                 key={currentQuestion.id}
                 question={currentQuestion}
-                questionNumber={currentIndex + 1}
-                totalQuestions={showTotalProgress ? activeQuestions.length : undefined}
+                questionNumber={effectiveIndex + 1}
+                totalQuestions={activeQuestions.length}
                 onComplete={handleQuestionComplete}
                 onSimilar={handleSimilar}
               />
@@ -687,46 +768,18 @@ export default function Study() {
     );
   }
 
-  // PLAN_COMPLETE state
-  if (studyState === "plan_complete") {
+  // COMPLETE state
+  if (studyState === "complete") {
     const isDiagnostic = studyPhase === "diagnostic";
     return (
       <PageTransition className="flex-1">
         <CompletionCard
-          title={isDiagnostic ? "Diagnostic Complete!" : "Today's Plan Complete!"}
-          subtitle={isDiagnostic ? "We've calibrated your study plan." : "Great work on your daily goal"}
-          correctCount={isDiagnostic ? sessionResults.correct : (todayPlanResults?.correct || 0)}
-          totalCount={isDiagnostic ? sessionResults.total : (todayPlanResults?.total || 0)}
-          suggestions={isDiagnostic ? [] : completionSuggestions}
-          onDone={handleGoHome}
-          variant="plan_complete"
-          outcomes={questionOutcomes}
-          totalQuestions={activeQuestions?.length}
-        />
-      </PageTransition>
-    );
-  }
-
-  // SESSION_PAUSE state
-  if (studyState === "session_pause") {
-    return (
-      <PageTransition className="flex-1">
-        <CompletionCard
-          title="Great work!"
-          subtitle="Batch complete"
+          title={isDiagnostic ? "Diagnostic Complete!" : "Session Complete!"}
+          subtitle={isDiagnostic ? "We've calibrated your study plan." : "Great work today"}
           correctCount={sessionResults.correct}
           totalCount={sessionResults.total}
-          suggestions={[
-            {
-              id: 'continue',
-              label: `Continue (${KEEP_PRACTICING_BATCH} more)`,
-              icon: 'arrow',
-              onClick: handleContinuePracticing,
-            },
-            ...completionSuggestions.slice(0, 2),
-          ]}
+          suggestions={isDiagnostic ? [] : completionSuggestions}
           onDone={handleGoHome}
-          variant="session_pause"
           outcomes={questionOutcomes}
           totalQuestions={activeQuestions?.length}
         />

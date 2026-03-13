@@ -14,6 +14,7 @@ import {
   useUpcomingExams,
   useCalendarReviewData,
 } from '@/hooks/use-calendar';
+import { useCalendarStudyPlan } from '@/hooks/use-calendar-study-plan';
 import { useEnrollments } from '@/hooks/use-enrollments';
 import { useCourses } from '@/hooks/use-focus';
 import { useFocusContext } from '@/contexts/FocusContext';
@@ -88,6 +89,9 @@ export default function StudentCalendar(): React.ReactElement {
   });
 
   const { data: upcomingExams = [] } = useUpcomingExams(effectiveCourseIds);
+
+  // Study plan data for proactive workload projection
+  const { data: studyPlanData } = useCalendarStudyPlan(startDate, endDate);
 
   // -- Handlers --
   const toggleCourse = useCallback((courseId: string) => {
@@ -223,6 +227,7 @@ export default function StudentCalendar(): React.ReactElement {
                 selectedDate={selectedDate}
                 onSelectDate={setSelectedDate}
                 reviewData={reviewData}
+                studyPlanData={studyPlanData}
                 calendarEvents={events}
               />
             )}
@@ -252,6 +257,7 @@ export default function StudentCalendar(): React.ReactElement {
                 date={selectedDate}
                 events={events}
                 reviewData={reviewData.get(selectedDate)}
+                studyPlan={studyPlanData.get(selectedDate)}
                 onStartReviews={handleStartReviews}
               />
             </motion.div>

@@ -74,8 +74,9 @@ export function TodayPlanCard({ stats, isLoading, onStart, onCustomize }: TodayP
         {/* Stats row */}
         <div className="flex items-center gap-4 text-body">
           <span>
-            <span className="font-semibold text-foreground">{remaining}</span>
-            <span className="text-muted-foreground ml-1">question{remaining !== 1 ? 's' : ''}</span>
+            <span className="text-muted-foreground">Recommended: </span>
+            <span className="font-semibold text-foreground">~{stats.totalQuestions}</span>
+            <span className="text-muted-foreground ml-1">question{stats.totalQuestions !== 1 ? 's' : ''}</span>
           </span>
           <span className="text-border">•</span>
           <span className="flex items-center gap-1 text-muted-foreground">

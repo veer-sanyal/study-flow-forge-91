@@ -280,7 +280,7 @@ export function SectionHeader({
 // ============================================
 
 interface ProgressRingProps {
-  value: number; // 0-100
+  value: number; // 0-100 (supports >100 for overflow)
   size?: number;
   strokeWidth?: number;
   className?: string;
@@ -296,7 +296,9 @@ export function ProgressRing({
 }: ProgressRingProps) {
   const radius = (size - strokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
-  const offset = circumference - (value / 100) * circumference;
+  const clampedValue = Math.min(value, 100);
+  const offset = circumference - (clampedValue / 100) * circumference;
+  const isOverflow = value > 100;
 
   return (
     <div className={cn("relative inline-flex items-center justify-center", className)}>
@@ -326,7 +328,10 @@ export function ProgressRing({
           strokeDasharray={circumference}
           strokeDashoffset={offset}
           strokeLinecap="round"
-          className="text-primary transition-all duration-300"
+          className={cn(
+            "text-primary transition-all duration-300",
+            isOverflow && "animate-pulse"
+          )}
         />
       </svg>
       {showValue && (

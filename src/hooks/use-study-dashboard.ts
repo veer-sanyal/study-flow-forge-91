@@ -188,6 +188,7 @@ export function useStudyDashboard() {
       const todayAttempts = attemptsResult.data || [];
       const completedQuestions = todayAttempts.length;
       const correctCount = todayAttempts.filter(a => a.is_correct).length;
+      // Use dailyGoal as baseline; the Study page overrides with recommended_total
       const progressPercent = dailyGoal > 0
         ? Math.round((completedQuestions / dailyGoal) * 100)
         : 0;

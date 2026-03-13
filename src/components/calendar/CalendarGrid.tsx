@@ -10,6 +10,7 @@ import {
 } from 'date-fns';
 import { CalendarDayCell } from './CalendarDayCell';
 import type { CalendarDayReviewData } from '@/types/progress';
+import type { StudyPlanDaySummary } from '@/hooks/use-calendar-study-plan';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -26,6 +27,7 @@ interface CalendarGridProps {
   selectedDate: string | null;
   onSelectDate: (dateStr: string) => void;
   reviewData: Map<string, CalendarDayReviewData>;
+  studyPlanData?: Map<string, StudyPlanDaySummary>;
   calendarEvents: CalendarEvent[];
 }
 
@@ -35,6 +37,7 @@ export function CalendarGrid({
   selectedDate,
   onSelectDate,
   reviewData,
+  studyPlanData,
   calendarEvents,
 }: CalendarGridProps): React.ReactElement {
   const today = new Date();
@@ -81,6 +84,7 @@ export function CalendarGrid({
               isSelected={selectedDate === dateKey}
               isPadding={viewMode === 'month' && !isSameMonth(day, currentDate)}
               reviewData={reviewData.get(dateKey)}
+              studyPlan={studyPlanData?.get(dateKey)}
               events={eventsByDate.get(dateKey) || []}
               onSelect={onSelectDate}
             />

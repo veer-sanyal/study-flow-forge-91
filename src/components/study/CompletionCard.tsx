@@ -21,7 +21,7 @@ interface CompletionCardProps {
   totalCount: number;
   suggestions: CompletionSuggestion[];
   onDone: () => void;
-  variant?: 'plan_complete' | 'session_pause';
+  variant?: 'plan_complete' | 'session_pause'; // kept for backwards compat but not used
   outcomes?: Record<number, 'correct' | 'incorrect' | 'skipped'>;
   totalQuestions?: number;
 }
@@ -43,7 +43,6 @@ export function CompletionCard({
   outcomes = {},
   totalQuestions,
 }: CompletionCardProps) {
-  const isPlanComplete = variant === 'plan_complete';
   const accuracy = totalCount > 0 ? Math.round((correctCount / totalCount) * 100) : 0;
   const dotCount = totalQuestions ?? totalCount;
 
@@ -94,7 +93,7 @@ export function CompletionCard({
         className="space-y-2"
       >
         <h1 className="text-2xl font-bold tracking-tight flex items-center justify-center gap-2">
-          <Trophy className={cn('h-4 w-4', isPlanComplete ? 'text-success' : 'text-primary')} />
+          <Trophy className="h-4 w-4 text-success" />
           {title}
         </h1>
         <p className="text-muted-foreground">{subtitle}</p>
@@ -158,7 +157,7 @@ export function CompletionCard({
           onClick={onDone}
         >
           <Home className="h-4 w-4" />
-          {isPlanComplete ? 'Done for Today' : 'End Session'}
+          Done for Today
         </Button>
       </motion.div>
     </motion.div>

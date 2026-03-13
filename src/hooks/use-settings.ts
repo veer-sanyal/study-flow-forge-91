@@ -11,6 +11,7 @@ export interface UserSettings {
   reduced_motion: boolean;
   theme: string;
   daily_plan_mode: 'single_course' | 'mixed';
+  session_intensity: 'light' | 'moderate' | 'heavy';
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +23,7 @@ const DEFAULT_SETTINGS: Omit<UserSettings, 'id' | 'user_id' | 'created_at' | 'up
   reduced_motion: false,
   theme: 'system',
   daily_plan_mode: 'single_course',
+  session_intensity: 'moderate',
 };
 
 export function useUserSettings() {

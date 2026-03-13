@@ -1,5 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import type { CalendarDayReviewData } from '@/types/progress';
+import type { StudyPlanDaySummary } from '@/hooks/use-calendar-study-plan';
+import { CalendarDaySummary } from './CalendarDaySummary';
 import { cn } from '@/lib/utils';
 
 interface CalendarEventForCell {
@@ -14,6 +16,7 @@ interface CalendarDayCellProps {
   isSelected: boolean;
   isPadding: boolean;
   reviewData: CalendarDayReviewData | undefined;
+  studyPlan: StudyPlanDaySummary | undefined;
   events: CalendarEventForCell[];
   onSelect: (dateStr: string) => void;
 }
@@ -35,11 +38,23 @@ export function CalendarDayCell({
   isSelected,
   isPadding,
   reviewData,
+  studyPlan,
   events,
   onSelect,
 }: CalendarDayCellProps): React.ReactElement {
   const dateStr = formatDateKey(date);
   const dayNum = date.getDate();
+
+  // Study plan load color coding via left border
+  const loadBorderClass = studyPlan
+    ? studyPlan.totalQuestions > 35
+      ? 'border-l-2 border-l-destructive'
+      : studyPlan.totalQuestions > 20
+        ? 'border-l-2 border-l-warning'
+        : studyPlan.totalQuestions > 0
+          ? 'border-l-2 border-l-success'
+          : ''
+    : '';
 
   return (
     <button
@@ -52,6 +67,7 @@ export function CalendarDayCell({
         isToday && 'ring-2 ring-primary bg-primary/5',
         isSelected && !isToday && 'bg-accent',
         isSelected && isToday && 'ring-2 ring-primary bg-primary/10',
+        loadBorderClass,
       )}
     >
       {/* Date number */}
@@ -91,6 +107,11 @@ export function CalendarDayCell({
           </Badge>
         )}
       </div>
+
+      {/* Study plan summary overlay */}
+      {studyPlan && studyPlan.totalQuestions > 0 && (
+        <CalendarDaySummary plan={studyPlan} />
+      )}
 
       {/* Calendar event titles */}
       <div className="flex flex-col gap-0.5 w-full overflow-hidden">
