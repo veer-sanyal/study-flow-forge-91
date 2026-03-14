@@ -152,6 +152,45 @@ function buildEvidenceContext(analysis: MaterialAnalysis): string {
   return chunks.join("\n\n");
 }
 
+// ─── Helper: build exam exemplar context ─────────────────────────────────────
+
+export interface ExamExemplar {
+  prompt: string;
+  choices: Array<{ text: string; id: string; isCorrect: boolean }>;
+  correct_answer: string;
+  difficulty: number;
+  topic: string;  // resolved topic name
+}
+
+export function buildExemplarContext(exemplars: ExamExemplar[]): string {
+  if (exemplars.length === 0) return "";
+
+  // Group by topic
+  const byTopic = new Map<string, ExamExemplar[]>();
+  for (const ex of exemplars) {
+    const list = byTopic.get(ex.topic) || [];
+    list.push(ex);
+    byTopic.set(ex.topic, list);
+  }
+
+  const sections: string[] = [];
+  for (const [topic, exs] of byTopic) {
+    const qStrs = exs.map(ex => {
+      const optStr = ex.choices.map(c => `${c.id}) ${c.text}`).join("  ");
+      return `[Exam Q — Difficulty ${ex.difficulty}]\nStem: ${ex.prompt}\nOptions: ${optStr}\nCorrect: ${ex.correct_answer}`;
+    });
+    sections.push(`Topic: ${topic}\n${qStrs.join("\n\n")}`);
+  }
+
+  return `\n=== REAL EXAM QUESTIONS FROM THIS COURSE (match this style) ===
+These are actual exam questions written by this course's professor.
+Use them as STYLE, DIFFICULTY, and FORMAT references.
+Generate NEW questions that match this style but cover DIFFERENT
+specific scenarios and values. Do NOT copy or paraphrase these stems.
+
+${sections.join("\n\n")}`;
+}
+
 // ─── Base Template ────────────────────────────────────────────────────────────
 
 const BASE_TEMPLATE = `You are an expert item writer creating high-quality multiple-choice questions for a university course. You follow evidence-based item construction principles.
@@ -165,6 +204,7 @@ Topics: {topics_summary}
 Key terms: {key_terms}
 Construct claims (what mastery looks like):
 {construct_map}
+{exam_exemplars}
 
 === FORMATTING RULES (apply to ALL text output) ===
 
@@ -256,6 +296,29 @@ ANTI-PATTERN CHECKLIST (verify each question against these before outputting):
 □ No "trick" difficulty — complexity comes from the reasoning, not from confusing wording or double negatives
 □ All math is properly formatted using the LaTeX rules above
 □ No duplicate or near-duplicate questions — each question must test a meaningfully different concept, scenario, or skill even if drawn from the same topic
+
+=== COMMON GENERATION MISTAKES (avoid these) ===
+
+BAD stem: "Which of the following is true about probability?"
+WHY BAD: Vague lead-in — doesn't specify what cognitive task the student performs.
+GOOD stem: "A standard die is rolled twice. Which expression correctly represents the probability that both rolls show an even number?"
+
+BAD options:
+  A) The answer is always 0.5 (absolute term)
+  B) It depends on the situation (vague filler)
+  C) $\\frac{1}{4}$ (specific, computable)
+WHY BAD: Options A and B are implausible filler. Only C is a real answer.
+GOOD options: All options should be specific computable values that result from different (wrong) approaches to the problem.
+
+BAD: Two questions in a batch sharing the same scenario with "continuing from the previous question..."
+WHY BAD: Questions get shuffled in spaced repetition. Each must stand alone.
+
+MISCONCEPTION SPECIFICITY (critical):
+Each distractor's misconception must name the SPECIFIC wrong belief, not a generic label. The misconception should complete: "A student who chose this believes ___ because ___."
+
+BAD misconception: "Student doesn't understand the concept"
+BAD misconception: "Common error in probability"
+GOOD misconception: "Student multiplied probabilities for dependent events without adjusting for the reduced sample space after the first draw"
 
 === OUTPUT FORMAT ===
 
@@ -388,7 +451,7 @@ Write full_solution using this structure:
 
 // ─── Prompt Builder ───────────────────────────────────────────────────────────
 
-export function buildPrompt(analysis: MaterialAnalysis, count: number): string {
+export function buildPrompt(analysis: MaterialAnalysis, count: number, examExemplars?: ExamExemplar[]): string {
   const misconceptions = analysis.topics
     .flatMap(t => t.common_misconceptions || [])
     .join("; ");
@@ -420,6 +483,7 @@ export function buildPrompt(analysis: MaterialAnalysis, count: number): string {
     .replace("{topics_summary}", analysis.topics.map(t => t.name).join(", "))
     .replace("{key_terms}", analysis.key_terms?.join(", ") || "See material")
     .replace("{construct_map}", constructMapStr)
+    .replace("{exam_exemplars}", buildExemplarContext(examExemplars || []))
     .replace("{dok_distribution}", dokDistribution)
     .replace("{count}", String(count));
 

@@ -23,10 +23,9 @@ import {
   getExternalServiceRoleKey,
   getExternalAnonKey,
 } from "../_shared/external-db.ts";
-import { buildPrompt, GENERATE_QUESTIONS_SCHEMA, type MaterialAnalysis } from "./prompts.ts";
-import { validateStructure, scoreQuality, detectDuplicates, rebalanceAnswerPositions, parseMisconceptionFeedback, type GeneratedQuestion } from "./validation.ts";
+import { buildPrompt, GENERATE_QUESTIONS_SCHEMA, type MaterialAnalysis, type ExamExemplar } from "./prompts.ts";
+import { validateStructure, detectDuplicates, rebalanceAnswerPositions, parseMisconceptionFeedback, type GeneratedQuestion } from "./validation.ts";
 import { validateAnalysisSchema } from "./analysis-schema.ts";
-import { runSecondPassValidation } from "./second-pass-validator.ts";
 
 declare const EdgeRuntime: { waitUntil: (promise: Promise<unknown>) => void };
 
@@ -159,11 +158,6 @@ async function runGeneration(
   targetCount: number,
   preRunCount: number,
 ): Promise<void> {
-  const startTime = Date.now();
-  // Budget: skip optional work (second-pass QA) if elapsed exceeds this.
-  // Supabase free-tier waitUntil ≈ 150s; leave 40s headroom for insert + finalize.
-  const SECOND_PASS_BUDGET_MS = 110_000;
-
   try {
     // Download PDF
     const { data: blob, error: dlErr } = await supabase.storage
@@ -186,7 +180,69 @@ async function runGeneration(
 
     // Build prompt
     const analysis = material.analysis_json;
-    const basePrompt = buildPrompt(analysis, targetCount);
+
+    // Load existing topics for topic mapping (needed for exemplars + insert)
+    const { data: existingTopics } = await supabase
+      .from("topics")
+      .select("id, title")
+      .eq("course_pack_id", material.course_pack_id);
+
+    const topicMap = new Map<string, string>();
+    for (const t of existingTopics ?? []) {
+      topicMap.set(t.title.toLowerCase().trim(), t.id);
+    }
+    console.log(`[generate-questions] Loaded ${topicMap.size} existing topics for mapping`);
+
+    // Build reverse map: topic id → topic name
+    const topicIdToName = new Map<string, string>();
+    for (const t of existingTopics ?? []) {
+      topicIdToName.set(t.id, t.title.trim());
+    }
+
+    // Collect topic UUIDs from analysis topics
+    const analysisTopicIds = new Set<string>();
+    for (const topic of analysis.topics) {
+      const tid = resolveTopicId(topic.name, topicMap);
+      if (tid) analysisTopicIds.add(tid);
+    }
+
+    // Query exam questions as style exemplars
+    let examExemplars: ExamExemplar[] = [];
+    if (analysisTopicIds.size > 0) {
+      const { data: examRows } = await supabase
+        .from("questions")
+        .select("prompt, choices, correct_answer, difficulty, topic_ids")
+        .eq("course_pack_id", material.course_pack_id)
+        .eq("source", "exam")
+        .eq("needs_review", false)
+        .eq("status", "approved")
+        .not("correct_answer", "is", null)
+        .limit(10);
+
+      if (examRows && examRows.length > 0) {
+        // Filter to those with overlapping topic_ids and take up to 3
+        const overlapping = examRows.filter((row: { topic_ids: string[] }) =>
+          Array.isArray(row.topic_ids) && row.topic_ids.some((tid: string) => analysisTopicIds.has(tid))
+        ).slice(0, 3);
+
+        examExemplars = overlapping.map((row: { prompt: string; choices: Array<{ text: string; id: string; isCorrect: boolean }>; correct_answer: string; difficulty: number; topic_ids: string[] }) => {
+          const firstMatchingTid = row.topic_ids.find((tid: string) => analysisTopicIds.has(tid)) || row.topic_ids[0];
+          return {
+            prompt: row.prompt,
+            choices: row.choices,
+            correct_answer: row.correct_answer,
+            difficulty: row.difficulty,
+            topic: topicIdToName.get(firstMatchingTid) || "Unknown",
+          };
+        });
+
+        if (examExemplars.length > 0) {
+          console.log(`[generate-questions] Found ${examExemplars.length} exam exemplars for style reference`);
+        }
+      }
+    }
+
+    const basePrompt = buildPrompt(analysis, targetCount, examExemplars);
 
     // Load existing stems for dedup context
     const { data: existingRows } = await supabase
@@ -237,15 +293,9 @@ async function runGeneration(
     const valid = allQuestions.filter(q => validateStructure(q));
     console.log(`[generate-questions] Validated: ${valid.length}/${allQuestions.length} passed structure check`);
 
-    // Score quality
-    const scored = valid.map(q => {
-      const { score, flags } = scoreQuality(q);
-      return { ...q, quality_score: score, quality_flags: flags };
-    });
-
     // Simple string dedup against existing + within batch
     const seen = new Set(existingStems.map(s => normalize(s)));
-    const deduped = scored.filter(q => {
+    const deduped = valid.filter(q => {
       const key = normalize(q.stem);
       if (seen.has(key)) return false;
       seen.add(key);
@@ -257,8 +307,8 @@ async function runGeneration(
     const dupPairs = detectDuplicates(deduped);
     const dropIndices = new Set<number>();
     for (const [idxA, idxB] of dupPairs) {
-      // Keep the higher-scored question
-      const drop = deduped[idxA].quality_score >= deduped[idxB].quality_score ? idxB : idxA;
+      // Keep the question with the longer stem (more context = likely better)
+      const drop = deduped[idxA].stem.length >= deduped[idxB].stem.length ? idxB : idxA;
       dropIndices.add(drop);
     }
     const afterDupRemoval = deduped.filter((_, i) => !dropIndices.has(i));
@@ -266,71 +316,21 @@ async function runGeneration(
       console.log(`[generate-questions] Removed ${dropIndices.size} near-duplicate questions`);
     }
 
-    // Filter out rejected questions (score < 70)
-    const qualityFiltered = afterDupRemoval.filter(q => q.quality_score >= 70);
-    if (afterDupRemoval.length !== qualityFiltered.length) {
-      console.log(`[generate-questions] Rejected ${afterDupRemoval.length - qualityFiltered.length} low-quality questions (score < 70)`);
-    }
-
-    // Second-pass LLM validation (Phase 4) — skip if time budget exceeded
-    let secondPassResults: Awaited<ReturnType<typeof runSecondPassValidation>> = [];
-    const elapsedMs = Date.now() - startTime;
-    if (elapsedMs > SECOND_PASS_BUDGET_MS) {
-      console.warn(`[generate-questions] Skipping second-pass QA — elapsed ${Math.round(elapsedMs / 1000)}s exceeds budget`);
-    } else {
-      try {
-        secondPassResults = await runSecondPassValidation(
-          qualityFiltered,
-          analysis.course_type,
-          geminiApiKey,
-        );
-        const failCount = secondPassResults.filter(r => !r.passed).length;
-        if (failCount > 0) {
-          console.log(`[generate-questions] Second-pass flagged ${failCount}/${qualityFiltered.length} questions`);
-        }
-      } catch (err) {
-        console.warn("[generate-questions] Second-pass validation failed, continuing:", err instanceof Error ? err.message : "unknown");
-      }
-    }
-
-    // Update progress with validated count (after dedup/quality filtering)
+    // Update progress with validated count (after dedup)
     await supabase
       .from("generation_jobs")
-      .update({ total_questions_generated: preRunCount + qualityFiltered.length })
+      .update({ total_questions_generated: preRunCount + afterDupRemoval.length })
       .eq("id", jobId);
 
     // Answer position rebalancing
-    rebalanceAnswerPositions(qualityFiltered);
-
-    // Load existing topics for topic mapping
-    const { data: existingTopics } = await supabase
-      .from("topics")
-      .select("id, title")
-      .eq("course_pack_id", material.course_pack_id);
-
-    const topicMap = new Map<string, string>();
-    for (const t of existingTopics ?? []) {
-      topicMap.set(t.title.toLowerCase().trim(), t.id);
-    }
-    console.log(`[generate-questions] Loaded ${topicMap.size} existing topics for mapping`);
+    rebalanceAnswerPositions(afterDupRemoval);
 
     // Batch insert
-    if (qualityFiltered.length > 0) {
+    if (afterDupRemoval.length > 0) {
       const sourceExam = `Generated — ${material.title.trim()}`;
-      // Build a map of second-pass results by question index
-      const secondPassMap = new Map<number, { passed: boolean; issues: string[] }>();
-      for (const r of secondPassResults) {
-        secondPassMap.set(r.questionIndex, { passed: r.passed, issues: r.issues });
-      }
 
-      const rows = qualityFiltered.map((q, idx) => {
+      const rows = afterDupRemoval.map((q) => {
         const matchedTopicId = resolveTopicId(q.topic, topicMap);
-        const spResult = secondPassMap.get(idx);
-        const spFlags = spResult && !spResult.passed
-          ? spResult.issues.map(issue => `second_pass: ${issue}`)
-          : [];
-        const allFlags = [...q.quality_flags, ...spFlags];
-        const needsReviewFromSP = spResult ? !spResult.passed : false;
         return {
         prompt: q.stem,
         choices: q.options.map(o => ({ text: o.text, id: o.id, isCorrect: o.is_correct })),
@@ -339,8 +339,6 @@ async function runGeneration(
         difficulty: q.difficulty,
         cognitive_level: q.cognitive_level,
         construct_claim: q.construct_claim,
-        quality_score: q.quality_score,
-        quality_flags: allFlags,
         distractor_rationales: q.options
           .filter(o => !o.is_correct)
           .map(o => {
@@ -361,11 +359,9 @@ async function runGeneration(
         course_pack_id: material.course_pack_id,
         source: "generated",
         status: "approved",
-        is_published: q.quality_score >= 90 && !!matchedTopicId && !needsReviewFromSP,
-        needs_review: q.quality_score < 90 || !matchedTopicId || needsReviewFromSP,
-        needs_review_reason: q.quality_score < 90 || !matchedTopicId || needsReviewFromSP
-          ? `quality_score:${q.quality_score}; flags:${allFlags.join(", ")}${!matchedTopicId ? "; unmapped_topic" : ""}${needsReviewFromSP ? "; second_pass_failed" : ""}`
-          : null,
+        is_published: !!matchedTopicId,
+        needs_review: !matchedTopicId,
+        needs_review_reason: !matchedTopicId ? `unmapped_topic: ${q.topic}` : null,
         topic_ids: matchedTopicId ? [matchedTopicId] : [],
       };
       });
@@ -381,7 +377,7 @@ async function runGeneration(
       .from("generation_jobs")
       .update({
         status: "completed",
-        total_questions_generated: preRunCount + qualityFiltered.length,
+        total_questions_generated: preRunCount + afterDupRemoval.length,
         completed_at: new Date().toISOString(),
       })
       .eq("id", jobId);
@@ -393,7 +389,7 @@ async function runGeneration(
       })
       .eq("id", materialId);
 
-    console.log(`[generate-questions] ${material.title} — done: ${qualityFiltered.length} new questions inserted`);
+    console.log(`[generate-questions] ${material.title} — done: ${afterDupRemoval.length} new questions inserted`);
   } catch (error) {
     const msg = error instanceof Error ? error.message : "unknown";
     console.error("[generate-questions] runGeneration error:", msg);
@@ -507,7 +503,13 @@ serve(async (req) => {
     }
     const analysis = analysisResult.data;
 
-    const targetCount = count || analysis.recommended_question_count || 25;
+    const targetCount = Math.min(
+      count || Math.max(
+        analysis.recommended_question_count || 25,
+        analysis.topics.length * 10,
+      ),
+      60,
+    );
 
     // Count existing questions
     const { count: existingCount } = await supabase
