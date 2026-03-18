@@ -4,6 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { getEventTypeColor } from '@/hooks/use-calendar';
 import { CalendarDayBreakdown } from './CalendarDayBreakdown';
+import { getDayStatusColor } from './CalendarDayCell';
 import type { CalendarDayReviewData } from '@/types/progress';
 import type { StudyPlanDaySummary } from '@/hooks/use-calendar-study-plan';
 import { cn } from '@/lib/utils';
@@ -49,12 +50,7 @@ export function DayDetailPanel({
   const hasNew = reviewData && reviewData.totalNew > 0;
   const hasStudyPlan = studyPlan && studyPlan.totalQuestions > 0;
 
-  const stripClass =
-    hasStudyPlan
-      ? studyPlan.totalQuestions > 35 ? 'bg-destructive' : studyPlan.totalQuestions > 20 ? 'bg-warning' : 'bg-success'
-      : hasReviews || hasNew ? 'bg-primary'
-      : hasEvents ? 'bg-muted'
-      : 'bg-border';
+  const stripClass = getDayStatusColor(studyPlan, reviewData, dayEvents);
 
   if (!hasEvents && !hasReviews && !hasNew && !hasStudyPlan) {
     return (

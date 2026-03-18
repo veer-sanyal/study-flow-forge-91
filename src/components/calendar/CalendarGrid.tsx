@@ -11,6 +11,7 @@ import {
 import { CalendarDayCell } from './CalendarDayCell';
 import type { CalendarDayReviewData } from '@/types/progress';
 import type { StudyPlanDaySummary } from '@/hooks/use-calendar-study-plan';
+import { cn } from '@/lib/utils';
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -29,6 +30,8 @@ interface CalendarGridProps {
   reviewData: Map<string, CalendarDayReviewData>;
   studyPlanData?: Map<string, StudyPlanDaySummary>;
   calendarEvents: CalendarEvent[];
+  /** Color class for the selected day's status strip bridge */
+  selectedDayStripColor?: string;
 }
 
 export function CalendarGrid({
@@ -39,6 +42,7 @@ export function CalendarGrid({
   reviewData,
   studyPlanData,
   calendarEvents,
+  selectedDayStripColor,
 }: CalendarGridProps): React.ReactElement {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -59,27 +63,31 @@ export function CalendarGrid({
   }
 
   return (
-    <div>
+    <div className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface">
+      {/* Status strip — actionable user data */}
+      <div className={cn('h-1', selectedDayStripColor || 'bg-primary')} />
+
       {/* Header row */}
-      <div className="grid grid-cols-7 mb-1">
+      <div className="grid grid-cols-7 border-b border-border">
         {DAY_LABELS.map(label => (
           <div
             key={label}
-            className="text-center text-xs font-medium text-muted-foreground py-1"
+            className="text-center text-xs font-medium text-muted-foreground py-2"
           >
             {label}
           </div>
         ))}
       </div>
 
-      {/* Day cells */}
-      <div className="grid grid-cols-7 gap-px">
+      {/* Day cells — bg-border/50 bleeds through gap-px as subtle grid lines */}
+      <div className="grid grid-cols-7 gap-px bg-border/50">
         {days.map(day => {
           const dateKey = formatDateKey(day);
           return (
             <CalendarDayCell
               key={dateKey}
               date={day}
+              viewMode={viewMode}
               isToday={isSameDay(day, today)}
               isSelected={selectedDate === dateKey}
               isPadding={viewMode === 'month' && !isSameMonth(day, currentDate)}

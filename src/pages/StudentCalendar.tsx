@@ -19,6 +19,7 @@ import { useEnrollments } from '@/hooks/use-enrollments';
 import { useCourses } from '@/hooks/use-focus';
 import { useFocusContext } from '@/contexts/FocusContext';
 import { fadeSlideUp, stagger, duration, easing } from '@/lib/motion';
+import { getDayStatusColor } from '@/components/calendar/CalendarDayCell';
 import { cn } from '@/lib/utils';
 
 function formatDateKey(d: Date): string {
@@ -92,6 +93,15 @@ export default function StudentCalendar(): React.ReactElement {
 
   // Study plan data for proactive workload projection
   const { data: studyPlanData } = useCalendarStudyPlan(startDate, endDate);
+
+  // Compute selected day's status color for the grid-to-panel visual bridge
+  const selectedDayStripColor = selectedDate
+    ? getDayStatusColor(
+        studyPlanData.get(selectedDate),
+        reviewData.get(selectedDate),
+        events.filter(ev => ev.event_date && ev.event_date.slice(0, 10) === selectedDate),
+      )
+    : undefined;
 
   // -- Handlers --
   const toggleCourse = useCallback((courseId: string) => {
@@ -174,56 +184,74 @@ export default function StudentCalendar(): React.ReactElement {
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Upcoming exams
               </h2>
-              <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin">
-                {upcomingExams.map((exam, i) => {
-                  const urgency = exam.daysUntil <= 3 ? 'urgent' : exam.daysUntil <= 7 ? 'soon' : 'calm';
-                  const urgencyStripClass = {
-                    urgent: 'bg-destructive',
-                    soon: 'bg-warning',
-                    calm: 'bg-muted',
-                  }[urgency];
-                  const numberColor = {
-                    urgent: 'text-destructive',
-                    soon: 'text-warning',
-                    calm: 'text-muted-foreground',
-                  }[urgency];
-                  return (
-                    <motion.div
-                      key={exam.id}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: i * stagger.fast, duration: duration.normal, ease: easing.easeOut }}
-                      className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden shrink-0 w-40"
-                    >
-                      <div className={cn('h-1', urgencyStripClass)} />
-                      <div className="p-3">
-                        <div className="flex items-baseline gap-1.5">
-                          <span className={cn('text-2xl font-bold tabular-nums leading-none', numberColor)}>
-                            {exam.daysUntil === 0 ? '!' : exam.daysUntil}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
-                            {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
-                          </span>
+              <div className="relative">
+                <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin">
+                  {upcomingExams.map((exam, i) => {
+                    const urgency =
+                      exam.daysUntil < 3 ? 'critical' :
+                      exam.daysUntil <= 7 ? 'warning' :
+                      exam.daysUntil <= 14 ? 'upcoming' :
+                      'calm';
+                    const urgencyStripClass = {
+                      critical: 'bg-destructive',
+                      warning: 'bg-warning',
+                      upcoming: 'bg-primary',
+                      calm: 'bg-muted',
+                    }[urgency];
+                    const numberColor = {
+                      critical: 'text-destructive',
+                      warning: 'text-warning',
+                      upcoming: 'text-primary',
+                      calm: 'text-muted-foreground',
+                    }[urgency];
+                    return (
+                      <motion.div
+                        key={exam.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ delay: i * stagger.fast, duration: duration.normal, ease: easing.easeOut }}
+                        className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden shrink-0 w-40"
+                      >
+                        <div className={cn('h-1', urgencyStripClass)} />
+                        <div className="p-3">
+                          <div className="flex items-baseline gap-1.5">
+                            <span className={cn('text-2xl font-bold tabular-nums leading-none', numberColor)}>
+                              {exam.daysUntil === 0 ? '!' : exam.daysUntil}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                              {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
+                            </span>
+                          </div>
+                          <p className="font-medium text-sm mt-1.5 leading-snug line-clamp-1">{exam.title}</p>
+                          <p className="text-xs text-muted-foreground mt-0.5 truncate">{exam.course_title}</p>
+                          {exam.event_date && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5">
+                              {format(new Date(exam.event_date), 'MMM d')}
+                            </p>
+                          )}
                         </div>
-                        <p className="font-medium text-sm mt-1.5 leading-snug line-clamp-1">{exam.title}</p>
-                        <p className="text-xs text-muted-foreground mt-0.5 truncate">{exam.course_title}</p>
-                      </div>
-                    </motion.div>
-                  );
-                })}
+                      </motion.div>
+                    );
+                  })}
+                </div>
+                {/* Right-edge fade for scroll affordance */}
+                <div className="absolute inset-y-0 right-0 w-8 pointer-events-none bg-gradient-to-l from-background to-transparent" />
               </div>
             </motion.div>
           )}
 
           {/* No reviews message */}
           {!isLoadingReviews && !hasAnyReviews && (
-            <div className="flex items-center justify-between px-4 py-3 rounded-lg bg-muted/30 border border-dashed">
-              <p className="text-sm text-muted-foreground">
-                No reviews scheduled yet — start studying to build your schedule.
-              </p>
-              <Button variant="ghost" size="sm" onClick={() => navigate('/study')} className="shrink-0 ml-3">
-                Go to Study
-              </Button>
+            <div className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface">
+              <div className="h-1 bg-muted" />
+              <div className="flex items-center justify-between p-4">
+                <p className="text-sm text-muted-foreground">
+                  No reviews scheduled yet — start studying to build your schedule.
+                </p>
+                <Button variant="ghost" size="sm" onClick={() => navigate('/study')} className="shrink-0 ml-3">
+                  Go to Study
+                </Button>
+              </div>
             </div>
           )}
 
@@ -246,6 +274,7 @@ export default function StudentCalendar(): React.ReactElement {
                   reviewData={reviewData}
                   studyPlanData={studyPlanData}
                   calendarEvents={events}
+                  selectedDayStripColor={selectedDayStripColor}
                 />
               )}
             </motion.div>
@@ -268,9 +297,12 @@ export default function StudentCalendar(): React.ReactElement {
                   />
                 </motion.div>
               ) : (
-                <div className="hidden lg:flex flex-col items-center justify-center py-12 text-center text-muted-foreground rounded-xl border border-dashed">
-                  <Calendar className="h-8 w-8 mb-3 opacity-40" />
-                  <p className="text-sm">Select a date to see details</p>
+                <div className="hidden lg:block rounded-xl overflow-hidden bg-surface border border-border shadow-surface">
+                  <div className="h-1 bg-muted" />
+                  <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                    <Calendar className="h-8 w-8 mb-3 opacity-40" />
+                    <p className="text-sm">Select a date to see details</p>
+                  </div>
                 </div>
               )}
             </div>

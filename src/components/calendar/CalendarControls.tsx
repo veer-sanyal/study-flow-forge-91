@@ -82,7 +82,7 @@ export function CalendarControls({
   const activeFilterCount = (courseFilterActive ? 1 : 0) + (typeFilterActive ? 1 : 0) + (includeOverdue ? 1 : 0);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-3 bg-surface/50 rounded-lg border border-border p-2 sm:p-3">
       {/* Top row: View toggle + Navigation */}
       <div className="flex items-center justify-between gap-2">
         {/* Left: view toggle */}

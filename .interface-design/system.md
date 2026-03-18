@@ -114,7 +114,24 @@ Half-height (`h-0.5`) bar at the bottom of each collapsed TopicRiskRow. Width = 
 - `bg-muted` — neutral / display-only (Appearance, Notifications, Topics list)
 - `bg-border` — mixed / aggregated (TopicRiskList — contains rows of all risk levels)
 
+## Signature element — Day load bar (Calendar)
+```tsx
+{pct > 0 && (
+  <div className="w-full h-1 rounded-full bg-muted overflow-hidden mt-1">
+    <div
+      className={cn('h-full rounded-full transition-all', barColor)}
+      style={{ width: `${pct}%` }}
+    />
+  </div>
+)}
+```
+Thin bar at the bottom of each CalendarDayCell. Width = questions/35 (capped at 100%). Color = success (<20), warning (20–35), destructive (>35). Parallels Phase 1 health bar and Phase 3 retention bar — same visual language applied to daily study load.
+
+## Month view event dots (Calendar)
+In month view, event text is replaced with colored dots (one per event, max 4) to avoid illegible truncation. Dot colors map to event type (exam=destructive, quiz=warning, topic/lesson=primary, homework/review=success). Overflow shown as "+N" count. Full event details live in DayDetailPanel.
+
 ## Phase scope
 - Phase 1 (complete): Admin Courses — card system established, health bar signature
 - Phase 2 (complete): Study.tsx + StudyFocus.tsx — session progress dots, token fixes, white course cards
 - Phase 3 (complete): Progress.tsx, Settings.tsx — retention bars, status strips, token fixes, overdue toggle absorbed into chart card
+- Phase 4 (complete): Calendar — grid card surface with grid lines, day load bar signature, event dots (month) / readable text (week), 4-tier exam urgency, controls toolbar, selected-state color bridge to DayDetailPanel

@@ -12,6 +12,7 @@ interface CalendarEventForCell {
 
 interface CalendarDayCellProps {
   date: Date;
+  viewMode: 'week' | 'month';
   isToday: boolean;
   isSelected: boolean;
   isPadding: boolean;
@@ -21,7 +22,20 @@ interface CalendarDayCellProps {
   onSelect: (dateStr: string) => void;
 }
 
-const EVENT_TYPE_COLORS: Record<string, string> = {
+/** Dot color by event type */
+const EVENT_DOT_COLORS: Record<string, string> = {
+  topic: 'bg-primary',
+  lesson: 'bg-primary',
+  recitation: 'bg-muted-foreground',
+  exam: 'bg-destructive',
+  quiz: 'bg-warning',
+  homework: 'bg-success',
+  review: 'bg-success',
+  activity: 'bg-muted-foreground',
+};
+
+/** Text color by event type (week view) */
+const EVENT_TEXT_COLORS: Record<string, string> = {
   topic: 'text-primary',
   lesson: 'text-primary',
   recitation: 'text-muted-foreground',
@@ -32,8 +46,40 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   activity: 'text-muted-foreground',
 };
 
+/** Compute the load bar fill percentage (capped at 100%) */
+function loadBarPercent(plan: StudyPlanDaySummary | undefined): number {
+  if (!plan || plan.totalQuestions === 0) return 0;
+  // Scale: 35 questions = 100% (red threshold)
+  return Math.min(100, Math.round((plan.totalQuestions / 35) * 100));
+}
+
+/** Load bar color class */
+function loadBarColor(plan: StudyPlanDaySummary | undefined): string {
+  if (!plan || plan.totalQuestions === 0) return 'bg-transparent';
+  if (plan.totalQuestions > 35) return 'bg-destructive';
+  if (plan.totalQuestions > 20) return 'bg-warning';
+  return 'bg-success';
+}
+
+/** Compute the dominant status color for the selected-state bridge */
+export function getDayStatusColor(
+  studyPlan: StudyPlanDaySummary | undefined,
+  reviewData: CalendarDayReviewData | undefined,
+  events: CalendarEventForCell[],
+): string {
+  if (studyPlan && studyPlan.totalQuestions > 0) {
+    if (studyPlan.totalQuestions > 35) return 'bg-destructive';
+    if (studyPlan.totalQuestions > 20) return 'bg-warning';
+    return 'bg-success';
+  }
+  if (reviewData && (reviewData.totalDue > 0 || reviewData.totalNew > 0)) return 'bg-primary';
+  if (events.length > 0) return 'bg-muted';
+  return 'bg-border';
+}
+
 export function CalendarDayCell({
   date,
+  viewMode,
   isToday,
   isSelected,
   isPadding,
@@ -44,30 +90,23 @@ export function CalendarDayCell({
 }: CalendarDayCellProps): React.ReactElement {
   const dateStr = formatDateKey(date);
   const dayNum = date.getDate();
-
-  // Study plan load color coding via left border
-  const loadBorderClass = studyPlan
-    ? studyPlan.totalQuestions > 35
-      ? 'border-l-2 border-l-destructive'
-      : studyPlan.totalQuestions > 20
-        ? 'border-l-2 border-l-warning'
-        : studyPlan.totalQuestions > 0
-          ? 'border-l-2 border-l-success'
-          : ''
-    : '';
+  const isWeek = viewMode === 'week';
+  const pct = loadBarPercent(studyPlan);
+  const barColor = loadBarColor(studyPlan);
 
   return (
     <button
       type="button"
       onClick={() => onSelect(dateStr)}
       className={cn(
-        'relative flex flex-col items-start gap-0.5 p-1.5 sm:p-2 rounded-lg border border-transparent text-left min-h-[4.5rem] sm:min-h-[5.5rem] w-full transition-colors',
-        'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-        isPadding && 'opacity-40',
-        isToday && 'ring-2 ring-primary bg-primary/5',
-        isSelected && !isToday && 'bg-accent',
-        isSelected && isToday && 'ring-2 ring-primary bg-primary/10',
-        loadBorderClass,
+        'relative flex flex-col items-start p-1.5 sm:p-2 bg-surface text-left w-full transition-colors',
+        'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
+        // Month vs week cell height
+        isWeek ? 'min-h-[10rem]' : 'min-h-[4.5rem] sm:min-h-[5.5rem]',
+        isPadding && 'opacity-40 bg-muted/30',
+        isToday && 'ring-2 ring-primary ring-inset bg-primary/5',
+        isSelected && !isToday && 'bg-accent ring-2 ring-primary/40 ring-inset',
+        isSelected && isToday && 'ring-2 ring-primary ring-inset bg-primary/10',
       )}
     >
       {/* Date number */}
@@ -81,8 +120,7 @@ export function CalendarDayCell({
       </span>
 
       {/* Stats Badges */}
-      <div className="flex gap-1 flex-wrap mb-1">
-        {/* Review Badge */}
+      <div className="flex gap-1 flex-wrap mt-1 mb-0.5">
         {reviewData && reviewData.totalDue > 0 && (
           <Badge
             variant="secondary"
@@ -96,8 +134,6 @@ export function CalendarDayCell({
             {reviewData.totalDue} review
           </Badge>
         )}
-
-        {/* New Content Badge */}
         {reviewData && reviewData.totalNew > 0 && (
           <Badge
             variant="secondary"
@@ -108,32 +144,68 @@ export function CalendarDayCell({
         )}
       </div>
 
-      {/* Study plan summary overlay */}
+      {/* Study plan summary — compact in month, expanded in week */}
       {studyPlan && studyPlan.totalQuestions > 0 && (
-        <CalendarDaySummary plan={studyPlan} />
+        <CalendarDaySummary plan={studyPlan} compact={!isWeek} />
       )}
 
-      {/* Calendar event titles */}
-      <div className="flex flex-col gap-0.5 w-full overflow-hidden">
-        {events.slice(0, 3).map((event, i) => (
-          <span
-            key={event.id}
-            className={cn(
-              'text-[9px] sm:text-[10px] leading-tight truncate w-full block font-medium',
-              EVENT_TYPE_COLORS[event.event_type] || 'text-muted-foreground',
-              i >= 2 && 'hidden sm:block',
+      {/* Events — dots in month view, text in week view */}
+      {events.length > 0 && (
+        isWeek ? (
+          /* Week view: readable truncated text */
+          <div className="flex flex-col gap-0.5 w-full overflow-hidden mt-1">
+            {events.slice(0, 5).map(event => (
+              <span
+                key={event.id}
+                className={cn(
+                  'text-[10px] sm:text-[11px] leading-tight truncate w-full block font-medium',
+                  EVENT_TEXT_COLORS[event.event_type] || 'text-muted-foreground',
+                )}
+                title={`${event.title} (${event.event_type})`}
+              >
+                {event.title}
+              </span>
+            ))}
+            {events.length > 5 && (
+              <span className="text-[10px] text-muted-foreground">
+                +{events.length - 5} more
+              </span>
             )}
-            title={`${event.title} (${event.event_type})`}
-          >
-            {event.title}
-          </span>
-        ))}
-        {events.length > 3 && (
-          <span className="text-[9px] text-muted-foreground">
-            +{events.length - 3} more
-          </span>
-        )}
-      </div>
+          </div>
+        ) : (
+          /* Month view: colored dots */
+          <div className="flex items-center gap-1 mt-1">
+            {events.slice(0, 4).map(event => (
+              <span
+                key={event.id}
+                className={cn(
+                  'w-1.5 h-1.5 rounded-full shrink-0',
+                  EVENT_DOT_COLORS[event.event_type] || 'bg-muted-foreground',
+                )}
+                title={`${event.title} (${event.event_type})`}
+              />
+            ))}
+            {events.length > 4 && (
+              <span className="text-[9px] text-muted-foreground leading-none">
+                +{events.length - 4}
+              </span>
+            )}
+          </div>
+        )
+      )}
+
+      {/* Spacer to push load bar to bottom */}
+      <div className="flex-1" />
+
+      {/* Load bar signature — thin bar at cell bottom */}
+      {pct > 0 && (
+        <div className="w-full h-1 rounded-full bg-muted overflow-hidden mt-1">
+          <div
+            className={cn('h-full rounded-full transition-all', barColor)}
+            style={{ width: `${pct}%` }}
+          />
+        </div>
+      )}
     </button>
   );
 }
