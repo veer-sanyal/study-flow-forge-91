@@ -30,8 +30,6 @@ interface CalendarGridProps {
   reviewData: Map<string, CalendarDayReviewData>;
   studyPlanData?: Map<string, StudyPlanDaySummary>;
   calendarEvents: CalendarEvent[];
-  /** Color class for the selected day's status strip bridge */
-  selectedDayStripColor?: string;
 }
 
 export function CalendarGrid({
@@ -42,7 +40,6 @@ export function CalendarGrid({
   reviewData,
   studyPlanData,
   calendarEvents,
-  selectedDayStripColor,
 }: CalendarGridProps): React.ReactElement {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -64,8 +61,8 @@ export function CalendarGrid({
 
   return (
     <div className="rounded-xl overflow-hidden bg-surface border border-border shadow-surface">
-      {/* Status strip — actionable user data */}
-      <div className={cn('h-1', selectedDayStripColor || 'bg-primary')} />
+      {/* Status strip — actionable user data (always primary for the grid card) */}
+      <div className="h-1 bg-primary" />
 
       {/* Header row */}
       <div className="grid grid-cols-7 border-b border-border">
@@ -79,8 +76,8 @@ export function CalendarGrid({
         ))}
       </div>
 
-      {/* Day cells — bg-border/50 bleeds through gap-px as subtle grid lines */}
-      <div className="grid grid-cols-7 gap-px bg-border/50">
+      {/* Day cells — bg-border bleeds through gap-px as visible grid lines */}
+      <div className="grid grid-cols-7 gap-px bg-border">
         {days.map(day => {
           const dateKey = formatDateKey(day);
           return (

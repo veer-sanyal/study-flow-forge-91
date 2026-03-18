@@ -19,7 +19,6 @@ import { useEnrollments } from '@/hooks/use-enrollments';
 import { useCourses } from '@/hooks/use-focus';
 import { useFocusContext } from '@/contexts/FocusContext';
 import { fadeSlideUp, stagger, duration, easing } from '@/lib/motion';
-import { getDayStatusColor } from '@/components/calendar/CalendarDayCell';
 import { cn } from '@/lib/utils';
 
 function formatDateKey(d: Date): string {
@@ -93,15 +92,6 @@ export default function StudentCalendar(): React.ReactElement {
 
   // Study plan data for proactive workload projection
   const { data: studyPlanData } = useCalendarStudyPlan(startDate, endDate);
-
-  // Compute selected day's status color for the grid-to-panel visual bridge
-  const selectedDayStripColor = selectedDate
-    ? getDayStatusColor(
-        studyPlanData.get(selectedDate),
-        reviewData.get(selectedDate),
-        events.filter(ev => ev.event_date && ev.event_date.slice(0, 10) === selectedDate),
-      )
-    : undefined;
 
   // -- Handlers --
   const toggleCourse = useCallback((courseId: string) => {
@@ -274,7 +264,6 @@ export default function StudentCalendar(): React.ReactElement {
                   reviewData={reviewData}
                   studyPlanData={studyPlanData}
                   calendarEvents={events}
-                  selectedDayStripColor={selectedDayStripColor}
                 />
               )}
             </motion.div>

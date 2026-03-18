@@ -102,11 +102,11 @@ export function CalendarDayCell({
         'relative flex flex-col items-start p-1.5 sm:p-2 bg-surface text-left w-full transition-colors',
         'hover:bg-accent/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset',
         // Month vs week cell height
-        isWeek ? 'min-h-[10rem]' : 'min-h-[4.5rem] sm:min-h-[5.5rem]',
+        isWeek ? 'min-h-[8rem]' : 'min-h-[4.5rem] sm:min-h-[5.5rem]',
         isPadding && 'opacity-40 bg-muted/30',
-        isToday && 'ring-2 ring-primary ring-inset bg-primary/5',
-        isSelected && !isToday && 'bg-accent ring-2 ring-primary/40 ring-inset',
-        isSelected && isToday && 'ring-2 ring-primary ring-inset bg-primary/10',
+        isToday && !isSelected && 'ring-1 ring-primary ring-inset',
+        isSelected && !isToday && 'bg-accent/60 ring-2 ring-primary/50 ring-inset',
+        isSelected && isToday && 'bg-primary/5 ring-2 ring-primary ring-inset',
       )}
     >
       {/* Date number */}
@@ -119,30 +119,32 @@ export function CalendarDayCell({
         {dayNum}
       </span>
 
-      {/* Stats Badges */}
-      <div className="flex gap-1 flex-wrap mt-1 mb-0.5">
-        {reviewData && reviewData.totalDue > 0 && (
-          <Badge
-            variant="secondary"
-            className={cn(
-              'text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap',
-              reviewData.overdueCount > 0
-                ? 'bg-destructive/10 text-destructive border-destructive/20'
-                : 'bg-primary/10 text-primary border-primary/20',
-            )}
-          >
-            {reviewData.totalDue} review
-          </Badge>
-        )}
-        {reviewData && reviewData.totalNew > 0 && (
-          <Badge
-            variant="secondary"
-            className="text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap bg-success/10 text-success border-success/20"
-          >
-            {reviewData.totalNew} new
-          </Badge>
-        )}
-      </div>
+      {/* Stats Badges — compact in month (just counts), full in week */}
+      {(reviewData?.totalDue ?? 0) + (reviewData?.totalNew ?? 0) > 0 && (
+        <div className="flex gap-1 flex-wrap mt-1 mb-0.5">
+          {reviewData && reviewData.totalDue > 0 && (
+            <Badge
+              variant="secondary"
+              className={cn(
+                'text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap',
+                reviewData.overdueCount > 0
+                  ? 'bg-destructive/10 text-destructive border-destructive/20'
+                  : 'bg-primary/10 text-primary border-primary/20',
+              )}
+            >
+              {isWeek ? `${reviewData.totalDue} review` : reviewData.totalDue}
+            </Badge>
+          )}
+          {reviewData && reviewData.totalNew > 0 && (
+            <Badge
+              variant="secondary"
+              className="text-[10px] px-1 py-0 h-4 leading-tight whitespace-nowrap bg-success/10 text-success border-success/20"
+            >
+              {isWeek ? `${reviewData.totalNew} new` : `+${reviewData.totalNew}`}
+            </Badge>
+          )}
+        </div>
+      )}
 
       {/* Study plan summary — compact in month, expanded in week */}
       {studyPlan && studyPlan.totalQuestions > 0 && (
