@@ -129,7 +129,7 @@ export default function StudentCalendar(): React.ReactElement {
   return (
     <PageTransition>
       <div className="min-h-screen pb-24 md:pb-8">
-        <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
+        <div className="max-w-6xl mx-auto px-4 py-6 space-y-5">
           {/* Header */}
           <motion.div
             {...fadeSlideUp}
@@ -174,7 +174,7 @@ export default function StudentCalendar(): React.ReactElement {
               <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                 Upcoming exams
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 scrollbar-thin">
                 {upcomingExams.map((exam, i) => {
                   const urgency = exam.daysUntil <= 3 ? 'urgent' : exam.daysUntil <= 7 ? 'soon' : 'calm';
                   const urgencyStripClass = {
@@ -193,17 +193,19 @@ export default function StudentCalendar(): React.ReactElement {
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: i * stagger.fast, duration: duration.normal, ease: easing.easeOut }}
-                      className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden"
+                      className="rounded-xl border border-border bg-surface shadow-surface overflow-hidden shrink-0 w-40"
                     >
                       <div className={cn('h-1', urgencyStripClass)} />
                       <div className="p-3">
-                        <div className={cn('text-2xl font-bold leading-none tabular-nums', numberColor)}>
-                          {exam.daysUntil === 0 ? '!' : exam.daysUntil}
+                        <div className="flex items-baseline gap-1.5">
+                          <span className={cn('text-2xl font-bold tabular-nums leading-none', numberColor)}>
+                            {exam.daysUntil === 0 ? '!' : exam.daysUntil}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground uppercase tracking-wide">
+                            {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
+                          </span>
                         </div>
-                        <div className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">
-                          {exam.daysUntil === 0 ? 'today' : exam.daysUntil === 1 ? 'day' : 'days'}
-                        </div>
-                        <p className="font-medium text-sm mt-2 leading-snug line-clamp-2">{exam.title}</p>
+                        <p className="font-medium text-sm mt-1.5 leading-snug line-clamp-1">{exam.title}</p>
                         <p className="text-xs text-muted-foreground mt-0.5 truncate">{exam.course_title}</p>
                       </div>
                     </motion.div>
@@ -212,26 +214,6 @@ export default function StudentCalendar(): React.ReactElement {
               </div>
             </motion.div>
           )}
-
-          {/* Calendar grid */}
-          <motion.div
-            {...fadeSlideUp}
-            transition={{ duration: duration.slow, ease: easing.easeOut, delay: 0.15 }}
-          >
-            {isLoadingReviews ? (
-              <div className="h-48 bg-muted/30 rounded-lg animate-pulse" />
-            ) : (
-              <CalendarGrid
-                viewMode={viewMode}
-                currentDate={currentDate}
-                selectedDate={selectedDate}
-                onSelectDate={setSelectedDate}
-                reviewData={reviewData}
-                studyPlanData={studyPlanData}
-                calendarEvents={events}
-              />
-            )}
-          </motion.div>
 
           {/* No reviews message */}
           {!isLoadingReviews && !hasAnyReviews && (
@@ -245,23 +227,54 @@ export default function StudentCalendar(): React.ReactElement {
             </div>
           )}
 
-          {/* Day detail panel */}
-          {selectedDate && (
+          {/* Calendar grid + Day detail — side by side on lg+ */}
+          <div className="flex flex-col lg:flex-row lg:gap-5 lg:items-start">
+            {/* Calendar grid — takes available space */}
             <motion.div
-              key={selectedDate}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: duration.normal, ease: easing.easeOut }}
+              {...fadeSlideUp}
+              transition={{ duration: duration.slow, ease: easing.easeOut, delay: 0.15 }}
+              className="flex-1 min-w-0"
             >
-              <DayDetailPanel
-                date={selectedDate}
-                events={events}
-                reviewData={reviewData.get(selectedDate)}
-                studyPlan={studyPlanData.get(selectedDate)}
-                onStartReviews={handleStartReviews}
-              />
+              {isLoadingReviews ? (
+                <div className="h-48 bg-muted/30 rounded-lg animate-pulse" />
+              ) : (
+                <CalendarGrid
+                  viewMode={viewMode}
+                  currentDate={currentDate}
+                  selectedDate={selectedDate}
+                  onSelectDate={setSelectedDate}
+                  reviewData={reviewData}
+                  studyPlanData={studyPlanData}
+                  calendarEvents={events}
+                />
+              )}
             </motion.div>
-          )}
+
+            {/* Day detail panel — side on desktop, below on mobile */}
+            <div className="lg:w-80 xl:w-96 lg:shrink-0 lg:sticky lg:top-6 mt-4 lg:mt-0">
+              {selectedDate ? (
+                <motion.div
+                  key={selectedDate}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: duration.normal, ease: easing.easeOut }}
+                >
+                  <DayDetailPanel
+                    date={selectedDate}
+                    events={events}
+                    reviewData={reviewData.get(selectedDate)}
+                    studyPlan={studyPlanData.get(selectedDate)}
+                    onStartReviews={handleStartReviews}
+                  />
+                </motion.div>
+              ) : (
+                <div className="hidden lg:flex flex-col items-center justify-center py-12 text-center text-muted-foreground rounded-xl border border-dashed">
+                  <Calendar className="h-8 w-8 mb-3 opacity-40" />
+                  <p className="text-sm">Select a date to see details</p>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </PageTransition>
