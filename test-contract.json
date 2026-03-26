@@ -1,0 +1,18 @@
+{
+  "project": "study-flow-forge",
+  "unit": "npm run test",
+  "unit_watch": "npm run test:watch",
+  "lint": "npm run lint",
+  "format_check": "npx prettier --check .",
+  "type_check": "npx tsc --noEmit",
+  "e2e": "npx playwright test",
+  "visual": "npx playwright test --grep @visual",
+  "notes": {
+    "test_runner": "Vitest (configured in vitest.config.ts, jsdom environment)",
+    "existing_tests": "6 files in src/test/ — calendar-gating, calendar-review-aggregator, example, no-courses-empty-state, progress-gating, study-gating",
+    "test_setup": "src/test/setup.ts",
+    "test_pattern": "src/**/*.{test,spec}.{ts,tsx}",
+    "e2e_status": "@playwright/test in deps but no playwright.config.ts yet",
+    "missing_scripts": ["test:integration", "format:check"]
+  }
+}
