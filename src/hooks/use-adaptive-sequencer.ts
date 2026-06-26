@@ -18,6 +18,16 @@ type QuestionResult = {
 
 const MAX_INSERTIONS_PER_TOPIC = 2;
 
+// Re-test lags (in queue positions). Spacing/lag-effect research (Rohrer 2020;
+// Brunmair & Richter 2019; Kim 2022) shows an immediate re-test ≈ cramming and that
+// interleaving's benefit vanishes when items aren't spaced apart — so reinforcement
+// is placed several questions later, not at +2. Confident errors are re-tested a bit
+// sooner: the hypercorrection effect (Metcalfe 2018; Butterfield) finds high-confidence
+// mistakes are corrected best by a prompt corrective re-test after feedback.
+// ponytail: heuristic constants — calibrate against delayed-retention data if collected.
+const REINSERT_LAG = 5;
+const HYPERCORRECTION_LAG = 3;
+
 export function useAdaptiveSequencer(): {
   initQueue: (questions: StudyQuestion[], allTopicIds: string[], excludeIds: string[]) => void;
   currentQuestion: StudyQuestion | null;
@@ -72,8 +82,10 @@ export function useAdaptiveSequencer(): {
         }
       }
 
-      // Rule 1: Wrong answer → insert reinforcement at position +2
+      // Rule 1: Wrong answer → insert spaced reinforcement. Confident-wrong (confidence 3)
+      // re-tests sooner (hypercorrection); routine errors get a longer spacing lag.
       if (!result.isCorrect) {
+        const lag = result.confidence === 3 ? HYPERCORRECTION_LAG : REINSERT_LAG;
         for (const topicId of result.questionTopicIds) {
           const count = newInsertionCounts.get(topicId) || 0;
           if (count >= MAX_INSERTIONS_PER_TOPIC) continue;
@@ -81,7 +93,7 @@ export function useAdaptiveSequencer(): {
           const currentDifficulty = queue[currentIndex]?.difficulty || 3;
           const reserve = reservePool.getReserveForTopic(topicId, currentDifficulty);
           if (reserve) {
-            const insertAt = Math.min(currentIndex + 2 + insertionOffset, newQueue.length);
+            const insertAt = Math.min(currentIndex + lag + insertionOffset, newQueue.length);
             const studyQ = reserveToStudyQuestion(reserve);
             newQueue.splice(insertAt, 0, studyQ);
             insertedIndicesRef.current.add(insertAt);
@@ -92,7 +104,8 @@ export function useAdaptiveSequencer(): {
         }
       }
 
-      // Rule 2: Guide Me used → queue reinforcement within next 3 positions
+      // Rule 2: Guide Me used but correct → fluency-illusion flag (the scaffold, not recall,
+      // produced the right answer). Re-queue spaced to force unaided retrieval later.
       if (result.guideUsed && result.isCorrect) {
         for (const topicId of result.questionTopicIds) {
           const count = newInsertionCounts.get(topicId) || 0;
@@ -100,7 +113,7 @@ export function useAdaptiveSequencer(): {
 
           const reserve = reservePool.getReserveForTopic(topicId);
           if (reserve) {
-            const insertAt = Math.min(currentIndex + 3 + insertionOffset, newQueue.length);
+            const insertAt = Math.min(currentIndex + REINSERT_LAG + insertionOffset, newQueue.length);
             const studyQ = reserveToStudyQuestion(reserve);
             newQueue.splice(insertAt, 0, studyQ);
             insertedIndicesRef.current.add(insertAt);
@@ -132,7 +145,8 @@ export function useAdaptiveSequencer(): {
         }
       }
 
-      // Rule 4: Low confidence (correct but guessed) → queue reinforcement within next 2
+      // Rule 4: Low confidence but correct ("lucky guess") → spaced reinforcement to
+      // convert a fragile correct into durable recall.
       if (result.isCorrect && result.confidence === 1) {
         for (const topicId of result.questionTopicIds) {
           const count = newInsertionCounts.get(topicId) || 0;
@@ -140,7 +154,7 @@ export function useAdaptiveSequencer(): {
 
           const reserve = reservePool.getReserveForTopic(topicId);
           if (reserve) {
-            const insertAt = Math.min(currentIndex + 2 + insertionOffset, newQueue.length);
+            const insertAt = Math.min(currentIndex + REINSERT_LAG + insertionOffset, newQueue.length);
             const studyQ = reserveToStudyQuestion(reserve);
             newQueue.splice(insertAt, 0, studyQ);
             insertedIndicesRef.current.add(insertAt);

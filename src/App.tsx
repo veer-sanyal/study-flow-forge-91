@@ -27,7 +27,6 @@ import AdminQuestionsEditor from "@/pages/AdminQuestionsEditor";
 import AdminQuestionDetail from "@/pages/AdminQuestionDetail";
 import AdminSubpartDetail from "@/pages/AdminSubpartDetail";
 import AdminQuestionTypes from "@/pages/AdminQuestionTypes";
-// AdminMaterials removed - materials are now managed inside AdminExamsList
 import NotFound from "@/pages/NotFound";
 
 const queryClient = new QueryClient();

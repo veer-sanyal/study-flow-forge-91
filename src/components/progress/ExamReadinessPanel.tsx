@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { useUpcomingExams } from '@/hooks/use-calendar';
 import { type TopicProgressRow, type ExamProjection, type TopicExamProjection } from '@/types/progress';
 import { projectRetention, classifyRisk, riskColorClass } from '@/lib/fsrs-stats';
+import { TARGET_RETENTION } from '@/lib/fsrs';
 
 interface ExamReadinessPanelProps {
   courseIds: string[];
@@ -80,7 +81,7 @@ export function ExamReadinessPanel({
 
   const projections = useMemo(() => {
     if (!upcomingExams || upcomingExams.length === 0) return [];
-    return buildExamProjections(upcomingExams, topics, 0.9);
+    return buildExamProjections(upcomingExams, topics, TARGET_RETENTION);
   }, [upcomingExams, topics]);
 
   const hasStudyData = topics.some((t) => t.attempts_count > 0);
@@ -102,13 +103,13 @@ export function ExamReadinessPanel({
     <div className="space-y-4">
       {projections.map((exam) => {
         const overallRisk = classifyRisk(exam.overallProjectedR);
-        const atRiskTopics = exam.topics.filter((t) => t.projectedR < 0.9);
+        const atRiskTopics = exam.topics.filter((t) => t.projectedR < TARGET_RETENTION);
 
         return (
           <Card key={exam.examId} className="bg-surface shadow-surface rounded-xl overflow-hidden">
             <div className={cn(
               "h-1",
-              exam.overallProjectedR >= 0.9 ? "bg-success" :
+              exam.overallProjectedR >= TARGET_RETENTION ? "bg-success" :
               exam.overallProjectedR >= 0.7 ? "bg-warning" : "bg-destructive"
             )} />
             <CardHeader className="pb-3">

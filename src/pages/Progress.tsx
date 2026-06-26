@@ -9,6 +9,7 @@ import { useEnrollments } from '@/hooks/use-enrollments';
 import { useProgressStats } from '@/hooks/use-progress-stats';
 import { type TimeRange } from '@/types/progress';
 import { StatCards } from '@/components/progress/StatCards';
+import { NorthStarCard } from '@/components/progress/NorthStarCard';
 import { ReviewForecastChart } from '@/components/progress/ReviewForecastChart';
 import { TopicRiskList } from '@/components/progress/TopicRiskList';
 import { ExamReadinessPanel } from '@/components/progress/ExamReadinessPanel';
@@ -93,6 +94,9 @@ export default function Progress(): React.ReactElement {
           timeRange={timeRange}
           onTimeRangeChange={setTimeRange}
         />
+
+        {/* North Star: durable mastery this week + guardrails (hidden until RPC deployed) */}
+        <NorthStarCard />
 
         {/* Stat cards */}
         <StatCards summary={summary} />

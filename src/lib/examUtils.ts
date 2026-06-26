@@ -191,32 +191,6 @@ export function getShortExamLabel(parsed: ParsedExamInfo): string {
 }
 
 /**
- * Generate a display label for an exam
- */
-export function getExamDisplayLabel(parsed: ParsedExamInfo): string {
-  const parts: string[] = [];
-  
-  if (parsed.semester) parts.push(parsed.semester);
-  if (parsed.year) parts.push(parsed.year.toString());
-  if (parsed.examType) {
-    if (parsed.midtermNumber) {
-      parts.push(`${parsed.examType} ${parsed.midtermNumber}`);
-    } else {
-      parts.push(parsed.examType);
-    }
-  }
-
-  return parts.length > 0 ? parts.join(" ") : parsed.originalName;
-}
-
-/**
- * Get exam grouping key for organizing exams by year
- */
-export function getYearGroupKey(parsed: ParsedExamInfo): string {
-  return parsed.year?.toString() || "Unknown Year";
-}
-
-/**
  * Group exams by year, then by semester
  */
 export function groupExamsByYearAndSemester(exams: ExamInfo[]): YearGroup[] {

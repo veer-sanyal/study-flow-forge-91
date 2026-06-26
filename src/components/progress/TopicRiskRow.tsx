@@ -6,6 +6,7 @@ import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/comp
 import { cn } from '@/lib/utils';
 import { type TopicProgressRow } from '@/types/progress';
 import { riskColorClass, formatStability, formatDifficulty } from '@/lib/fsrs-stats';
+import { TARGET_RETENTION } from '@/lib/fsrs';
 
 interface TopicRiskRowProps {
   topic: TopicProgressRow;
@@ -121,7 +122,7 @@ export function TopicRiskRow({
           className={cn(
             "h-full transition-all",
             topic.r_now == null ? "bg-muted" :
-            topic.r_now >= 0.9 ? "bg-success" :
+            topic.r_now >= TARGET_RETENTION ? "bg-success" :
             topic.r_now >= 0.7 ? "bg-warning" : "bg-destructive"
           )}
           style={{ width: `${Math.round((topic.r_now ?? 0) * 100)}%` }}

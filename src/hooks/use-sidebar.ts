@@ -47,16 +47,3 @@ export function useSidebar() {
   }
   return context;
 }
-
-export function useSidebarOptional() {
-  const context = useContext(SidebarContext);
-  if (!context) {
-    return { 
-      isCollapsed: false, 
-      collapse: function() {}, 
-      expand: function() {}, 
-      toggle: function() {} 
-    };
-  }
-  return context;
-}

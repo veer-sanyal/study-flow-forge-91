@@ -1,10 +1,20 @@
 import { FSRS, Card, Rating, State, createEmptyCard, generatorParameters } from 'ts-fsrs';
 
+// App-wide target retention. Research (FSRS CMRR / Anki "optimal retention" wiki,
+// open-spaced-repetition benchmark) shows 0.90 is Anki's *safe default*, not the
+// workload-efficiency optimum — which usually lands ~0.70–0.85; pushing toward 0.95
+// ~doubles review load for ~1–2% recall. 0.85 trades a sliver of recall for far less
+// load on conceptual decks (spacing gains on problem-solving are real but ~half vocab).
+// Single source of truth: scheduling, risk classification, and UI targets all read this.
+// ponytail: one global constant; upgrade path is per-user CMRR optimization if/when
+// there's enough review history to optimize against.
+export const TARGET_RETENTION = 0.85;
+
 // Singleton FSRS instance with app-wide parameters
 const params = generatorParameters({
   enable_fuzz: true,
   maximum_interval: 365,
-  request_retention: 0.9,
+  request_retention: TARGET_RETENTION,
 });
 
 export const fsrsInstance = new FSRS(params);

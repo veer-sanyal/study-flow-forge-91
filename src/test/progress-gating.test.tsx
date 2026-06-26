@@ -49,6 +49,9 @@ vi.mock('@/components/progress/TopicRiskList', () => ({
 vi.mock('@/components/progress/ExamReadinessPanel', () => ({
   ExamReadinessPanel: () => null,
 }));
+vi.mock('@/components/progress/NorthStarCard', () => ({
+  NorthStarCard: () => null,
+}));
 vi.mock('@/components/progress/ProgressFilters', () => ({
   ProgressFilters: () => <div data-testid="progress-filters" />,
 }));

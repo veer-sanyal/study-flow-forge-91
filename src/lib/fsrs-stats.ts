@@ -2,7 +2,7 @@
  * Pure FSRS statistics utilities.
  * No side effects — only math, formatting, and classification.
  */
-import { fsrsInstance } from '@/lib/fsrs';
+import { fsrsInstance, TARGET_RETENTION } from '@/lib/fsrs';
 
 /** Compute median of a sorted-or-unsorted numeric array. Returns null for empty input. */
 export function computeMedian(values: number[]): number | null {
@@ -14,21 +14,8 @@ export function computeMedian(values: number[]): number | null {
     : (sorted[mid - 1] + sorted[mid]) / 2;
 }
 
-/** Compute the p-th percentile (0–1) using linear interpolation. */
-export function computePercentile(values: number[], p: number): number | null {
-  if (values.length === 0) return null;
-  const sorted = [...values].sort((a, b) => a - b);
-  if (sorted.length === 1) return sorted[0];
-  const index = p * (sorted.length - 1);
-  const lower = Math.floor(index);
-  const upper = Math.ceil(index);
-  if (lower === upper) return sorted[lower];
-  const weight = index - lower;
-  return sorted[lower] * (1 - weight) + sorted[upper] * weight;
-}
-
 /** Classify retrievability against target retention. */
-export function classifyRisk(r: number | null, target: number = 0.9): 'safe' | 'warning' | 'danger' {
+export function classifyRisk(r: number | null, target: number = TARGET_RETENTION): 'safe' | 'warning' | 'danger' {
   if (r === null) return 'warning';
   // "danger" if more than ~15% below target, "warning" if below target
   if (r < target - 0.05) return 'danger';

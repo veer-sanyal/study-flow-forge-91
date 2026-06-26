@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from "@/lib/supabase";
+import { computeQualityStreak } from '@/lib/streak';
 import { useAuth } from '@/hooks/use-auth';
 import { useUserSettings } from '@/hooks/use-settings';
 import { useEnrollments } from '@/hooks/use-enrollments';
@@ -349,9 +350,8 @@ export function useStudyDashboard() {
         ? Math.round((weeklyCorrect / weeklyAttempts.length) * 100)
         : 0;
 
-      // Calculate streak (consecutive days with attempts)
-      // For now, simplified: just check if there are attempts today
-      const streak = completedQuestions > 0 ? 1 : 0; // Simplified for now
+      // Quality streak: consecutive days with at least one correct retrieval (not logins).
+      const streak = computeQualityStreak(weeklyAttempts, today);
 
       return {
         todayPlan: {

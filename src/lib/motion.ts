@@ -38,41 +38,16 @@ export const stagger = {
 } as const;
 
 // Common animation variants
-export const fadeIn = {
-  initial: { opacity: 0 },
-  animate: { opacity: 1 },
-  exit: { opacity: 0 },
-  transition: { duration: duration.normal, ease: easing.easeOut },
-};
-
 export const fadeSlideUp = {
   initial: { opacity: 0, y: distance.sm },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: distance.sm },
 };
 
-export const fadeSlideDown = {
-  initial: { opacity: 0, y: -distance.sm },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -distance.sm },
-};
-
 export const scaleIn = {
   initial: { opacity: 0, scale: 0.95 },
   animate: { opacity: 1, scale: 1 },
   exit: { opacity: 0, scale: 0.95 },
-};
-
-export const slideInRight = {
-  initial: { x: "100%" },
-  animate: { x: 0 },
-  exit: { x: "100%" },
-};
-
-export const slideInLeft = {
-  initial: { x: "-100%" },
-  animate: { x: 0 },
-  exit: { x: "-100%" },
 };
 
 // Page transition variant
@@ -107,13 +82,6 @@ export const staggerItem = {
     y: 0,
     transition: { duration: duration.normal, ease: easing.easeOut }
   },
-};
-
-// Button press animation
-export const buttonPress = {
-  whileTap: { scale: 0.98 },
-  whileHover: { scale: 1.01 },
-  transition: { duration: duration.micro },
 };
 
 // Reduced motion fallback - use when prefers-reduced-motion is true

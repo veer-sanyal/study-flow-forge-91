@@ -37,14 +37,14 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
       subtitle: 'below target',
       icon: <AlertTriangle className="h-4 w-4 text-warning" />,
       highlight: summary.atRiskTopicCount > 0,
-      tooltip: 'Topics where your estimated recall has dropped below 90%. These need review soon.',
+      tooltip: `Topics where your estimated recall has dropped below ${Math.round(summary.targetRetention * 100)}%. These need review soon.`,
     },
     {
       label: 'Stability',
       value: formatStability(summary.globalMedianStability),
       subtitle: 'long-term',
       icon: <Shield className="h-4 w-4 text-primary" />,
-      tooltip: 'Median time before you\u2019d forget a card to 90% recall. Higher = stronger long-term memory.',
+      tooltip: `Median time before you\u2019d forget a card to ${Math.round(summary.targetRetention * 100)}% recall. Higher = stronger long-term memory.`,
     },
     {
       label: 'Difficulty',
@@ -60,7 +60,7 @@ export function StatCards({ summary }: StatCardsProps): React.ReactElement {
         : '--',
       subtitle: `vs ${Math.round(summary.targetRetention * 100)}%`,
       icon: <Target className="h-4 w-4 text-primary" />,
-      tooltip: 'Your actual accuracy over the selected time period compared to the 90% target.',
+      tooltip: `Your actual accuracy over the selected time period compared to the ${Math.round(summary.targetRetention * 100)}% target.`,
     },
   ];
 

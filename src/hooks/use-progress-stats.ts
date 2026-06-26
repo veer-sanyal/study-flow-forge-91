@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { logger } from '@/lib/logger';
 import { supabase } from "@/lib/supabase";
 import { useAuth } from '@/hooks/use-auth';
+import { TARGET_RETENTION } from '@/lib/fsrs';
 import {
   type TopicProgressRow,
   type ProgressSummary,
@@ -151,7 +152,7 @@ export function useProgressStats(options: UseProgressStatsOptions): ProgressStat
     globalMedianStability: computeMedian(stabilities),
     globalMedianDifficulty: computeMedian(difficulties),
     observedRecall: totalAttempts > 0 ? totalCorrect / totalAttempts : null,
-    targetRetention: 0.9,
+    targetRetention: TARGET_RETENTION,
     totalAttempts,
   };
 
